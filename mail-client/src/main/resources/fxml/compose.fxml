@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<!-- TODO (TV3): them nut "Dinh kem file" (FileChooser) canh subjectField -->
+<VBox spacing="8" xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.mailsystem.client.controller.ComposeController">
+    <padding><Insets top="20" right="20" bottom="20" left="20"/></padding>
+
+    <TextField fx:id="toField" promptText="Nguoi nhan (To) - cach nhau boi dau phay"/>
+    <TextField fx:id="ccField" promptText="CC"/>
+    <TextField fx:id="bccField" promptText="BCC"/>
+    <TextField fx:id="subjectField" promptText="Tieu de"/>
+    <TextArea fx:id="bodyArea" promptText="Noi dung..." prefHeight="250"/>
+    <Button text="Gui" onAction="#handleSend"/>
+</VBox>

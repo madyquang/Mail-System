@@ -1,0 +1,31 @@
+# Maven build output - KHONG push len Git
+target/
+*.class
+
+# IDE - IntelliJ
+.idea/
+*.iml
+*.iws
+
+# IDE - Eclipse
+.project
+.classpath
+.settings/
+bin/
+
+# IDE - NetBeans
+nbproject/private/
+nb-configuration.xml
+
+# IDE - VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# File dinh kem thu (neu Server luu ra dia trong thu muc nay khi test)
+attachments/

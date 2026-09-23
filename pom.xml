@@ -1,0 +1,29 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.mailsystem</groupId>
+    <artifactId>mail-system-parent</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <!--
+        PARENT POM: quản lý version chung cho toàn bộ 3 module.
+        Không chứa code, chỉ dùng để build đồng bộ + khai báo dependency dùng chung.
+    -->
+
+    <modules>
+        <module>mail-common</module>
+        <module>mail-server</module>
+        <module>mail-client</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <gson.version>2.10.1</gson.version>
+        <mysql.version>8.3.0</mysql.version>
+        <javafx.version>21.0.2</javafx.version>
+    </properties>
+
+</project>
