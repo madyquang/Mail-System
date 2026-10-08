@@ -2,16 +2,21 @@ package com.mailsystem.common.protocol;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+
+import java.io.IOException;
+import java.io.Writer;
 
 /**
  * Lớp tiện ích dùng chung cho cả Server và Client để:
  *  - Convert Object <-> JSON (1 dòng, không pretty-print, vì ta dùng \n để framing)
- *  - Đọc field "type" của 1 dòng JSON nhận được để biết đây là RESPONSE hay EVENT
+ *  - Đọc field "type" của 1 frame nhận được để biết đây là REQUEST/RESPONSE/EVENT
+ *  - Ghi 1 frame ra luồng (JSON + '\n' + flush)
  *
- * LƯU Ý: mọi nơi gửi dữ liệu qua Socket đều PHẢI dùng gson.toJson(obj) rồi
- * println() (không được dùng println(obj) trực tiếp), và bên nhận dùng
- * readLine() để đọc đúng 1 gói tin.
+ * Bên gửi luôn dùng writeFrame(); bên nhận dùng FrameReader.readFrame() để đọc
+ * đúng 1 gói tin.
  */
 public final class ProtocolUtil {
 
@@ -32,13 +37,34 @@ public final class ProtocolUtil {
         return gson.fromJson(json, clazz);
     }
 
+    /** Ghi 1 frame đã serialize sẵn. Caller chịu trách nhiệm đồng bộ hoá Writer. */
+    public static void writeFrame(Writer out, String json) throws IOException {
+        out.write(json);
+        out.write('\n');
+        out.flush();
+    }
+
     /**
      * Đọc field "type" ở tầng ngoài cùng để router biết parse tiếp thành
      * RequestMessage / ResponseMessage / EventMessage.
-     * TODO (người phụ trách ClientHandler / ServerConnection dùng hàm này để dispatch).
+     *
+     * @throws JsonParseException frame không phải JSON object hoặc thiếu/sai "type"
      */
     public static MessageType peekType(String json) {
-        JsonObject obj = gson.fromJson(json, JsonObject.class);
-        return MessageType.valueOf(obj.get("type").getAsString());
+        JsonObject obj;
+        try {
+            obj = gson.fromJson(json, JsonObject.class);
+        } catch (RuntimeException error) {
+            throw new JsonParseException("Frame không phải JSON object hợp lệ", error);
+        }
+        JsonElement type = obj == null ? null : obj.get("type");
+        if (type == null || !type.isJsonPrimitive()) {
+            throw new JsonParseException("Frame thiếu trường \"type\"");
+        }
+        try {
+            return MessageType.valueOf(type.getAsString());
+        } catch (IllegalArgumentException error) {
+            throw new JsonParseException("Loại frame không hợp lệ: " + type.getAsString());
+        }
     }
 }

@@ -57,6 +57,7 @@ CREATE TABLE mail_recipient (
     mail_id         INT NOT NULL,
     account_id      INT NOT NULL,          -- hộp thư này thuộc về ai
     folder_id       INT NOT NULL,          -- đang nằm ở folder nào
+    original_folder_id INT NULL,           -- thư mục trước khi chuyển vào TRASH
     recipient_type  ENUM('TO','CC','BCC','SENDER') NOT NULL,
     is_read         BOOLEAN NOT NULL DEFAULT FALSE,
     is_deleted      BOOLEAN NOT NULL DEFAULT FALSE,
@@ -65,6 +66,7 @@ CREATE TABLE mail_recipient (
     FOREIGN KEY (mail_id) REFERENCES mail(mail_id) ON DELETE CASCADE,
     FOREIGN KEY (account_id) REFERENCES account(account_id) ON DELETE CASCADE,
     FOREIGN KEY (folder_id) REFERENCES folder(folder_id) ON DELETE CASCADE,
+    FOREIGN KEY (original_folder_id) REFERENCES folder(folder_id) ON DELETE SET NULL,
     INDEX idx_account_folder (account_id, folder_id),   -- tăng tốc GET_MAIL_LIST
     INDEX idx_mail (mail_id)
 ) ENGINE=InnoDB;
@@ -87,10 +89,12 @@ CREATE TABLE attachment (
 -- ---------------------------------------------------------
 CREATE TABLE mail_group (
     group_id        INT AUTO_INCREMENT PRIMARY KEY,
-    group_name      VARCHAR(100) NOT NULL,
+    group_name      VARCHAR(100) NOT NULL,   -- dùng làm "địa chỉ" nhận thư nên phải duy nhất
     owner_id        INT NOT NULL,            -- người tạo = chủ nhóm
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (owner_id) REFERENCES account(account_id) ON DELETE CASCADE
+    FOREIGN KEY (owner_id) REFERENCES account(account_id) ON DELETE CASCADE,
+    -- collation utf8mb4_unicode_ci không phân biệt hoa/thường: "Lop A" trùng "lop a"
+    UNIQUE KEY uq_group_name (group_name)
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------
@@ -122,7 +126,9 @@ CREATE TABLE group_member (
 --       JOIN mail m ON r.mail_id = m.mail_id
 --       WHERE r.account_id = ? AND r.folder_id = ? AND r.is_deleted = FALSE
 --       ORDER BY m.sent_at DESC;
--- 4. DELETE_MAIL = UPDATE mail_recipient SET is_deleted = TRUE
---       WHERE entry_id = ? (chỉ ảnh hưởng dòng của riêng người xóa).
--- 5. Owner của mail_group không được LEAVE_GROUP, chỉ được DELETE_GROUP.
+-- 4. DELETE_MAIL = chuyển folder_id của entry sang folder TRASH thuộc cùng account_id
+--       (chỉ ảnh hưởng dòng thư của riêng người chuyển; không xóa dữ liệu).
+-- 5. DELETE_TRASH_MAIL / EMPTY_TRASH = chỉ xóa dòng mail_recipient trong folder
+--       TRASH thuộc account_id đang đăng nhập; không xóa mail/attachment dùng chung.
+-- 6. Owner của mail_group không được LEAVE_GROUP, chỉ được DELETE_GROUP.
 -- =========================================================

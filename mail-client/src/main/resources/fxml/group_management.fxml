@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane styleClass="mail-app" xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.mailsystem.client.controller.GroupManagementController">
+    <top>
+        <HBox alignment="CENTER_LEFT" spacing="14" styleClass="mail-toolbar">
+            <padding><Insets top="18" right="28" bottom="18" left="28" /></padding>
+            <Button text="←  Hộp thư" onAction="#handleBack" styleClass="quiet-button" />
+            <Label text="NHÓM THƯ" styleClass="page-title" />
+        </HBox>
+    </top>
+    <left>
+        <VBox prefWidth="300" spacing="12" styleClass="mail-sidebar">
+            <padding><Insets top="20" right="16" bottom="20" left="18" /></padding>
+            <Label text="NHÓM CỦA BẠN" styleClass="field-label" />
+            <ListView fx:id="groupListView" VBox.vgrow="ALWAYS" />
+            <TextField fx:id="newGroupNameField" promptText="Tên nhóm mới" styleClass="text-input" />
+            <Button text="Tạo nhóm" onAction="#handleCreateGroup" styleClass="primary-button"
+                    maxWidth="Infinity" />
+        </VBox>
+    </left>
+    <center>
+        <VBox spacing="14" styleClass="detail-content">
+            <padding><Insets top="24" right="32" bottom="20" left="32" /></padding>
+            <Label fx:id="groupNameLabel" text="Chọn một nhóm" styleClass="page-title" />
+            <Label fx:id="groupInfoLabel" styleClass="muted-text" />
+            <Label text="THÀNH VIÊN" styleClass="field-label" />
+            <ListView fx:id="memberListView" VBox.vgrow="ALWAYS" />
+            <HBox spacing="10">
+                <TextField fx:id="memberEmailField" promptText="Email thành viên cần thêm"
+                           styleClass="text-input" HBox.hgrow="ALWAYS" />
+                <Button fx:id="addMemberButton" text="Thêm" onAction="#handleAddMember"
+                        styleClass="quiet-button" />
+            </HBox>
+            <HBox spacing="10">
+                <Button fx:id="removeMemberButton" text="Xóa thành viên"
+                        onAction="#handleRemoveMember" styleClass="quiet-button" />
+                <Region HBox.hgrow="ALWAYS" />
+                <Button fx:id="leaveGroupButton" text="Rời nhóm" onAction="#handleLeaveGroup"
+                        styleClass="quiet-button" />
+                <Button fx:id="deleteGroupButton" text="Xóa nhóm" onAction="#handleDeleteGroup"
+                        styleClass="quiet-button" />
+            </HBox>
+            <Label fx:id="statusLabel" text="Đang tải nhóm..." styleClass="status-bar" wrapText="true" />
+        </VBox>
+    </center>
+</BorderPane>

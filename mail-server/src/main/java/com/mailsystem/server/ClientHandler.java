@@ -1,154 +1,307 @@
 package com.mailsystem.server;
 
 import com.google.gson.JsonElement;
-import com.mailsystem.common.protocol.*;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.mailsystem.common.protocol.Command;
+import com.mailsystem.common.protocol.EventMessage;
+import com.mailsystem.common.protocol.FrameReader;
+import com.mailsystem.common.protocol.FrameTooLargeException;
+import com.mailsystem.common.protocol.MessageType;
+import com.mailsystem.common.protocol.ProtocolConstants;
+import com.mailsystem.common.protocol.ProtocolUtil;
+import com.mailsystem.common.protocol.RequestMessage;
+import com.mailsystem.common.protocol.ResponseMessage;
 import com.mailsystem.server.service.AuthService;
 import com.mailsystem.server.service.FolderService;
 import com.mailsystem.server.service.GroupService;
 import com.mailsystem.server.service.MailService;
+import com.mailsystem.server.session.ClientSession;
 import com.mailsystem.server.session.SessionManager;
+import com.mailsystem.server.transfer.UploadManager;
 
-import java.io.*;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
+import java.util.EnumSet;
+import java.util.Set;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Xử lý 1 kết nối Client duy nhất, chạy trên 1 Thread riêng.
- * Vòng đời: đọc từng dòng JSON (1 dòng = 1 REQUEST) -> dispatch theo Command
- * -> gọi Service tương ứng -> ghi RESPONSE trả về, lặp lại tới khi client ngắt kết nối.
+ * Xử lý MỘT kết nối Client. Mỗi kết nối dùng hai thread:
  *
- * ClientHandler cũng chính là "kênh" để Server chủ động gửi EVENT cho Client này
- * (xem sendEvent()) -> SessionManager giữ tham chiếu tới các ClientHandler đang
- * online theo accountId để biết gửi EVENT cho ai khi có thư mới / thay đổi trạng thái.
+ * - Thread đọc (run()): đọc từng frame JSON (1 frame = 1 REQUEST), gọi Service
+ *   và xếp RESPONSE vào hàng đợi gửi. Các request của một client được xử lý
+ *   tuần tự theo đúng thứ tự gửi.
+ * - Thread ghi (writeLoop()): lấy frame từ hàng đợi và ghi xuống socket.
  *
- * TODO (TV2 - phần Server): implement đầy đủ các case trong switch bên dưới,
- * mỗi case gọi đúng Service tương ứng đã khai báo (đang là stub/interface rỗng).
+ * Vì sao cần hàng đợi gửi: EVENT được đẩy từ thread của client KHÁC (VD: A gửi
+ * thư thì thread của A đẩy NEW_MAIL tới B). Nếu thread của A ghi thẳng vào
+ * socket của B mà B mạng chậm (bộ đệm gửi TCP đầy), thread của A bị chặn theo.
+ * Với hàng đợi, sendEvent() chỉ offer() rồi trả về ngay; nếu hàng đợi đầy
+ * (client không đọc kịp) thì kết nối đó bị đóng thay vì làm nghẽn cả Server.
  */
-public class ClientHandler implements Runnable {
+public class ClientHandler implements Runnable, ClientSession {
+
+    private static final int OUTBOUND_QUEUE_CAPACITY = 256;
+    /** Frame đặc biệt báo thread ghi: gửi nốt hàng đợi rồi đóng socket. */
+    private static final String END_OF_STREAM = "\u0000END";
+    private static final Set<Command> PUBLIC_COMMANDS = EnumSet.of(Command.REGISTER, Command.LOGIN, Command.PING);
 
     private final Socket socket;
-    private BufferedReader in;
-    private PrintWriter out;
+    private final String remoteAddress;
+    private final Runnable onClose;
+    private final BlockingQueue<String> outbound = new LinkedBlockingQueue<>(OUTBOUND_QUEUE_CAPACITY);
+    private final AtomicBoolean closed = new AtomicBoolean();
+    private final UploadManager uploads = new UploadManager(ServerConfig.uploadTempDir());
 
-    private Integer loggedInAccountId = null; // null nghĩa là chưa LOGIN
+    private volatile Integer loggedInAccountId; // null nghĩa là chưa LOGIN
 
-    // TODO (TV2): inject/khoi tao that cac Service nay (co the qua constructor hoac static factory)
     private final AuthService authService = new AuthService();
     private final MailService mailService = new MailService();
     private final FolderService folderService = new FolderService();
     private final GroupService groupService = new GroupService();
 
     public ClientHandler(Socket socket) {
+        this(socket, () -> {
+        });
+    }
+
+    public ClientHandler(Socket socket, Runnable onClose) {
         this.socket = socket;
+        this.remoteAddress = socket.getRemoteSocketAddress() == null
+                ? "unknown"
+                : socket.getRemoteSocketAddress().toString();
+        this.onClose = onClose;
     }
 
     @Override
     public void run() {
-        try {
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
-            out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"), true);
+        Thread writer = new Thread(this::writeLoop, "mail-writer-" + remoteAddress);
+        writer.setDaemon(true);
+        writer.start();
 
-            String line;
-            while ((line = in.readLine()) != null) {
-                handleRequestLine(line);
+        String reason = "client dong ket noi";
+        try {
+            FrameReader reader = new FrameReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8),
+                    ProtocolConstants.MAX_FRAME_CHARS);
+            while (!closed.get()) {
+                String frame;
+                try {
+                    frame = reader.readFrame();
+                } catch (FrameTooLargeException error) {
+                    enqueue(ResponseMessage.error(null, "Gói tin vượt quá giới hạn "
+                            + ProtocolConstants.MAX_FRAME_CHARS + " ký tự và đã bị bỏ qua."));
+                    continue;
+                }
+                if (frame == null) {
+                    break; // nhận FIN: client đã đóng chiều gửi
+                }
+                if (!frame.isBlank()) {
+                    handleFrame(frame);
+                }
             }
-        } catch (IOException e) {
-            System.out.println("[ClientHandler] Client ngat ket noi: " + e.getMessage());
+        } catch (SocketTimeoutException error) {
+            reason = "khong nhan duoc du lieu trong " + ServerConfig.idleTimeoutSeconds() + " giay";
+        } catch (IOException error) {
+            reason = closed.get() ? "server dong ket noi" : "loi mang: " + error.getMessage();
         } finally {
-            cleanup();
+            System.out.println("[ClientHandler] Dong ket noi " + remoteAddress + " (" + reason + ")");
+            close();
         }
     }
 
-    private void handleRequestLine(String line) {
-        RequestMessage request = ProtocolUtil.fromJson(line, RequestMessage.class);
-        ResponseMessage response;
-
+    private void handleFrame(String frame) {
+        RequestMessage request;
         try {
-            Command command = request.getCommandEnum();
-            JsonElement payload = request.getPayload();
+            request = ProtocolUtil.fromJson(frame, RequestMessage.class);
+        } catch (JsonParseException error) {
+            enqueue(ResponseMessage.error(null, "Gói tin không phải JSON hợp lệ."));
+            return;
+        }
+        if (request == null || !MessageType.REQUEST.name().equals(request.getType())) {
+            enqueue(ResponseMessage.error(null, "Gói tin phải có type = REQUEST."));
+            return;
+        }
 
-            // TODO (TV2): implement tung nhanh, hien tai deu la placeholder ERROR.
-            switch (command) {
-                case REGISTER:
-                    response = authService.register(request.getRequestId(), payload);
-                    break;
-                case LOGIN:
-                    response = authService.login(request.getRequestId(), payload);
-                    // TODO: neu login OK, lay accountId tu response.data, gan vao loggedInAccountId
-                    //       va dang ky ClientHandler nay vao SessionManager.register(accountId, this)
-                    break;
-                case LOGOUT:
-                    response = ResponseMessage.ok(request.getRequestId(), null);
-                    SessionManager.getInstance().unregister(loggedInAccountId);
-                    break;
+        String requestId = request.getRequestId();
+        Command command;
+        try {
+            command = request.getCommandEnum();
+        } catch (IllegalArgumentException | NullPointerException error) {
+            enqueue(ResponseMessage.error(requestId, "Command không được hỗ trợ: " + request.getCommand()));
+            return;
+        }
+        if (!PUBLIC_COMMANDS.contains(command) && loggedInAccountId == null) {
+            enqueue(ResponseMessage.error(requestId, "Bạn chưa đăng nhập."));
+            return;
+        }
 
-                case GET_FOLDERS:
-                    response = folderService.getFolders(request.getRequestId(), loggedInAccountId);
-                    break;
-                case GET_MAIL_LIST:
-                    response = mailService.getMailList(request.getRequestId(), loggedInAccountId, payload);
-                    break;
-                case GET_MAIL_DETAIL:
-                    response = mailService.getMailDetail(request.getRequestId(), loggedInAccountId, payload);
-                    break;
-                case SEND_MAIL:
-                    response = mailService.sendMail(request.getRequestId(), loggedInAccountId, payload);
-                    // TODO: sau khi gui thanh cong, goi SessionManager de day EVENT NEW_MAIL
-                    //       toi cac recipient dang online (xem MailService.sendMail va goi
-                    //       SessionManager.getInstance().pushEvent(recipientId, eventMessage))
-                    break;
-                case MARK_READ:
-                    response = mailService.markRead(request.getRequestId(), loggedInAccountId, payload);
-                    break;
-                case DELETE_MAIL:
-                    response = mailService.deleteMail(request.getRequestId(), loggedInAccountId, payload);
-                    break;
-                case SEARCH_MAIL:
-                    response = mailService.searchMail(request.getRequestId(), loggedInAccountId, payload);
-                    break;
+        ResponseMessage response;
+        try {
+            response = dispatch(requestId, command, request.getPayload());
+        } catch (RuntimeException error) {
+            System.err.println("[ClientHandler] " + command + " loi (requestId=" + requestId + "): " + error);
+            error.printStackTrace(System.err);
+            response = ResponseMessage.error(requestId, "Lỗi xử lý yêu cầu trên máy chủ.");
+        }
+        enqueue(response);
+    }
 
-                case CREATE_GROUP:
-                    response = groupService.createGroup(request.getRequestId(), loggedInAccountId, payload);
-                    break;
-                case DELETE_GROUP:
-                    response = groupService.deleteGroup(request.getRequestId(), loggedInAccountId, payload);
-                    break;
-                case ADD_MEMBER:
-                    response = groupService.addMember(request.getRequestId(), loggedInAccountId, payload);
-                    break;
-                case REMOVE_MEMBER:
-                    response = groupService.removeMember(request.getRequestId(), loggedInAccountId, payload);
-                    break;
-                case LEAVE_GROUP:
-                    response = groupService.leaveGroup(request.getRequestId(), loggedInAccountId, payload);
-                    break;
-                case GET_MY_GROUPS:
-                    response = groupService.getMyGroups(request.getRequestId(), loggedInAccountId);
-                    break;
-
-                default:
-                    response = ResponseMessage.error(request.getRequestId(), "Command khong duoc ho tro: " + command);
+    private ResponseMessage dispatch(String requestId, Command command, JsonElement payload) {
+        Integer accountId = loggedInAccountId;
+        switch (command) {
+            case PING: {
+                JsonObject data = new JsonObject();
+                data.addProperty("serverTime", System.currentTimeMillis());
+                return ResponseMessage.ok(requestId, data);
             }
-        } catch (Exception e) {
-            response = ResponseMessage.error(request.getRequestId(), "Loi xu ly server: " + e.getMessage());
+            case REGISTER:
+                return authService.register(requestId, payload);
+            case LOGIN: {
+                ResponseMessage response = authService.login(requestId, payload);
+                if (response.isOk()) {
+                    JsonElement data = response.getData();
+                    if (data == null || !data.isJsonObject() || !data.getAsJsonObject().has("accountId")) {
+                        return ResponseMessage.error(requestId, "Phản hồi đăng nhập không hợp lệ.");
+                    }
+                    switchAccount(data.getAsJsonObject().get("accountId").getAsInt());
+                }
+                return response;
+            }
+            case LOGOUT:
+                switchAccount(null);
+                return ResponseMessage.ok(requestId, null);
+
+            case GET_FOLDERS:
+                return folderService.getFolders(requestId, accountId);
+            case GET_MAIL_LIST:
+                return mailService.getMailList(requestId, accountId, payload);
+            case GET_MAIL_DETAIL:
+                return mailService.getMailDetail(requestId, accountId, payload);
+            case DOWNLOAD_ATTACHMENT:
+                return mailService.downloadAttachment(requestId, accountId, payload);
+            case UPLOAD_ATTACHMENT_CHUNK:
+                return mailService.uploadAttachmentChunk(requestId, accountId, payload, uploads);
+            case SEND_MAIL:
+                return mailService.sendMail(requestId, accountId, payload, uploads);
+            case MARK_READ:
+                return mailService.markRead(requestId, accountId, payload);
+            case DELETE_MAIL:
+                return mailService.deleteMail(requestId, accountId, payload);
+            case DELETE_TRASH_MAIL:
+                return mailService.deleteTrashMail(requestId, accountId, payload);
+            case EMPTY_TRASH:
+                return mailService.emptyTrash(requestId, accountId);
+            case RESTORE_TRASH_MAIL:
+                return mailService.restoreTrashMail(requestId, accountId, payload);
+            case SEARCH_MAIL:
+                return mailService.searchMail(requestId, accountId, payload);
+
+            case CREATE_GROUP:
+                return groupService.createGroup(requestId, accountId, payload);
+            case DELETE_GROUP:
+                return groupService.deleteGroup(requestId, accountId, payload);
+            case ADD_MEMBER:
+                return groupService.addMember(requestId, accountId, payload);
+            case REMOVE_MEMBER:
+                return groupService.removeMember(requestId, accountId, payload);
+            case LEAVE_GROUP:
+                return groupService.leaveGroup(requestId, accountId, payload);
+            case GET_MY_GROUPS:
+                return groupService.getMyGroups(requestId, accountId);
+
+            default:
+                return ResponseMessage.error(requestId, "Command không được hỗ trợ: " + command);
         }
-
-        sendResponse(response);
     }
 
-    /** Gui 1 RESPONSE ve cho chinh client nay. */
-    public synchronized void sendResponse(ResponseMessage response) {
-        out.println(ProtocolUtil.toJson(response));
-    }
-
-    /** Gui 1 EVENT chu dong (goi tu Service khac, thong qua SessionManager). */
-    public synchronized void sendEvent(EventMessage event) {
-        out.println(ProtocolUtil.toJson(event));
-    }
-
-    private void cleanup() {
-        if (loggedInAccountId != null) {
-            SessionManager.getInstance().unregister(loggedInAccountId);
+    /** Đổi tài khoản của phiên (đăng nhập/đăng xuất) và cập nhật SessionManager. */
+    private void switchAccount(Integer newAccountId) {
+        SessionManager.getInstance().unregister(loggedInAccountId, this);
+        uploads.discardAll();
+        loggedInAccountId = newAccountId;
+        if (newAccountId != null) {
+            SessionManager.getInstance().register(newAccountId, this);
         }
+    }
+
+    /** Gửi EVENT chủ động (gọi từ SessionManager, có thể từ thread của client khác). */
+    @Override
+    public void sendEvent(EventMessage event) {
+        enqueue(event);
+    }
+
+    private void enqueue(Object message) {
+        if (closed.get()) {
+            return;
+        }
+        if (!outbound.offer(ProtocolUtil.toJson(message))) {
+            System.err.println("[ClientHandler] Hang doi gui cua " + remoteAddress
+                    + " day (client khong doc kip), dong ket noi.");
+            forceClose();
+        }
+    }
+
+    private void writeLoop() {
+        try (Writer writer = new BufferedWriter(
+                new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+            while (true) {
+                String frame = outbound.take();
+                if (END_OF_STREAM.equals(frame)) {
+                    break;
+                }
+                writer.write(frame);
+                writer.write('\n');
+                // Gộp nhiều frame đang chờ vào một lần flush (ít segment TCP hơn).
+                if (outbound.isEmpty()) {
+                    writer.flush();
+                }
+            }
+            writer.flush();
+        } catch (IOException error) {
+            if (!closed.get()) {
+                System.err.println("[ClientHandler] Khong ghi duoc toi " + remoteAddress + ": " + error.getMessage());
+            }
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+        } finally {
+            close();
+            closeSocketQuietly();
+        }
+    }
+
+    /**
+     * Đóng kết nối một cách "lịch sự": gỡ phiên, xoá upload dở dang, rồi để
+     * thread ghi gửi nốt các frame đang chờ trước khi đóng socket.
+     */
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
+        SessionManager.getInstance().unregister(loggedInAccountId, this);
+        uploads.discardAll();
+        if (!outbound.offer(END_OF_STREAM)) {
+            closeSocketQuietly();
+        }
+        onClose.run();
+    }
+
+    /** Đóng ngay lập tức (dừng Server hoặc client không đọc kịp). */
+    public void forceClose() {
+        close();
+        closeSocketQuietly();
+    }
+
+    private void closeSocketQuietly() {
         try {
             socket.close();
         } catch (IOException ignored) {

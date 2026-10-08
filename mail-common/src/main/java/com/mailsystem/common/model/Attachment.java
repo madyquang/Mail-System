@@ -1,11 +1,12 @@
 package com.mailsystem.common.model;
 
 /**
- * Dùng ở 2 chiều:
- *  - Client -> Server (SEND_MAIL): dataBase64 PHẢI có giá trị (nội dung file mã hoá base64).
- *  - Server -> Client (GET_MAIL_DETAIL): chỉ trả filename/mimeType/sizeBytes trước;
- *    dataBase64 chỉ nên trả khi Client thực sự bấm "Tải xuống" (tránh tải nặng danh sách).
- *    TODO: có thể tách thành command riêng DOWNLOAD_ATTACHMENT(attachmentId) nếu cần tối ưu.
+ * Metadata (và có thể kèm 1 khối nội dung) của tệp đính kèm:
+ *  - GET_MAIL_DETAIL: chỉ trả attachmentId/filename/mimeType/sizeBytes.
+ *  - DOWNLOAD_ATTACHMENT: trả thêm dataBase64 = 1 khối (tối đa
+ *    ProtocolConstants.CHUNK_SIZE_BYTES byte) bắt đầu tại offset Client yêu cầu.
+ * Chiều Client -> Server không dùng lớp này: Client tải tệp lên bằng
+ * UPLOAD_ATTACHMENT_CHUNK rồi chỉ gửi uploadId trong SEND_MAIL.
  */
 public class Attachment {
     private int attachmentId;

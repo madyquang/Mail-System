@@ -3,108 +3,141 @@ package com.mailsystem.server.tools;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mailsystem.common.protocol.Command;
+import com.mailsystem.common.protocol.FrameReader;
+import com.mailsystem.common.protocol.ProtocolConstants;
 import com.mailsystem.common.protocol.ProtocolUtil;
 import com.mailsystem.common.protocol.RequestMessage;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 import java.util.UUID;
 
 /**
- * CONG CU TEST SERVER DOC LAP - KHONG CAN CLIENT THAT.
+ * CÔNG CỤ TEST SERVER ĐỘC LẬP - KHÔNG CẦN CLIENT JAVAFX.
  *
- * TV2 dung class nay de tu kiem tra Server minh dang code co chay dung khong,
- * MA KHONG CAN CHO TV3/TV4 lam xong Client JavaFX.
+ * Cách dùng:
+ *  1. Chạy MailServer trước.
+ *  2. Chạy class này, nhập host/port (Enter = mặc định).
+ *  3. Gõ tên command (VD: LOGIN), Enter, rồi gõ payload JSON trên 1 dòng.
+ *  4. Gõ 'help' để xem danh sách command, 'exit' để thoát.
  *
- * CACH DUNG:
- *  1. Chay MailServer truoc (1 terminal/1 lan chay rieng).
- *  2. Chay class nay (terminal/lan chay khac).
- *  3. Go ten command (VD: REGISTER) roi Enter.
- *  4. Go payload dang JSON tren 1 dong (VD: {"email":"a@mail.local","password":"123456","displayName":"A"}) roi Enter.
- *  5. Xem RESPONSE server tra ve ngay tren console.
- *  6. Go 'help' de xem lai danh sach command, go 'exit' de thoat.
- *
- * LUU Y: day la cong cu test THU CONG, don gian (gui 1 lenh - doi 1 dong tra loi),
- * KHONG mo phong duoc truong hop Server chu dong gui EVENT xen ngang (vi luc test
- * mot minh chua co client khac nao online de sinh EVENT). Muc dich chinh la kiem
- * tra tung Command/Service/DAO co hoat dong dung logic hay khong.
+ * Kết nối TCP là song công (full-duplex): một thread nền đọc liên tục mọi frame
+ * Server gửi về (cả RESPONSE lẫn EVENT), thread chính đọc bàn phím và gửi
+ * REQUEST. Mở 2 cửa sổ, đăng nhập 2 tài khoản, gửi thư từ cửa sổ này sẽ thấy
+ * EVENT NEW_MAIL hiện ở cửa sổ kia.
  */
 public class ManualTestClient {
 
     public static void main(String[] args) throws IOException {
-        Scanner scanner = new Scanner(System.in);
+        Scanner scanner = new Scanner(System.in, StandardCharsets.UTF_8);
 
         System.out.println("=== Mail System - Manual Test Client ===");
         System.out.print("Host Server (Enter = localhost): ");
         String host = scanner.nextLine().trim();
-        if (host.isEmpty()) host = "localhost";
-
-        System.out.print("Port Server (Enter = 5000): ");
-        String portStr = scanner.nextLine().trim();
-        int port = portStr.isEmpty() ? 5000 : Integer.parseInt(portStr);
+        if (host.isEmpty()) {
+            host = "localhost";
+        }
+        System.out.print("Port Server (Enter = " + ProtocolConstants.DEFAULT_PORT + "): ");
+        String portText = scanner.nextLine().trim();
+        int port = portText.isEmpty() ? ProtocolConstants.DEFAULT_PORT : Integer.parseInt(portText);
 
         try (Socket socket = new Socket(host, port);
-             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
-             PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"), true)) {
-
-            System.out.println("Da ket noi toi " + host + ":" + port);
+                Writer out = new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)) {
+            socket.setTcpNoDelay(true);
+            System.out.println("Đã kết nối tới " + socket.getRemoteSocketAddress()
+                    + " từ cổng cục bộ " + socket.getLocalPort());
+            startReceiver(socket);
             printHelp();
 
             while (true) {
-                System.out.print("\n> Command (go 'help' hoac 'exit'): ");
-                String commandStr = scanner.nextLine().trim();
-
-                if (commandStr.equalsIgnoreCase("exit")) break;
-                if (commandStr.equalsIgnoreCase("help")) {
+                System.out.print("\n> Command: ");
+                if (!scanner.hasNextLine()) {
+                    break;
+                }
+                String commandText = scanner.nextLine().trim();
+                if (commandText.equalsIgnoreCase("exit")) {
+                    break;
+                }
+                if (commandText.equalsIgnoreCase("help")) {
                     printHelp();
+                    continue;
+                }
+                if (commandText.isEmpty()) {
                     continue;
                 }
 
                 Command command;
                 try {
-                    command = Command.valueOf(commandStr.toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    System.out.println("!! Command khong hop le. Go 'help' de xem danh sach.");
+                    command = Command.valueOf(commandText.toUpperCase());
+                } catch (IllegalArgumentException error) {
+                    System.out.println("!! Command không hợp lệ. Gõ 'help' để xem danh sách.");
                     continue;
                 }
 
-                System.out.print("> Payload JSON (Enter neu khong can payload): ");
-                String payloadStr = scanner.nextLine().trim();
-
+                System.out.print("> Payload JSON (Enter nếu không cần): ");
+                String payloadText = scanner.nextLine().trim();
                 JsonElement payload = null;
-                if (!payloadStr.isEmpty()) {
+                if (!payloadText.isEmpty()) {
                     try {
-                        payload = JsonParser.parseString(payloadStr);
-                    } catch (Exception e) {
-                        System.out.println("!! JSON khong hop le: " + e.getMessage());
+                        payload = JsonParser.parseString(payloadText);
+                    } catch (RuntimeException error) {
+                        System.out.println("!! JSON không hợp lệ: " + error.getMessage());
                         continue;
                     }
                 }
 
                 String requestId = UUID.randomUUID().toString().substring(0, 8);
-                RequestMessage request = new RequestMessage(requestId, command, payload);
-                String requestLine = ProtocolUtil.toJson(request);
-
-                out.println(requestLine);
-                System.out.println(">> DA GUI   : " + requestLine);
-
-                String responseLine = in.readLine();
-                System.out.println("<< NHAN VE  : " + responseLine);
+                String frame = ProtocolUtil.toJson(new RequestMessage(requestId, command, payload));
+                ProtocolUtil.writeFrame(out, frame);
+                System.out.println(">> ĐÃ GỬI : " + frame);
             }
         }
+        System.out.println("Đã đóng kết nối. Tạm biệt.");
+    }
 
-        System.out.println("Da dong ket noi. Tam biet.");
+    private static void startReceiver(Socket socket) throws IOException {
+        FrameReader reader = new FrameReader(
+                new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8),
+                ProtocolConstants.MAX_FRAME_CHARS);
+        Thread receiver = new Thread(() -> {
+            try {
+                String frame;
+                while ((frame = reader.readFrame()) != null) {
+                    String type;
+                    try {
+                        type = ProtocolUtil.peekType(frame).name();
+                    } catch (RuntimeException error) {
+                        type = "???";
+                    }
+                    String shown = frame.length() > 2000 ? frame.substring(0, 2000) + "...(cắt bớt)" : frame;
+                    System.out.println("\n<< " + type + " : " + shown);
+                }
+                System.out.println("\n<< Server đã đóng kết nối.");
+            } catch (IOException error) {
+                if (!socket.isClosed()) {
+                    System.out.println("\n<< Mất kết nối: " + error.getMessage());
+                }
+            }
+        }, "manual-test-receiver");
+        receiver.setDaemon(true);
+        receiver.start();
     }
 
     private static void printHelp() {
-        System.out.println("\nDanh sach Command co the test:");
-        for (Command c : Command.values()) {
-            System.out.println("  - " + c.name());
+        System.out.println("\nDanh sách Command:");
+        for (Command command : Command.values()) {
+            System.out.println("  - " + command.name());
         }
-        System.out.println("\nVi du payload cho mot so command:");
-        System.out.println("  REGISTER : {\"email\":\"a@mail.local\",\"password\":\"123456\",\"displayName\":\"Nguyen Van A\"}");
-        System.out.println("  LOGIN    : {\"email\":\"a@mail.local\",\"password\":\"123456\"}");
+        System.out.println("\nVí dụ payload:");
+        System.out.println("  PING          : (bỏ trống)");
+        System.out.println("  REGISTER      : {\"email\":\"a@mail.local\",\"password\":\"123456\",\"displayName\":\"Nguyen Van A\"}");
+        System.out.println("  LOGIN         : {\"email\":\"a@mail.local\",\"password\":\"123456\"}");
         System.out.println("  GET_MAIL_LIST : {\"folderId\":1}");
+        System.out.println("  SEND_MAIL     : {\"to\":[\"b@mail.local\"],\"subject\":\"Hi\",\"body\":\"Xin chao\"}");
     }
 }

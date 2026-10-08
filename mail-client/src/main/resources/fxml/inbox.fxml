@@ -1,18 +1,64 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<!-- TODO (TV3): thay ListView bang layout that su: sidebar danh sach folder ben trai,
-     TableView danh sach thu ben phai (cot: nguoi gui / tieu de / thoi gian / trang thai) -->
-<BorderPane xmlns:fx="http://javafx.com/fxml"
+<BorderPane styleClass="mail-app" xmlns:fx="http://javafx.com/fxml"
             fx:controller="com.mailsystem.client.controller.InboxController">
-    <top>
-        <HBox spacing="10">
-            <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
-            <Button text="Soan thu" onAction="#handleCompose"/>
-        </HBox>
-    </top>
+    <left>
+        <VBox prefWidth="220" spacing="22" styleClass="mail-sidebar">
+            <padding><Insets top="26" right="16" bottom="18" left="18" /></padding>
+            <Label text="POST /" styleClass="brand-mark" />
+            <Button text="＋   Soạn thư" onAction="#handleCompose" maxWidth="Infinity"
+                    styleClass="primary-button" />
+            <Label text="THƯ MỤC" styleClass="field-label" />
+            <ListView fx:id="folderListView" VBox.vgrow="ALWAYS" styleClass="folder-list" />
+            <Button text="Quản lý nhóm thư" onAction="#handleManageGroups"
+                    styleClass="quiet-button" maxWidth="Infinity" />
+            <Button text="Đăng xuất" onAction="#handleLogout" styleClass="quiet-button" />
+        </VBox>
+    </left>
     <center>
-        <ListView fx:id="mailListView" onMouseClicked="#handleOpenMail"/>
+        <VBox spacing="0" styleClass="mail-content">
+            <HBox alignment="CENTER_LEFT" spacing="12" styleClass="mail-toolbar">
+                <padding><Insets top="22" right="28" bottom="18" left="28" /></padding>
+                <VBox HBox.hgrow="ALWAYS" spacing="4">
+                    <Label fx:id="folderTitle" text="Hộp thư đến" styleClass="page-title" />
+                    <Label text="Thư của bạn, được sắp xếp mới nhất trước." styleClass="muted-text" />
+                </VBox>
+                <TextField fx:id="searchField" promptText="Tìm thư..." onAction="#handleSearch"
+                           prefWidth="230" styleClass="text-input" />
+                <TextField fx:id="fromFilterField" promptText="Người gửi..." onAction="#handleSearch"
+                           prefWidth="180" styleClass="text-input" />
+                <Button text="Tìm" onAction="#handleSearch" styleClass="quiet-button" />
+                <Button text="Làm mới" onAction="#handleRefresh" styleClass="quiet-button" />
+                <Button fx:id="moveToTrashButton" text="Chuyển vào Thùng rác"
+                        onAction="#handleDeleteSelected" styleClass="quiet-button" />
+            </HBox>
+            <HBox alignment="CENTER_RIGHT" styleClass="mail-toolbar">
+                <padding><Insets top="0" right="28" bottom="12" left="28" /></padding>
+                <Button fx:id="markReadButton" text="Đánh dấu đã đọc"
+                        onAction="#handleMarkReadSelected" styleClass="quiet-button" />
+                <Button fx:id="deleteTrashMailButton" text="Xóa thư đã chọn"
+                        onAction="#handleDeleteSelectedTrashMail" styleClass="quiet-button"
+                        visible="false" managed="false" />
+                <Button fx:id="restoreTrashMailButton" text="Khôi phục thư"
+                        onAction="#handleRestoreSelectedTrashMail" styleClass="quiet-button"
+                        visible="false" managed="false" />
+                <Button fx:id="emptyTrashButton" text="Dọn sạch Thùng rác"
+                        onAction="#handleEmptyTrash" styleClass="quiet-button"
+                        visible="false" managed="false" />
+            </HBox>
+            <HBox alignment="CENTER_LEFT" styleClass="list-heading">
+                <padding><Insets top="10" right="28" bottom="10" left="28" /></padding>
+                <Label text="NGƯỜI GỬI  ·  TIÊU ĐỀ" styleClass="field-label" />
+                <Region HBox.hgrow="ALWAYS" />
+                <Label text="THỜI GIAN" styleClass="field-label" />
+            </HBox>
+            <ListView fx:id="mailListView" VBox.vgrow="ALWAYS" styleClass="mail-list" />
+            <Label fx:id="statusLabel" text="Đang tải..." styleClass="status-bar">
+                <padding><Insets top="10" right="28" bottom="10" left="28" /></padding>
+            </Label>
+        </VBox>
     </center>
 </BorderPane>

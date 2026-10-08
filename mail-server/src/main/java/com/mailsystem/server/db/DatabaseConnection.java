@@ -1,38 +1,27 @@
 package com.mailsystem.server.db;
 
-import java.io.IOException;
-import java.io.InputStream;
+import com.mailsystem.server.ServerConfig;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.Properties;
 
 /**
- * Quản lý kết nối JDBC tới MySQL.
- * TODO (TV2): day la ban don gian (mo 1 connection moi cho moi request).
- * Neu con thoi gian, nang cap thanh Connection Pool (VD: HikariCP) o Buoc nang cao.
+ * Quản lý kết nối JDBC tới MySQL. Mỗi lần gọi mở 1 connection mới (đơn giản,
+ * đủ cho đồ án); có thể nâng cấp thành connection pool (VD: HikariCP).
  */
 public final class DatabaseConnection {
 
-    private static Properties props;
-
     static {
-        props = new Properties();
-        try (InputStream in = DatabaseConnection.class.getClassLoader()
-                .getResourceAsStream("db.properties")) {
-            props.load(in);
-        } catch (IOException e) {
-            throw new RuntimeException("Khong doc duoc db.properties", e);
-        }
+        // Không để thread xử lý client bị treo vô hạn khi MySQL không phản hồi.
+        DriverManager.setLoginTimeout(5);
     }
 
     private DatabaseConnection() {
     }
 
     public static Connection getConnection() throws SQLException {
-        String url = props.getProperty("db.url");
-        String user = props.getProperty("db.username");
-        String pass = props.getProperty("db.password");
-        return DriverManager.getConnection(url, user, pass);
+        return DriverManager.getConnection(
+                ServerConfig.dbUrl(), ServerConfig.dbUsername(), ServerConfig.dbPassword());
     }
 }

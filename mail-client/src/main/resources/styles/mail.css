@@ -1,0 +1,215 @@
+.root {
+    -fx-font-family: "Aptos", "Segoe UI", sans-serif;
+    -fx-font-size: 13px;
+    -fx-background-color: #f4f5f2;
+    -fx-text-fill: #202a2a;
+}
+
+.auth-screen {
+    -fx-background-color: #e8eeeb;
+    -fx-padding: 38px;
+}
+
+.auth-shell {
+    -fx-background-color: white;
+    -fx-effect: dropshadow(gaussian, rgba(25, 43, 40, 0.13), 30, 0.16, 0, 12);
+}
+
+.auth-aside {
+    -fx-background-color: #173f3a;
+    -fx-padding: 42px;
+    -fx-pref-width: 390px;
+}
+
+.auth-form {
+    -fx-background-color: white;
+    -fx-pref-width: 440px;
+}
+
+.brand-mark {
+    -fx-font-size: 19px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f3bd59;
+}
+
+.auth-headline {
+    -fx-font-size: 36px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.auth-caption {
+    -fx-font-size: 14px;
+    -fx-text-fill: #c7d8d2;
+}
+
+.aside-footnote {
+    -fx-font-size: 10px;
+    -fx-text-fill: #b7ccc5;
+}
+
+.page-title {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #202a2a;
+}
+
+.muted-text, .mail-snippet, .status-bar {
+    -fx-text-fill: #697674;
+}
+
+.field-label {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #687572;
+}
+
+.text-input, .subject-input, .compose-body, .message-body {
+    -fx-background-color: #fbfcfa;
+    -fx-border-color: #d6ded9;
+    -fx-border-radius: 3px;
+    -fx-background-radius: 3px;
+    -fx-padding: 9px 11px;
+    -fx-prompt-text-fill: #97a19e;
+}
+
+.text-input:focused, .subject-input:focused, .compose-body:focused {
+    -fx-border-color: #328276;
+    -fx-background-color: white;
+}
+
+.primary-button {
+    -fx-background-color: #176b60;
+    -fx-background-radius: 3px;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-padding: 10px 16px;
+    -fx-cursor: hand;
+}
+
+.primary-button:hover {
+    -fx-background-color: #10564d;
+}
+
+.primary-button:disabled {
+    -fx-opacity: 0.58;
+}
+
+.quiet-button, .text-link {
+    -fx-text-fill: #176b60;
+    -fx-font-weight: bold;
+    -fx-background-color: transparent;
+    -fx-cursor: hand;
+}
+
+.quiet-button:hover, .text-link:hover {
+    -fx-background-color: #e7f0ec;
+}
+
+.error-text {
+    -fx-text-fill: #a33f35;
+}
+
+.success-text {
+    -fx-text-fill: #176b60;
+}
+
+.mail-app {
+    -fx-background-color: #f4f5f2;
+}
+
+.mail-sidebar {
+    -fx-background-color: #e9eeeb;
+    -fx-border-color: transparent #d9e0dc transparent transparent;
+    -fx-border-width: 0 1px 0 0;
+}
+
+.folder-list, .mail-list, .attachment-list {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.folder-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 10px 12px;
+    -fx-text-fill: #42514d;
+    -fx-background-radius: 3px;
+}
+
+.folder-list .list-cell:selected {
+    -fx-background-color: #d5e6df;
+    -fx-text-fill: #174f47;
+    -fx-font-weight: bold;
+}
+
+.mail-content, .detail-content, .compose-content {
+    -fx-background-color: #fbfcfa;
+}
+
+.mail-toolbar, .list-heading {
+    -fx-background-color: #fbfcfa;
+    -fx-border-color: transparent transparent #e0e5e1 transparent;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.mail-list .list-cell {
+    -fx-background-color: #fbfcfa;
+    -fx-padding: 14px 28px;
+    -fx-border-color: transparent transparent #e6eae7 transparent;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.mail-list .list-cell:selected {
+    -fx-background-color: #e7f0ec;
+}
+
+.mail-list .list-cell.unread-mail {
+    -fx-background-color: #f2f8f5;
+}
+
+.mail-sender, .mail-subject {
+    -fx-text-fill: #263330;
+}
+
+.mail-date {
+    -fx-text-fill: #77837f;
+    -fx-font-size: 11px;
+}
+
+.mail-snippet {
+    -fx-font-size: 11px;
+}
+
+.recipient-label {
+    -fx-pref-width: 38px;
+    -fx-text-fill: #56625f;
+    -fx-font-weight: bold;
+}
+
+.subject-input {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+}
+
+.compose-body, .message-body {
+    -fx-font-size: 14px;
+}
+
+.message-body {
+    -fx-background-color: #f5f7f4;
+    -fx-border-color: transparent;
+}
+
+.metadata-grid {
+    -fx-padding: 4px 0;
+}
+
+.attachment-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 4px 8px;
+}
+
+.status-bar {
+    -fx-font-size: 11px;
+}

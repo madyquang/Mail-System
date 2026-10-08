@@ -8,6 +8,7 @@ public class MailGroupDTO {
     private String groupName;
     private String ownerEmail;
     private List<String> memberEmails;
+    private boolean owner;
 
     public MailGroupDTO() {
     }
@@ -23,4 +24,7 @@ public class MailGroupDTO {
 
     public List<String> getMemberEmails() { return memberEmails; }
     public void setMemberEmails(List<String> memberEmails) { this.memberEmails = memberEmails; }
+
+    public boolean isOwner() { return owner; }
+    public void setOwner(boolean owner) { this.owner = owner; }
 }

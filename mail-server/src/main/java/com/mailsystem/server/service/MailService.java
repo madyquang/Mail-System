@@ -1,76 +1,684 @@
 package com.mailsystem.server.service;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
+import com.mailsystem.common.model.Account;
+import com.mailsystem.common.protocol.EventMessage;
+import com.mailsystem.common.protocol.EventName;
+import com.mailsystem.common.model.MailDetail;
+import com.mailsystem.common.protocol.ProtocolConstants;
+import com.mailsystem.common.protocol.ProtocolUtil;
 import com.mailsystem.common.protocol.ResponseMessage;
+import com.mailsystem.server.dao.AccountDAO;
+import com.mailsystem.server.dao.FolderDAO;
+import com.mailsystem.server.dao.GroupDAO;
+import com.mailsystem.server.dao.JdbcMailDAO;
+import com.mailsystem.server.dao.JdbcAccountDAO;
+import com.mailsystem.server.dao.JdbcFolderDAO;
+import com.mailsystem.server.dao.JdbcGroupDAO;
+import com.mailsystem.server.dao.MailDAO;
+import com.mailsystem.server.db.DatabaseConnection;
+import com.mailsystem.server.ServerConfig;
+import com.mailsystem.server.session.SessionManager;
+import com.mailsystem.server.transfer.UploadManager;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.sql.Connection;
 
 /**
- * Nghiep vu quan trong nhat cua he thong. TODO (TV2) chi tiet cho tung ham:
+ * Nghiệp vụ thư: danh sách, chi tiết, gửi thư, tệp đính kèm, đã đọc, thùng rác,
+ * tìm kiếm. Sau mỗi thay đổi trạng thái, Service đẩy EVENT qua SessionManager
+ * để các phiên đang online cập nhật ngay (server push, không polling).
  *
- * getMailList(payload = {folderId}):
- *    -> MailDAO.getMailList(accountId, folderId)
- *
- * getMailDetail(payload = {mailId}):
- *    -> MailDAO.getMailDetail(mailId), sau do TU DONG goi markRead luon
- *       (theo yeu cau de bai: mo thu ra la duoc tinh la da doc)
- *
- * sendMail(payload = {to[], cc[], bcc[], subject, body, attachments[]}):
- *    1. Validate: tat ca email trong to/cc/bcc phai ton tai (AccountDAO.findByEmail).
- *       Neu la ten group (khong phai email) -> GroupDAO.getMemberAccountIds de mo rong.
- *       Neu co bat ky nguoi nhan nao khong hop le -> tra ERROR, KHONG luu gi ca.
- *    2. Validate attachment: <=5 file, tong <=25MB, dinh dang cho phep
- *       (PDF/DOCX/PPTX/TXT/JPG/PNG/ZIP).
- *    3. MailDAO.insertMail(...) -> insertMailRecipient cho SENDER (folder=SENT)
- *       va cho tung recipient (folder=INBOX cua ho, type tuong ung).
- *    4. Giai ma base64 tung attachment, ghi file ra dia (thu muc VD: ./attachments/),
- *       insertAttachment luu duong dan.
- *    5. Sau khi luu xong: lay danh sach recipientAccountId, dung SessionManager de
- *       ban EVENT NEW_MAIL toi nhung ai dang online (khong bat buoc phai online moi
- *       gui duoc - chi la neu dang online thi UI cap nhat ngay, khong thi lan sau
- *       ho GET_MAIL_LIST se thay binh thuong).
- *
- * markRead / deleteMail (payload = {entryId hoac mailId}):
- *    -> UPDATE qua MailDAO, sau do neu can dong bo nhieu thiet bi cung 1 tai khoan,
- *       ban EVENT MAIL_READ_UPDATED / MAIL_DELETED toi cac session khac cung accountId
- *       (khong bat buoc lam ngay o Core, co the lam sau).
- *
- * searchMail (payload = {keyword, folderId?, fromFilter?}):
- *    -> MailDAO.searchMail(...)
+ * Tệp đính kèm đi theo hai pha:
+ * 1. UPLOAD_ATTACHMENT_CHUNK: Client gửi từng khối, Server ghi vào tệp tạm
+ *    của kết nối (UploadManager) và trả uploadId.
+ * 2. SEND_MAIL: Client chỉ gửi danh sách uploadId; Server kiểm tra lại số
+ *    lượng/dung lượng/định dạng rồi chuyển tệp tạm vào kho cùng transaction
+ *    lưu thư (all-or-nothing).
  */
 public class MailService {
 
+    private final MailDAO mailDAO;
+    private final AccountDAO accountDAO;
+    private final FolderDAO folderDAO;
+    private final GroupDAO groupDAO;
+    private final Path attachmentDirectory;
+
+    public MailService() {
+        this(new JdbcMailDAO(), new JdbcAccountDAO(), new JdbcFolderDAO(), new JdbcGroupDAO(),
+                ServerConfig.attachmentsDir());
+    }
+
+    MailService(MailDAO mailDAO, AccountDAO accountDAO, FolderDAO folderDAO, GroupDAO groupDAO,
+            Path attachmentDirectory) {
+        this.mailDAO = mailDAO;
+        this.accountDAO = accountDAO;
+        this.folderDAO = folderDAO;
+        this.groupDAO = groupDAO;
+        this.attachmentDirectory = attachmentDirectory;
+    }
+
     public ResponseMessage getMailList(String requestId, Integer accountId, JsonElement payload) {
-        if (accountId == null) return ResponseMessage.error(requestId, "Ban chua dang nhap");
-        // TODO: implement
-        return ResponseMessage.error(requestId, "Chua implement GET_MAIL_LIST");
+        if (accountId == null) {
+            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
+        }
+        Integer folderId = readPositiveInt(payload, "folderId");
+        if (folderId == null) {
+            return ResponseMessage.error(requestId, "Thư mục không hợp lệ.");
+        }
+        try {
+            return ResponseMessage.ok(requestId,
+                    ProtocolUtil.getGson().toJsonTree(mailDAO.getMailList(accountId, folderId)));
+        } catch (SQLException error) {
+            return ResponseMessage.error(requestId, "Không thể tải danh sách thư.");
+        }
     }
 
     public ResponseMessage getMailDetail(String requestId, Integer accountId, JsonElement payload) {
-        if (accountId == null) return ResponseMessage.error(requestId, "Ban chua dang nhap");
-        // TODO: implement
-        return ResponseMessage.error(requestId, "Chua implement GET_MAIL_DETAIL");
+        if (accountId == null) {
+            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
+        }
+        Integer mailId = readPositiveInt(payload, "mailId");
+        if (mailId == null) {
+            return ResponseMessage.error(requestId, "Thư không hợp lệ.");
+        }
+        try {
+            Optional<MailDetail> detail = mailDAO.getMailDetail(mailId, accountId);
+            return detail.<ResponseMessage>map(mail -> ResponseMessage.ok(requestId,
+                    ProtocolUtil.getGson().toJsonTree(mail)))
+                    .orElseGet(() -> ResponseMessage.error(requestId, "Không tìm thấy thư."));
+        } catch (SQLException error) {
+            return ResponseMessage.error(requestId, "Không thể tải nội dung thư.");
+        }
     }
 
-    public ResponseMessage sendMail(String requestId, Integer accountId, JsonElement payload) {
-        if (accountId == null) return ResponseMessage.error(requestId, "Ban chua dang nhap");
-        // TODO: implement (xem huong dan chi tiet o javadoc tren class nay)
-        return ResponseMessage.error(requestId, "Chua implement SEND_MAIL");
+    public ResponseMessage downloadAttachment(String requestId, Integer accountId, JsonElement payload) {
+        if (accountId == null) {
+            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
+        }
+        Integer attachmentId = readPositiveInt(payload, "attachmentId");
+        if (attachmentId == null) {
+            return ResponseMessage.error(requestId, "Tệp đính kèm không hợp lệ.");
+        }
+        Long offset = readNonNegativeLong(payload, "offset");
+        if (offset == null) {
+            return ResponseMessage.error(requestId, "Vị trí tải tệp không hợp lệ.");
+        }
+        try {
+            Optional<com.mailsystem.common.model.Attachment> attachment = mailDAO.getAttachmentChunk(
+                    attachmentId, accountId, offset, ProtocolConstants.CHUNK_SIZE_BYTES);
+            return attachment.<ResponseMessage>map(file -> ResponseMessage.ok(requestId,
+                    ProtocolUtil.getGson().toJsonTree(file)))
+                    .orElseGet(() -> ResponseMessage.error(requestId,
+                            "Không tìm thấy tệp hoặc bạn không có quyền truy cập."));
+        } catch (SQLException error) {
+            System.err.println("[MailService] Khong tai duoc attachmentId=" + attachmentId
+                    + ", offset=" + offset + ": " + error.getMessage());
+            return ResponseMessage.error(requestId, "Không thể tải nội dung tệp đính kèm.");
+        }
+    }
+
+    private Long readNonNegativeLong(JsonElement payload, String property) {
+        if (payload == null || !payload.isJsonObject()) {
+            return null;
+        }
+        JsonElement value = payload.getAsJsonObject().get(property);
+        if (value == null || !value.isJsonPrimitive()) {
+            return null;
+        }
+        try {
+            long number = value.getAsLong();
+            return number >= 0 ? number : null;
+        } catch (NumberFormatException error) {
+            return null;
+        }
+    }
+
+    /**
+     * Nhận 1 khối tệp đính kèm. Payload: {uploadId?, filename, sizeBytes,
+     * offset, dataBase64}. Khối đầu tiên không có uploadId; Server tạo phiên
+     * tải lên và trả uploadId để các khối sau tham chiếu.
+     */
+    public ResponseMessage uploadAttachmentChunk(String requestId, Integer accountId, JsonElement payload,
+            UploadManager uploads) {
+        if (accountId == null) {
+            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
+        }
+        if (payload == null || !payload.isJsonObject()) {
+            return ResponseMessage.error(requestId, "Thông tin tải tệp lên không hợp lệ.");
+        }
+        JsonObject values = payload.getAsJsonObject();
+        Long offset = readNonNegativeLong(payload, "offset");
+        Long sizeBytes = readNonNegativeLong(payload, "sizeBytes");
+        if (offset == null || sizeBytes == null) {
+            return ResponseMessage.error(requestId, "Thiếu offset hoặc kích thước tệp.");
+        }
+        String dataBase64 = readString(values, "dataBase64");
+        if (dataBase64.length() > 4L * ((ProtocolConstants.CHUNK_SIZE_BYTES + 2) / 3)) {
+            return ResponseMessage.error(requestId, "Khối dữ liệu vượt quá giới hạn.");
+        }
+        byte[] data;
+        try {
+            data = Base64.getDecoder().decode(dataBase64);
+        } catch (IllegalArgumentException error) {
+            return ResponseMessage.error(requestId, "Khối dữ liệu không phải Base64 hợp lệ.");
+        }
+        try {
+            UploadManager.ChunkResult result = uploads.acceptChunk(readString(values, "uploadId"),
+                    readString(values, "filename"), sizeBytes, offset, data);
+            JsonObject response = new JsonObject();
+            response.addProperty("uploadId", result.uploadId());
+            response.addProperty("receivedBytes", result.receivedBytes());
+            response.addProperty("complete", result.complete());
+            return ResponseMessage.ok(requestId, response);
+        } catch (UploadManager.UploadException error) {
+            return ResponseMessage.error(requestId, error.getMessage());
+        } catch (IOException error) {
+            System.err.println("[MailService] Khong ghi duoc khoi tai len: " + error.getMessage());
+            return ResponseMessage.error(requestId, "Máy chủ không lưu được tệp tải lên.");
+        }
+    }
+
+    public ResponseMessage sendMail(String requestId, Integer accountId, JsonElement payload,
+            UploadManager uploads) {
+        // Tệp tạm đã lấy ra khỏi UploadManager thuộc về lần gửi này: thành
+        // công thì đã được chuyển vào kho, thất bại thì phải xoá tại đây.
+        List<Path> claimedUploads = new ArrayList<>();
+        try {
+            return sendMail(requestId, accountId, payload, uploads, claimedUploads);
+        } finally {
+            deleteStoredFiles(claimedUploads);
+        }
+    }
+
+    private ResponseMessage sendMail(String requestId, Integer accountId, JsonElement payload,
+            UploadManager uploads, List<Path> claimedUploads) {
+        if (accountId == null) {
+            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
+        }
+        if (payload == null || !payload.isJsonObject()) {
+            return ResponseMessage.error(requestId, "Thông tin thư gửi không hợp lệ.");
+        }
+
+        JsonObject values = payload.getAsJsonObject();
+        String subject = readString(values, "subject").trim();
+        String body = readString(values, "body");
+        if (subject.isBlank()) {
+            subject = "(Không có tiêu đề)";
+        }
+        if (subject.length() > 255) {
+            return ResponseMessage.error(requestId, "Tiêu đề không được vượt quá 255 ký tự.");
+        }
+
+        Map<Integer, Recipient> recipients;
+        List<PreparedAttachment> attachments;
+        try {
+            recipients = resolveRecipients(values, accountId);
+            if (recipients.isEmpty()) {
+                return ResponseMessage.error(requestId, "Thêm ít nhất một người nhận hợp lệ.");
+            }
+            attachments = parseAttachments(values, uploads, claimedUploads);
+        } catch (InvalidRecipientException error) {
+            return ResponseMessage.error(requestId, error.getMessage());
+        } catch (IllegalArgumentException error) {
+            return ResponseMessage.error(requestId, error.getMessage());
+        } catch (SQLException error) {
+            return ResponseMessage.error(requestId, "Không thể kiểm tra người nhận trong cơ sở dữ liệu.");
+        }
+
+        Optional<Integer> sentFolder;
+        Map<Integer, Integer> inboxFolders = new LinkedHashMap<>();
+        try {
+            sentFolder = folderDAO.findFolderIdByType(accountId, "SENT");
+            for (int recipientId : recipients.keySet()) {
+                Optional<Integer> inbox = folderDAO.findFolderIdByType(recipientId, "INBOX");
+                if (inbox.isEmpty()) {
+                    return ResponseMessage.error(requestId, "Không tìm thấy hộp thư của một người nhận.");
+                }
+                inboxFolders.put(recipientId, inbox.get());
+            }
+        } catch (SQLException error) {
+            return ResponseMessage.error(requestId, "Không thể truy cập thư mục người dùng.");
+        }
+        if (sentFolder.isEmpty()) {
+            return ResponseMessage.error(requestId, "Tài khoản gửi chưa có thư mục Đã gửi.");
+        }
+
+        List<Path> storedFiles = new ArrayList<>();
+        int mailId;
+        try (Connection connection = DatabaseConnection.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                mailId = mailDAO.insertMail(connection, accountId, subject, body);
+                mailDAO.insertMailRecipient(connection, mailId, accountId, sentFolder.get(), "SENDER", true);
+                for (Recipient recipient : recipients.values()) {
+                    mailDAO.insertMailRecipient(connection, mailId, recipient.accountId,
+                            inboxFolders.get(recipient.accountId), recipient.type, false);
+                }
+
+                if (!attachments.isEmpty()) {
+                    Files.createDirectories(attachmentDirectory);
+                    for (PreparedAttachment attachment : attachments) {
+                        Path storedFile = attachmentDirectory.resolve(UUID.randomUUID() + "." + attachment.extension);
+                        if (attachment.uploadedFile != null) {
+                            Files.move(attachment.uploadedFile, storedFile, StandardCopyOption.REPLACE_EXISTING);
+                        } else {
+                            Files.write(storedFile, attachment.content);
+                        }
+                        storedFiles.add(storedFile);
+                        mailDAO.insertAttachment(connection, mailId, attachment.filename, attachment.mimeType,
+                                attachment.sizeBytes, storedFile.toString());
+                    }
+                }
+
+                connection.commit();
+            } catch (SQLException | IOException error) {
+                rollback(connection, error);
+                deleteStoredFiles(storedFiles);
+                System.err.println("[MailService] sendMail failed: " + error.getMessage());
+                return ResponseMessage.error(requestId, "Không thể lưu thư; chưa có dữ liệu nào được ghi.");
+            }
+        } catch (SQLException error) {
+            deleteStoredFiles(storedFiles);
+            return ResponseMessage.error(requestId, "Không thể kết nối cơ sở dữ liệu.");
+        }
+
+        JsonObject eventData = new JsonObject();
+        eventData.addProperty("mailId", mailId);
+        EventMessage event = new EventMessage(EventName.NEW_MAIL, eventData);
+        Set<Integer> notifyAccounts = new LinkedHashSet<>(recipients.keySet());
+        notifyAccounts.add(accountId);
+        for (int notifyAccount : notifyAccounts) {
+            SessionManager.getInstance().pushEvent(notifyAccount, event);
+        }
+
+        JsonObject data = new JsonObject();
+        data.addProperty("mailId", mailId);
+        return ResponseMessage.ok(requestId, data);
     }
 
     public ResponseMessage markRead(String requestId, Integer accountId, JsonElement payload) {
-        if (accountId == null) return ResponseMessage.error(requestId, "Ban chua dang nhap");
-        // TODO: implement
-        return ResponseMessage.error(requestId, "Chua implement MARK_READ");
+        if (accountId == null) {
+            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
+        }
+        Integer entryId = readPositiveInt(payload, "entryId");
+        if (entryId == null) {
+            return ResponseMessage.error(requestId, "Thư cần đánh dấu đã đọc không hợp lệ.");
+        }
+        try {
+            if (!mailDAO.markRead(entryId, accountId)) {
+                return ResponseMessage.error(requestId, "Không tìm thấy thư trong hộp thư của bạn.");
+            }
+            JsonObject eventData = new JsonObject();
+            eventData.addProperty("entryId", entryId);
+            SessionManager.getInstance().pushEvent(accountId,
+                    new EventMessage(EventName.MAIL_READ_UPDATED, eventData));
+            return ResponseMessage.ok(requestId, null);
+        } catch (SQLException error) {
+            return ResponseMessage.error(requestId, "Không thể cập nhật trạng thái đã đọc của thư.");
+        }
     }
 
     public ResponseMessage deleteMail(String requestId, Integer accountId, JsonElement payload) {
-        if (accountId == null) return ResponseMessage.error(requestId, "Ban chua dang nhap");
-        // TODO: implement
-        return ResponseMessage.error(requestId, "Chua implement DELETE_MAIL");
+        if (accountId == null) {
+            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
+        }
+        Integer entryId = readPositiveInt(payload, "entryId");
+        if (entryId == null) {
+            return ResponseMessage.error(requestId, "Thư cần xóa không hợp lệ.");
+        }
+        try {
+            if (!mailDAO.moveMailToTrash(entryId, accountId)) {
+                return ResponseMessage.error(requestId, "Không tìm thấy thư trong hộp thư của bạn.");
+            }
+            JsonObject eventData = new JsonObject();
+            eventData.addProperty("entryId", entryId);
+            SessionManager.getInstance().pushEvent(accountId, new EventMessage(EventName.MAIL_DELETED, eventData));
+            return ResponseMessage.ok(requestId, null);
+        } catch (SQLException error) {
+            return ResponseMessage.error(requestId, "Không thể chuyển thư vào Thùng rác.");
+        }
+    }
+
+    public ResponseMessage deleteTrashMail(String requestId, Integer accountId, JsonElement payload) {
+        if (accountId == null) {
+            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
+        }
+        Integer entryId = readPositiveInt(payload, "entryId");
+        if (entryId == null) {
+            return ResponseMessage.error(requestId, "Thư cần xóa không hợp lệ.");
+        }
+        try {
+            if (!mailDAO.deleteTrashMail(entryId, accountId)) {
+                return ResponseMessage.error(requestId, "Không tìm thấy thư trong Thùng rác của bạn.");
+            }
+            JsonObject eventData = new JsonObject();
+            eventData.addProperty("entryId", entryId);
+            SessionManager.getInstance().pushEvent(accountId, new EventMessage(EventName.MAIL_DELETED, eventData));
+            return ResponseMessage.ok(requestId, null);
+        } catch (SQLException error) {
+            System.err.println("[MailService] deleteTrashMail failed for accountId=" + accountId
+                    + ", entryId=" + entryId + ": " + error.getMessage());
+            return ResponseMessage.error(requestId, "Không thể xóa vĩnh viễn thư trong Thùng rác.");
+        }
+    }
+
+    public ResponseMessage emptyTrash(String requestId, Integer accountId) {
+        if (accountId == null) {
+            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
+        }
+        try {
+            int deletedCount = mailDAO.emptyTrash(accountId);
+            if (deletedCount > 0) {
+                SessionManager.getInstance().pushEvent(accountId,
+                        new EventMessage(EventName.MAIL_DELETED, new JsonObject()));
+            }
+            return ResponseMessage.ok(requestId, new JsonPrimitive(deletedCount));
+        } catch (SQLException error) {
+            System.err.println("[MailService] emptyTrash failed for accountId=" + accountId
+                    + ": " + error.getMessage());
+            return ResponseMessage.error(requestId, "Không thể xóa thư trong Thùng rác.");
+        }
+    }
+
+    public ResponseMessage restoreTrashMail(String requestId, Integer accountId, JsonElement payload) {
+        if (accountId == null) {
+            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
+        }
+        Integer entryId = readPositiveInt(payload, "entryId");
+        if (entryId == null) {
+            return ResponseMessage.error(requestId, "Thư cần khôi phục không hợp lệ.");
+        }
+        try {
+            if (!mailDAO.restoreTrashMail(entryId, accountId)) {
+                return ResponseMessage.error(requestId, "Không tìm thấy thư trong Thùng rác của bạn.");
+            }
+            JsonObject eventData = new JsonObject();
+            eventData.addProperty("entryId", entryId);
+            SessionManager.getInstance().pushEvent(accountId,
+                    new EventMessage(EventName.MAIL_RESTORED, eventData));
+            return ResponseMessage.ok(requestId, null);
+        } catch (SQLException error) {
+            System.err.println("[MailService] restoreTrashMail failed for accountId=" + accountId
+                    + ", entryId=" + entryId + ": " + error.getMessage());
+            return ResponseMessage.error(requestId, "Không thể khôi phục thư từ Thùng rác.");
+        }
     }
 
     public ResponseMessage searchMail(String requestId, Integer accountId, JsonElement payload) {
-        if (accountId == null) return ResponseMessage.error(requestId, "Ban chua dang nhap");
-        // TODO: implement
-        return ResponseMessage.error(requestId, "Chua implement SEARCH_MAIL");
+        if (accountId == null) {
+            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
+        }
+        if (payload == null || !payload.isJsonObject()) {
+            return ResponseMessage.error(requestId, "Điều kiện tìm kiếm không hợp lệ.");
+        }
+
+        JsonObject values = payload.getAsJsonObject();
+        if (values.has("keyword") && (!values.get("keyword").isJsonPrimitive()
+                || !values.get("keyword").getAsJsonPrimitive().isString())) {
+            return ResponseMessage.error(requestId, "Từ khóa tìm kiếm không hợp lệ.");
+        }
+        if (values.has("fromFilter") && (!values.get("fromFilter").isJsonPrimitive()
+                || !values.get("fromFilter").getAsJsonPrimitive().isString())) {
+            return ResponseMessage.error(requestId, "Bộ lọc người gửi không hợp lệ.");
+        }
+        String keyword = values.has("keyword") ? values.get("keyword").getAsString().trim() : "";
+        String fromFilter = values.has("fromFilter") ? values.get("fromFilter").getAsString().trim() : "";
+        if ((keyword.isBlank() && fromFilter.isBlank()) || keyword.length() > 255 || fromFilter.length() > 255) {
+            return ResponseMessage.error(requestId,
+                    "Nhập từ khóa hoặc người gửi; mỗi điều kiện tối đa 255 ký tự.");
+        }
+
+        Integer folderId = null;
+        if (values.has("folderId")) {
+            folderId = readPositiveInt(payload, "folderId");
+            if (folderId == null) {
+                return ResponseMessage.error(requestId, "Thư mục không hợp lệ.");
+            }
+        }
+        try {
+            return ResponseMessage.ok(requestId, ProtocolUtil.getGson()
+                    .toJsonTree(mailDAO.searchMail(accountId, folderId, keyword, fromFilter)));
+        } catch (SQLException error) {
+            return ResponseMessage.error(requestId, "Không thể tìm kiếm thư.");
+        }
+    }
+
+    private Integer readPositiveInt(JsonElement payload, String property) {
+        if (payload == null || !payload.isJsonObject()) {
+            return null;
+        }
+        JsonObject values = payload.getAsJsonObject();
+        if (!values.has(property) || !values.get(property).isJsonPrimitive()) {
+            return null;
+        }
+        try {
+            int value = values.get(property).getAsInt();
+            return value > 0 ? value : null;
+        } catch (NumberFormatException error) {
+            return null;
+        }
+    }
+
+    private Map<Integer, Recipient> resolveRecipients(JsonObject payload, int senderId)
+            throws SQLException, InvalidRecipientException {
+        Map<Integer, Recipient> recipients = new LinkedHashMap<>();
+        resolveRecipientList(payload, "to", "TO", recipients, senderId);
+        resolveRecipientList(payload, "cc", "CC", recipients, senderId);
+        resolveRecipientList(payload, "bcc", "BCC", recipients, senderId);
+        return recipients;
+    }
+
+    private void resolveRecipientList(JsonObject payload, String field, String type,
+            Map<Integer, Recipient> recipients, int senderId) throws SQLException, InvalidRecipientException {
+        if (!payload.has(field)) {
+            return;
+        }
+        JsonElement value = payload.get(field);
+        if (!value.isJsonArray()) {
+            throw new InvalidRecipientException("Danh sách " + field.toUpperCase(Locale.ROOT) + " không hợp lệ.");
+        }
+        JsonArray addresses = value.getAsJsonArray();
+        for (JsonElement addressElement : addresses) {
+            if (!addressElement.isJsonPrimitive() || !addressElement.getAsJsonPrimitive().isString()) {
+                throw new InvalidRecipientException("Người nhận không hợp lệ.");
+            }
+            String recipient = addressElement.getAsString().trim();
+            if (recipient.isBlank()) {
+                continue;
+            }
+            if (recipient.contains("@")) {
+                String email = recipient.toLowerCase(Locale.ROOT);
+                if (!email.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) {
+                    throw new InvalidRecipientException("Địa chỉ email không hợp lệ: " + recipient);
+                }
+                Optional<Account> account = accountDAO.findByEmail(email);
+                if (account.isEmpty()) {
+                    throw new InvalidRecipientException("Người nhận không tồn tại: " + recipient);
+                }
+                recipients.putIfAbsent(account.get().getAccountId(),
+                        new Recipient(account.get().getAccountId(), type));
+            } else {
+                Optional<Integer> groupId = groupDAO.findGroupIdByName(recipient);
+                if (groupId.isEmpty()) {
+                    throw new InvalidRecipientException("Người nhận hoặc nhóm không tồn tại: " + recipient);
+                }
+                if (!groupDAO.isMember(groupId.get(), senderId)) {
+                    throw new InvalidRecipientException("Bạn không phải thành viên của nhóm: " + recipient);
+                }
+                List<Integer> members = groupDAO.getMemberAccountIds(groupId.get());
+                if (members.isEmpty()) {
+                    throw new InvalidRecipientException("Nhóm không có thành viên: " + recipient);
+                }
+                for (int memberId : members) {
+                    recipients.putIfAbsent(memberId, new Recipient(memberId, type));
+                }
+            }
+        }
+    }
+
+    /**
+     * Chuẩn bị danh sách tệp đính kèm. Mỗi phần tử là {uploadId} (tệp đã tải
+     * lên theo khối) hoặc dạng cũ {filename, sizeBytes, dataBase64} cho tệp
+     * nhỏ nằm gọn trong một frame (VD: khi thử bằng ManualTestClient).
+     */
+    private List<PreparedAttachment> parseAttachments(JsonObject payload, UploadManager uploads,
+            List<Path> claimedUploads) {
+        List<PreparedAttachment> attachments = new ArrayList<>();
+        if (!payload.has("attachments") || payload.get("attachments").isJsonNull()) {
+            return attachments;
+        }
+        if (!payload.get("attachments").isJsonArray()) {
+            throw new IllegalArgumentException("Danh sách tệp đính kèm không hợp lệ.");
+        }
+
+        long totalBytes = 0;
+        JsonArray values = payload.getAsJsonArray("attachments");
+        if (values.size() > ProtocolConstants.MAX_ATTACHMENTS_PER_MAIL) {
+            throw new IllegalArgumentException("Mỗi thư chỉ được đính kèm tối đa "
+                    + ProtocolConstants.MAX_ATTACHMENTS_PER_MAIL + " tệp.");
+        }
+        for (JsonElement item : values) {
+            if (!item.isJsonObject()) {
+                throw new IllegalArgumentException("Thông tin tệp đính kèm không hợp lệ.");
+            }
+            JsonObject attachment = item.getAsJsonObject();
+            PreparedAttachment prepared = attachment.has("uploadId")
+                    ? prepareUploaded(readString(attachment, "uploadId"), uploads, claimedUploads)
+                    : prepareInline(attachment);
+            if (prepared.sizeBytes > ProtocolConstants.MAX_ATTACHMENT_TOTAL_BYTES - totalBytes) {
+                throw new IllegalArgumentException("Tổng dung lượng đính kèm không được vượt quá 25 MB.");
+            }
+            totalBytes += prepared.sizeBytes;
+            attachments.add(prepared);
+        }
+        return attachments;
+    }
+
+    private PreparedAttachment prepareUploaded(String uploadId, UploadManager uploads, List<Path> claimedUploads) {
+        if (uploads == null) {
+            throw new IllegalArgumentException("Tệp đính kèm chưa được tải lên.");
+        }
+        UploadManager.PendingUpload upload;
+        try {
+            upload = uploads.take(uploadId);
+        } catch (UploadManager.UploadException error) {
+            throw new IllegalArgumentException(error.getMessage());
+        }
+        claimedUploads.add(upload.file());
+        long actualSize;
+        try {
+            actualSize = Files.size(upload.file());
+        } catch (IOException error) {
+            throw new IllegalArgumentException("Không đọc được tệp đã tải lên: " + upload.filename());
+        }
+        if (actualSize != upload.declaredSize()) {
+            throw new IllegalArgumentException("Kích thước tệp không khớp nội dung: " + upload.filename());
+        }
+        return new PreparedAttachment(upload.filename(), mimeType(upload.extension()), upload.extension(),
+                actualSize, null, upload.file());
+    }
+
+    private PreparedAttachment prepareInline(JsonObject attachment) {
+        String filename = readString(attachment, "filename").replace('\\', '/');
+        filename = filename.substring(filename.lastIndexOf('/') + 1).trim();
+        String dataBase64 = readString(attachment, "dataBase64");
+        if (filename.isBlank() || filename.length() > 255 || dataBase64.isBlank()) {
+            throw new IllegalArgumentException("Tên hoặc nội dung tệp đính kèm không hợp lệ.");
+        }
+        int dot = filename.lastIndexOf('.');
+        String extension = dot < 0 ? "" : filename.substring(dot + 1).toLowerCase(Locale.ROOT);
+        if (!ProtocolConstants.ALLOWED_ATTACHMENT_EXTENSIONS.contains(extension)) {
+            throw new IllegalArgumentException("Không hỗ trợ định dạng tệp: " + filename);
+        }
+
+        byte[] content;
+        try {
+            content = Base64.getDecoder().decode(dataBase64);
+        } catch (IllegalArgumentException error) {
+            throw new IllegalArgumentException("Nội dung tệp không hợp lệ: " + filename);
+        }
+        if (!attachment.has("sizeBytes") || !attachment.get("sizeBytes").isJsonPrimitive()) {
+            throw new IllegalArgumentException("Thiếu kích thước tệp: " + filename);
+        }
+        long declaredSize;
+        try {
+            declaredSize = attachment.get("sizeBytes").getAsLong();
+        } catch (NumberFormatException error) {
+            throw new IllegalArgumentException("Kích thước tệp không hợp lệ: " + filename);
+        }
+        if (declaredSize != content.length) {
+            throw new IllegalArgumentException("Kích thước tệp không khớp nội dung: " + filename);
+        }
+        return new PreparedAttachment(filename, mimeType(extension), extension, content.length, content, null);
+    }
+
+    private String mimeType(String extension) {
+        return switch (extension) {
+            case "pdf" -> "application/pdf";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            case "txt" -> "text/plain";
+            case "jpg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "zip" -> "application/zip";
+            default -> "application/octet-stream";
+        };
+    }
+
+    private String readString(JsonObject object, String property) {
+        if (!object.has(property) || !object.get(property).isJsonPrimitive()
+                || !object.get(property).getAsJsonPrimitive().isString()) {
+            return "";
+        }
+        return object.get(property).getAsString();
+    }
+
+    private void rollback(Connection connection, Exception cause) {
+        try {
+            connection.rollback();
+        } catch (SQLException rollbackError) {
+            cause.addSuppressed(rollbackError);
+        }
+    }
+
+    private void deleteStoredFiles(List<Path> storedFiles) {
+        for (Path storedFile : storedFiles) {
+            try {
+                Files.deleteIfExists(storedFile);
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
+    private record Recipient(int accountId, String type) {
+    }
+
+    /** Đúng một trong hai nguồn có giá trị: content (dạng cũ) hoặc uploadedFile. */
+    private record PreparedAttachment(String filename, String mimeType, String extension, long sizeBytes,
+            byte[] content, Path uploadedFile) {
+    }
+
+    private static class InvalidRecipientException extends Exception {
+        InvalidRecipientException(String message) {
+            super(message);
+        }
     }
 }

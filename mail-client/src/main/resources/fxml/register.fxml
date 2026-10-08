@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<StackPane styleClass="auth-screen" xmlns:fx="http://javafx.com/fxml"
+           fx:controller="com.mailsystem.client.controller.RegisterController">
+    <HBox maxWidth="920" styleClass="auth-shell">
+        <VBox alignment="CENTER_LEFT" spacing="22" styleClass="auth-aside">
+            <Label text="POST /" styleClass="brand-mark" />
+            <Region VBox.vgrow="ALWAYS" />
+            <Label text="Một hộp thư.\nMột cộng đồng." styleClass="auth-headline" />
+            <Label text="Tạo tài khoản nội bộ để bắt đầu trao đổi." styleClass="auth-caption" wrapText="true" />
+            <Region VBox.vgrow="ALWAYS" />
+            <Label text="MAIL SYSTEM  ·  DESKTOP" styleClass="aside-footnote" />
+        </VBox>
+        <VBox alignment="CENTER_LEFT" spacing="11" styleClass="auth-form">
+            <padding><Insets top="38" right="54" bottom="38" left="54" /></padding>
+            <Label text="Tạo tài khoản" styleClass="page-title" />
+            <Label text="Thông tin tài khoản mail nội bộ." styleClass="muted-text" />
+            <Region prefHeight="6" />
+            <Label text="TÊN HIỂN THỊ" styleClass="field-label" />
+            <TextField fx:id="displayNameField" promptText="Tên của bạn" styleClass="text-input" />
+            <Label text="EMAIL" styleClass="field-label" />
+            <TextField fx:id="emailField" promptText="ten@mail.local" styleClass="text-input" />
+            <Label text="MẬT KHẨU" styleClass="field-label" />
+            <PasswordField fx:id="passwordField" promptText="Ít nhất 6 ký tự" styleClass="text-input" />
+            <PasswordField fx:id="confirmPasswordField" promptText="Nhập lại mật khẩu" styleClass="text-input" />
+            <Label fx:id="statusLabel" wrapText="true" minHeight="20" styleClass="error-text" />
+            <Button fx:id="registerButton" text="Tạo tài khoản" onAction="#handleRegister"
+                    maxWidth="Infinity" styleClass="primary-button" />
+            <HBox alignment="CENTER" spacing="5">
+                <Label text="Đã có tài khoản?" styleClass="muted-text" />
+                <Hyperlink text="Đăng nhập" onAction="#handleBackToLogin" styleClass="text-link" />
+            </HBox>
+        </VBox>
+    </HBox>
+</StackPane>

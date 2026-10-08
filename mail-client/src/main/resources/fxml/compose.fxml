@@ -1,16 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<!-- TODO (TV3): them nut "Dinh kem file" (FileChooser) canh subjectField -->
-<VBox spacing="8" xmlns:fx="http://javafx.com/fxml"
+<BorderPane styleClass="mail-app" xmlns:fx="http://javafx.com/fxml"
       fx:controller="com.mailsystem.client.controller.ComposeController">
-    <padding><Insets top="20" right="20" bottom="20" left="20"/></padding>
-
-    <TextField fx:id="toField" promptText="Nguoi nhan (To) - cach nhau boi dau phay"/>
-    <TextField fx:id="ccField" promptText="CC"/>
-    <TextField fx:id="bccField" promptText="BCC"/>
-    <TextField fx:id="subjectField" promptText="Tieu de"/>
-    <TextArea fx:id="bodyArea" promptText="Noi dung..." prefHeight="250"/>
-    <Button text="Gui" onAction="#handleSend"/>
-</VBox>
+  <top>
+    <HBox alignment="CENTER_LEFT" spacing="14" styleClass="mail-toolbar">
+      <padding><Insets top="18" right="30" bottom="18" left="30" /></padding>
+      <Button text="←  Hộp thư" onAction="#handleBack" styleClass="quiet-button" />
+      <Label text="THƯ MỚI" styleClass="field-label" />
+    </HBox>
+  </top>
+  <center>
+    <VBox spacing="12" styleClass="compose-content">
+      <padding><Insets top="24" right="42" bottom="26" left="42" /></padding>
+      <HBox alignment="CENTER_LEFT" spacing="12">
+        <Label text="Đến" styleClass="recipient-label" />
+        <TextField fx:id="toField" promptText="Địa chỉ hoặc tên nhóm, phân cách bằng dấu phẩy"
+               styleClass="text-input" HBox.hgrow="ALWAYS" />
+      </HBox>
+      <HBox alignment="CENTER_LEFT" spacing="12">
+        <Label text="CC" styleClass="recipient-label" />
+        <TextField fx:id="ccField" promptText="Người nhận bản sao" styleClass="text-input"
+               HBox.hgrow="ALWAYS" />
+      </HBox>
+      <HBox alignment="CENTER_LEFT" spacing="12">
+        <Label text="BCC" styleClass="recipient-label" />
+        <TextField fx:id="bccField" promptText="Người nhận ẩn" styleClass="text-input"
+               HBox.hgrow="ALWAYS" />
+      </HBox>
+      <Separator />
+      <TextField fx:id="subjectField" promptText="Tiêu đề" styleClass="subject-input" />
+      <TextArea fx:id="bodyArea" promptText="Viết nội dung thư..." wrapText="true"
+            VBox.vgrow="ALWAYS" styleClass="compose-body" />
+      <HBox alignment="CENTER_LEFT" spacing="10">
+        <Button text="＋  Đính kèm" onAction="#handleChooseAttachments" styleClass="quiet-button" />
+        <Button text="Loại bỏ mục chọn" onAction="#handleRemoveAttachment" styleClass="quiet-button" />
+        <ListView fx:id="attachmentListView" prefHeight="68" minHeight="52" HBox.hgrow="ALWAYS"
+              styleClass="attachment-list" />
+      </HBox>
+      <HBox alignment="CENTER_LEFT" spacing="16">
+        <Label fx:id="statusLabel" text="Tệp đính kèm tùy chọn" wrapText="true" styleClass="status-bar"
+             HBox.hgrow="ALWAYS" />
+        <Button fx:id="sendButton" text="Gửi thư" onAction="#handleSend" styleClass="primary-button" />
+      </HBox>
+    </VBox>
+  </center>
+</BorderPane>

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane styleClass="mail-app" xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.mailsystem.client.controller.MailDetailController">
+    <top>
+        <HBox alignment="CENTER_LEFT" spacing="14" styleClass="mail-toolbar">
+            <padding><Insets top="18" right="28" bottom="18" left="28" /></padding>
+            <Button text="←  Hộp thư" onAction="#handleBack" styleClass="quiet-button" />
+            <Label text="CHI TIẾT THƯ" styleClass="field-label" />
+        </HBox>
+    </top>
+    <center>
+        <VBox spacing="18" styleClass="detail-content">
+            <padding><Insets top="28" right="42" bottom="28" left="42" /></padding>
+            <Label fx:id="subjectLabel" text="Đang tải..." wrapText="true" styleClass="page-title" />
+            <GridPane hgap="18" vgap="9" styleClass="metadata-grid">
+                <Label text="TỪ" styleClass="field-label" GridPane.rowIndex="0" />
+                <Label fx:id="senderLabel" wrapText="true" GridPane.columnIndex="1" GridPane.rowIndex="0" />
+                <Label text="NGÀY" styleClass="field-label" GridPane.rowIndex="1" />
+                <Label fx:id="dateLabel" GridPane.columnIndex="1" GridPane.rowIndex="1" />
+                <Label text="ĐẾN" styleClass="field-label" GridPane.rowIndex="2" />
+                <Label fx:id="toLabel" wrapText="true" GridPane.columnIndex="1" GridPane.rowIndex="2" />
+                <Label text="CC" styleClass="field-label" GridPane.rowIndex="3" />
+                <Label fx:id="ccLabel" wrapText="true" GridPane.columnIndex="1" GridPane.rowIndex="3" />
+                  <Label fx:id="bccTitleLabel" text="BCC" styleClass="field-label" visible="false" managed="false"
+                      GridPane.rowIndex="4" />
+                  <Label fx:id="bccLabel" wrapText="true" visible="false" managed="false"
+                      GridPane.columnIndex="1" GridPane.rowIndex="4" />
+                <columnConstraints>
+                    <ColumnConstraints minWidth="58" />
+                    <ColumnConstraints hgrow="ALWAYS" />
+                </columnConstraints>
+            </GridPane>
+            <Separator />
+            <TextArea fx:id="bodyArea" wrapText="true" VBox.vgrow="ALWAYS" styleClass="message-body" />
+            <VBox fx:id="attachmentsBox" spacing="6" />
+            <Label fx:id="statusLabel" styleClass="status-bar" />
+        </VBox>
+    </center>
+</BorderPane>

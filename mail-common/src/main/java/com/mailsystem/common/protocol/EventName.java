@@ -4,5 +4,6 @@ package com.mailsystem.common.protocol;
 public enum EventName {
     NEW_MAIL,           // Có thư mới vào folder client đang mở/theo dõi
     MAIL_READ_UPDATED,  // Thư bị đánh dấu đã đọc từ thiết bị/session khác
-    MAIL_DELETED        // Thư bị xóa từ thiết bị/session khác
+    MAIL_DELETED,       // Danh sách thư thay đổi do xóa từ thiết bị/session khác
+    MAIL_RESTORED       // Thư được khôi phục từ thiết bị/session khác
 }

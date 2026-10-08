@@ -1,55 +1,69 @@
 package com.mailsystem.server.session;
 
 import com.mailsystem.common.protocol.EventMessage;
-import com.mailsystem.server.ClientHandler;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Singleton quan ly danh sach cac ClientHandler dang ONLINE, map theo accountId.
- * Day la thanh phan cot loi cho tinh nang "dong bo tuc thi" (real-time sync):
- * khi MailService co su kien can bao (thu moi, danh dau da doc, xoa thu tu
- * thiet bi khac), no se goi SessionManager.pushEvent(accountId, event) de
- * ClientHandler tuong ung gui EVENT xuong dung Client dang mo Inbox.
+ * Singleton quản lý các kết nối đang ONLINE theo accountId. Đây là thành phần
+ * cốt lõi của "server push": khi có thư mới / đánh dấu đã đọc / xoá thư, Service
+ * gọi pushEvent(accountId, event) và mọi phiên của tài khoản đó nhận EVENT.
  *
- * TODO (TV2 + TV4): 
- *  - Goi register()/unregister() dung cho trong ClientHandler (khi LOGIN thanh
- *    cong va khi ngat ket noi/LOGOUT).
- *  - Neu 1 tai khoan dang nhap tren nhieu thiet bi cung luc (nhieu Client cho
- *    cung 1 accountId), can doi Map value thanh List<ClientHandler> thay vi 1
- *    ClientHandler duy nhat.
+ * Một tài khoản có thể đăng nhập trên NHIỀU thiết bị cùng lúc, nên mỗi
+ * accountId ánh xạ tới một tập phiên. Map được truy cập đồng thời từ nhiều
+ * thread xử lý client, nên dùng ConcurrentHashMap và cập nhật nguyên tử bằng
+ * compute()/computeIfPresent().
  */
 public class SessionManager {
 
     private static final SessionManager INSTANCE = new SessionManager();
 
-    private final Map<Integer, ClientHandler> onlineClients = new ConcurrentHashMap<>();
+    private final Map<Integer, Set<ClientSession>> onlineSessions = new ConcurrentHashMap<>();
 
-    private SessionManager() {
+    SessionManager() {
     }
 
     public static SessionManager getInstance() {
         return INSTANCE;
     }
 
-    public void register(int accountId, ClientHandler handler) {
-        onlineClients.put(accountId, handler);
+    public void register(int accountId, ClientSession session) {
+        onlineSessions.compute(accountId, (id, sessions) -> {
+            Set<ClientSession> result = sessions == null ? ConcurrentHashMap.newKeySet() : sessions;
+            result.add(session);
+            return result;
+        });
     }
 
-    public void unregister(Integer accountId) {
-        if (accountId != null) {
-            onlineClients.remove(accountId);
+    /** Chỉ gỡ đúng phiên này; các phiên khác của cùng tài khoản vẫn online. */
+    public void unregister(Integer accountId, ClientSession session) {
+        if (accountId == null) {
+            return;
         }
+        onlineSessions.computeIfPresent(accountId, (id, sessions) -> {
+            sessions.remove(session);
+            return sessions.isEmpty() ? null : sessions;
+        });
     }
 
-    /** Goi tu Service khi can chu dong bao 1 client dang online ve thay doi moi. */
+    /**
+     * Đẩy EVENT tới mọi phiên đang online của tài khoản. Tài khoản offline thì
+     * bỏ qua: lần đăng nhập sau Client sẽ tự tải dữ liệu mới nhất.
+     */
     public void pushEvent(int accountId, EventMessage event) {
-        ClientHandler handler = onlineClients.get(accountId);
-        if (handler != null) {
-            handler.sendEvent(event);
+        Set<ClientSession> sessions = onlineSessions.get(accountId);
+        if (sessions == null) {
+            return;
         }
-        // Neu handler == null nghia la account do dang offline -> khong can lam gi,
-        // lan sau ho mo app len se GET_MAIL_LIST thay du lieu moi nhat binh thuong.
+        for (ClientSession session : sessions) {
+            session.sendEvent(event);
+        }
+    }
+
+    public int sessionCount(int accountId) {
+        Set<ClientSession> sessions = onlineSessions.get(accountId);
+        return sessions == null ? 0 : sessions.size();
     }
 }
