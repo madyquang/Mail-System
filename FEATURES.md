@@ -21,7 +21,7 @@ cùng hệ thống, không gửi ra dịch vụ email bên ngoài.
 
 ## 2. Đăng nhập và đăng xuất
 
-- Màn hình đăng nhập có ô **Máy chủ** dạng `host:port` (mặc định
+- Phần cuối màn hình đăng nhập có ô **Máy chủ** dạng `host:port` (mặc định
   `localhost:5000`, hoặc theo biến môi trường `MAIL_SERVER_HOST`/
   `MAIL_SERVER_PORT`) để kết nối tới Server trên máy khác trong mạng LAN.
   Ứng dụng chỉ kết nối khi bấm Đăng nhập/Đăng ký, nên vẫn mở được khi Server
@@ -38,8 +38,14 @@ cùng hệ thống, không gửi ra dịch vụ email bên ngoài.
 
 ## 3. Hộp thư và thư mục
 
+- Màn hình chính hiển thị **thẻ hồ sơ** của tài khoản đang đăng nhập: ảnh đại
+  diện bằng chữ cái đầu tên, tên hiển thị và email.
 - Người dùng có thể xem các thư mục được tạo cho tài khoản: INBOX, SENT và
-  TRASH.
+  TRASH. Thư mục có thư chưa đọc hiện **số thư chưa đọc** (không áp dụng cho
+  Đã gửi và Thùng rác), cập nhật ngay khi có thay đổi.
+- **Chọn nhiều thư** bằng Ctrl/Shift + click hoặc ô "Chọn tất cả"; thanh thao
+  tác hiện số thư đang chọn. Phím Enter mở thư, phím Delete chuyển thư đang
+  chọn vào Thùng rác (hoặc xóa vĩnh viễn khi đang ở Thùng rác).
 - Danh sách thư hiển thị thư thuộc tài khoản và thư mục đang chọn; trạng thái
   chưa đọc được phân biệt bằng kiểu chữ đậm.
 - Có thể mở một thư để xem tiêu đề, người gửi, thời gian, người nhận To/CC/BCC,
@@ -52,8 +58,8 @@ cùng hệ thống, không gửi ra dịch vụ email bên ngoài.
   gửi, hoặc kết hợp cả hai. Điều kiện từ khóa và người gửi mỗi loại tối đa
   255 ký tự; cần nhập ít nhất một điều kiện.
 - Nút **Làm mới** tải lại danh sách và áp dụng lại điều kiện tìm/lọc hiện tại.
-- Có thể đánh dấu thư đang chọn là đã đọc. Thao tác chỉ ảnh hưởng trạng thái
-  thư của tài khoản hiện tại.
+- Có thể đánh dấu các thư đang chọn là đã đọc. Thao tác chỉ ảnh hưởng trạng
+  thái thư của tài khoản hiện tại.
 - Có thể chuyển thư đang chọn vào Thùng rác sau khi xác nhận. Thao tác chỉ
   chuyển bản thư của tài khoản hiện tại; thư vẫn được giữ trong cơ sở dữ liệu
   và bản của người nhận khác không bị ảnh hưởng.
@@ -114,8 +120,9 @@ cùng hệ thống, không gửi ra dịch vụ email bên ngoài.
 - Chủ nhóm không thể tự xóa mình khỏi nhóm hoặc rời nhóm; chủ nhóm có thể xóa
   nhóm. Thành viên thường có thể rời nhóm.
 - Chỉ thành viên hiện tại của một nhóm mới được gửi thư tới nhóm đó. Khi gửi,
-  máy chủ phân giải tên nhóm thành các thành viên; người gửi không phải thành
-  viên hoặc nhóm không tồn tại sẽ bị từ chối.
+  máy chủ phân giải tên nhóm thành các thành viên **trừ chính người gửi**;
+  người gửi không phải thành viên, nhóm không tồn tại, hoặc nhóm không có ai
+  khác ngoài người gửi sẽ bị từ chối.
 - Khi xóa nhóm, quan hệ thành viên của nhóm cũng bị xóa. Hiện chưa có chức
   năng đổi tên nhóm, chuyển quyền chủ nhóm hoặc khôi phục nhóm đã xóa.
 

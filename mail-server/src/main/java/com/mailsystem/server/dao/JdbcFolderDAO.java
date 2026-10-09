@@ -41,7 +41,14 @@ public class JdbcFolderDAO implements FolderDAO {
 
     @Override
     public List<Folder> findFoldersByAccount(int accountId) throws SQLException {
-        String sql = "SELECT folder_id, folder_name, folder_type FROM folder WHERE account_id = ? ORDER BY folder_id";
+        // LEFT JOIN để thư mục rỗng vẫn có mặt với unread_count = 0.
+        String sql = "SELECT f.folder_id, f.folder_name, f.folder_type, COUNT(mr.entry_id) AS unread_count "
+                + "FROM folder f "
+                + "LEFT JOIN mail_recipient mr ON mr.folder_id = f.folder_id AND mr.account_id = f.account_id "
+                + "AND mr.is_read = FALSE AND mr.is_deleted = FALSE "
+                + "WHERE f.account_id = ? "
+                + "GROUP BY f.folder_id, f.folder_name, f.folder_type "
+                + "ORDER BY f.folder_id";
         try (Connection connection = DatabaseConnection.getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, accountId);
@@ -76,7 +83,9 @@ public class JdbcFolderDAO implements FolderDAO {
     }
 
     private Folder readFolder(ResultSet result) throws SQLException {
-        return new Folder(result.getInt("folder_id"), result.getString("folder_name"),
+        Folder folder = new Folder(result.getInt("folder_id"), result.getString("folder_name"),
                 result.getString("folder_type"));
+        folder.setUnreadCount(result.getInt("unread_count"));
+        return folder;
     }
 }

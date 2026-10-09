@@ -214,7 +214,22 @@ tra đúng future để hoàn tất. Hệ quả:
   `ServerConnectionTest.matchesResponsesByRequestIdEvenWhenOutOfOrderAndDeliversEvents`
   trả lời ngược thứ tự và chèn EVENT ở giữa.
 
-### 5.3 Giao thức có trạng thái (stateful)
+### 5.3 Gộp thao tác: một request cho nhiều thư
+
+Khi người dùng chọn 20 thư rồi bấm "Chuyển vào Thùng rác", Client có hai lựa chọn:
+
+| Cách | Số request | Số EVENT tới các phiên khác | Số lần các phiên khác tải lại |
+| --- | --- | --- | --- |
+| Gửi 20 request `{entryId}` | 20 (20 vòng gửi/nhận nếu chờ lần lượt) | 20 | 20 |
+| **Gửi 1 request `{entryIds: [20 id]}`** (dự án) | 1 | 1 | 1 |
+
+Trên mạng có độ trễ 50 ms, cách thứ nhất tốn khoảng 1 giây chỉ để chờ mạng nếu
+gửi tuần tự. Pipelining (mục 5.2) giảm thời gian chờ nhưng vẫn sinh 20 EVENT,
+khiến mỗi thiết bị khác tải lại danh sách 20 lần. Gộp thao tác (*batching*) giảm
+cả số vòng gửi/nhận lẫn lưu lượng EVENT. Server giới hạn 500 id mỗi request để
+frame có kích thước chặn trên (`MailService.applyToEntries`).
+
+### 5.4 Giao thức có trạng thái (stateful)
 
 Trạng thái đăng nhập lưu trong `ClientHandler.loggedInAccountId`, **gắn với
 kết nối TCP**. Request sau không cần gửi lại mật khẩu hay token.
@@ -229,7 +244,7 @@ Phân quyền tập trung: `ClientHandler.PUBLIC_COMMANDS` liệt kê các comma
 không cần đăng nhập (`REGISTER`, `LOGIN`, `PING`), còn lại bị chặn ngay ở tầng
 mạng trước khi tới Service.
 
-### 5.4 So sánh với giao thức mail thật
+### 5.5 So sánh với giao thức mail thật
 
 | | Mail System | SMTP / IMAP |
 | --- | --- | --- |
@@ -345,6 +360,10 @@ Client A (gửi)        ClientHandler A          SessionManager        ClientHan
 - Tài khoản offline không nhận EVENT, nhưng không mất gì: dữ liệu nằm trong DB.
 - Push xảy ra **sau khi transaction commit**. Nếu push trước commit, Client có
   thể tải lại khi dữ liệu chưa có.
+- Client giữ nguyên các thư đang được chọn khi tải lại danh sách do EVENT, nên
+  người dùng đang chọn nhiều thư không bị mất lựa chọn khi thư mới đến.
+- Mỗi lần nhận EVENT, Client cũng tải lại `GET_FOLDERS` để cập nhật số thư chưa
+  đọc trên từng thư mục.
 
 ---
 
@@ -541,6 +560,7 @@ Những gì **chưa có** và cần biết khi bảo vệ đồ án:
 | `FrameReaderTest` | Ghép frame bị chia nhỏ, CRLF, frame quá lớn rồi đồng bộ lại, frame dang dở |
 | `ServerNetworkTest` | TCP thật: PING, pipelining, frame hỏng, frame quá lớn, bắt buộc đăng nhập, từ chối khi quá tải, giải phóng slot khi đóng |
 | `SessionManagerTest` | Push tới mọi thiết bị, một thiết bị thoát không ảnh hưởng thiết bị khác |
+| `MailServiceTest` | Thao tác hàng loạt `entryIds` (gộp trùng, bỏ qua thư không thuộc mình, chặn lô rỗng/quá lớn), nhóm thư không gửi lại cho người gửi |
 | `UploadManagerTest` | Ghép khối, từ chối khối sai/lặp, kiểm tra đuôi và kích thước, dọn tệp tạm |
 | `ServerConnectionTest` | Ghép response theo `requestId` khi về ngược thứ tự, EVENT chen giữa, mất kết nối làm hỏng request đang chờ, thông báo quá tải, connect lỗi nhanh |
 

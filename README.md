@@ -117,7 +117,7 @@ chưa chạy. Nếu mất kết nối, Client cảnh báo và quay về màn hì
 ### 3.5 Kiểm thử
 
 ```bash
-mvn test        # 23 test, không cần MySQL: framing, TCP thật, phiên, upload, mất kết nối
+mvn test        # 28 test, không cần MySQL: framing, TCP thật, phiên, upload, nghiệp vụ thư, mất kết nối
 ```
 
 Test thủ công Server không cần giao diện:

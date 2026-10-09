@@ -3,7 +3,9 @@ package com.mailsystem.client.controller;
 import com.google.gson.JsonObject;
 import com.mailsystem.client.MailClientApp;
 import com.mailsystem.client.network.ServerConnection;
+import com.mailsystem.common.model.Account;
 import com.mailsystem.common.protocol.Command;
+import com.mailsystem.common.protocol.ProtocolUtil;
 import com.mailsystem.common.protocol.ResponseMessage;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
@@ -34,6 +36,7 @@ public class LoginController {
     @FXML
     public void initialize() {
         serverField.setText(MailClientApp.getServerAddress());
+        Platform.runLater(emailField::requestFocus);
         String reason = MailClientApp.consumeDisconnectReason();
         if (reason != null) {
             errorLabel.setText(reason);
@@ -74,11 +77,22 @@ public class LoginController {
         }
         if (response.isOk()) {
             errorLabel.setText("");
+            MailClientApp.setCurrentAccount(readAccount(response));
             MailClientApp.switchScene("/fxml/inbox.fxml");
         } else {
             errorLabel.setText(response.getMessage().isBlank()
                     ? "Đăng nhập không thành công."
                     : response.getMessage());
+        }
+    }
+
+    private Account readAccount(ResponseMessage response) {
+        try {
+            return ProtocolUtil.fromJson(response.getData().toString(), Account.class);
+        } catch (RuntimeException error) {
+            Account fallback = new Account();
+            fallback.setEmail(emailField.getText().trim());
+            return fallback;
         }
     }
 

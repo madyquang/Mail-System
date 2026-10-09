@@ -5,23 +5,21 @@
 
 <StackPane styleClass="auth-screen" xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.mailsystem.client.controller.LoginController">
-    <HBox maxWidth="920" styleClass="auth-shell">
+    <HBox maxWidth="920" maxHeight="600" styleClass="auth-shell">
         <VBox alignment="CENTER_LEFT" spacing="22" styleClass="auth-aside">
             <Label text="POST /" styleClass="brand-mark" />
             <Region VBox.vgrow="ALWAYS" />
-            <Label text="Thư từ,\n đúng người.\n Đúng lúc." styleClass="auth-headline" />
-            <Label text="Không gian liên lạc nội bộ của bạn." styleClass="auth-caption" />
+            <!-- &#10; là ký tự xuống dòng trong thuộc tính XML ("\n" sẽ hiện nguyên văn) -->
+            <Label text="Thư từ,&#10;đúng người.&#10;Đúng lúc." styleClass="auth-headline" wrapText="true" />
+            <Label text="Không gian liên lạc nội bộ của bạn." styleClass="auth-caption" wrapText="true" />
             <Region VBox.vgrow="ALWAYS" />
             <Label text="MAIL SYSTEM  ·  DESKTOP" styleClass="aside-footnote" />
         </VBox>
-        <VBox alignment="CENTER_LEFT" spacing="14" styleClass="auth-form">
-            <padding><Insets top="52" right="54" bottom="52" left="54" /></padding>
+        <VBox alignment="CENTER_LEFT" spacing="12" styleClass="auth-form" HBox.hgrow="ALWAYS">
+            <padding><Insets top="48" right="54" bottom="28" left="54" /></padding>
             <Label text="Chào mừng trở lại" styleClass="page-title" />
             <Label text="Đăng nhập bằng tài khoản mail nội bộ." styleClass="muted-text" />
-            <Region prefHeight="4" />
-            <Label text="MÁY CHỦ (HOST:PORT)" styleClass="field-label" />
-            <TextField fx:id="serverField" promptText="localhost:5000" styleClass="text-input"
-                       onAction="#handleLogin" />
+            <Region prefHeight="10" />
             <Label text="EMAIL" styleClass="field-label" />
             <TextField fx:id="emailField" promptText="ten@mail.local" styleClass="text-input"
                        onAction="#handleLogin" />
@@ -30,10 +28,17 @@
                            onAction="#handleLogin" />
             <Label fx:id="errorLabel" wrapText="true" minHeight="20" styleClass="error-text" />
             <Button fx:id="loginButton" text="Đăng nhập" onAction="#handleLogin"
-                    maxWidth="Infinity" styleClass="primary-button" />
+                    maxWidth="Infinity" styleClass="primary-button" defaultButton="true" />
             <HBox alignment="CENTER" spacing="5">
                 <Label text="Chưa có tài khoản?" styleClass="muted-text" />
                 <Hyperlink text="Đăng ký" onAction="#handleGoToRegister" styleClass="text-link" />
+            </HBox>
+            <Region VBox.vgrow="ALWAYS" />
+            <Separator />
+            <HBox alignment="CENTER_LEFT" spacing="10">
+                <Label text="Máy chủ" styleClass="muted-text" minWidth="-Infinity" />
+                <TextField fx:id="serverField" promptText="localhost:5000" styleClass="server-input"
+                           onAction="#handleLogin" HBox.hgrow="ALWAYS" />
             </HBox>
         </VBox>
     </HBox>

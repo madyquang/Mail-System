@@ -1,6 +1,7 @@
 package com.mailsystem.client;
 
 import com.mailsystem.client.network.ServerConnection;
+import com.mailsystem.common.model.Account;
 import com.mailsystem.common.protocol.ProtocolConstants;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -27,6 +28,8 @@ public class MailClientApp extends Application {
 
     private static Stage primaryStage;
     private static int selectedMailId;
+    private static int selectedEntryId;
+    private static Account currentAccount;
     private static String currentScreen;
     private static String disconnectReason;
 
@@ -48,6 +51,7 @@ public class MailClientApp extends Application {
                 return;
             }
             disconnectReason = reason;
+            currentAccount = null;
             Alert alert = new Alert(Alert.AlertType.WARNING, reason
                     + "\nVui lòng đăng nhập lại khi máy chủ sẵn sàng.");
             alert.setHeaderText("Mất kết nối tới máy chủ");
@@ -80,7 +84,29 @@ public class MailClientApp extends Application {
     }
 
     public static void setSelectedMailId(int mailId) {
+        setSelectedMail(mailId, 0);
+    }
+
+    /**
+     * Thư được mở: mailId là nội dung thư, entryId là "bản thư của tôi" được
+     * chọn trong danh sách (cần để đánh dấu đã đọc đúng bản khi tự gửi cho mình).
+     */
+    public static void setSelectedMail(int mailId, int entryId) {
         selectedMailId = mailId;
+        selectedEntryId = entryId;
+    }
+
+    public static int getSelectedEntryId() {
+        return selectedEntryId;
+    }
+
+    /** Tài khoản đang đăng nhập (null khi chưa đăng nhập). */
+    public static Account getCurrentAccount() {
+        return currentAccount;
+    }
+
+    public static void setCurrentAccount(Account account) {
+        currentAccount = account;
     }
 
     public static int getSelectedMailId() {

@@ -78,6 +78,18 @@
     -fx-background-color: white;
 }
 
+.server-input {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent #d6ded9 transparent;
+    -fx-padding: 4px 2px;
+    -fx-font-size: 12px;
+    -fx-text-fill: #42514d;
+}
+
+.server-input:focused {
+    -fx-border-color: transparent transparent #328276 transparent;
+}
+
 .primary-button {
     -fx-background-color: #176b60;
     -fx-background-radius: 3px;
@@ -212,4 +224,92 @@
 
 .status-bar {
     -fx-font-size: 11px;
+}
+
+/* ---- Hồ sơ người dùng ---- */
+.profile-card {
+    -fx-background-color: #f6f8f6;
+    -fx-background-radius: 6px;
+    -fx-padding: 10px;
+    -fx-border-color: #d9e0dc;
+    -fx-border-radius: 6px;
+}
+
+.avatar {
+    -fx-background-radius: 20px;
+    -fx-background-color: #176b60;
+}
+
+.avatar-text {
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+}
+
+.profile-name {
+    -fx-font-weight: bold;
+    -fx-text-fill: #202a2a;
+    -fx-font-size: 13px;
+}
+
+.profile-email {
+    -fx-text-fill: #697674;
+    -fx-font-size: 11px;
+}
+
+.sidebar-button {
+    -fx-alignment: CENTER_LEFT;
+    -fx-padding: 8px 12px;
+}
+
+/* ---- Thư mục: số thư chưa đọc ---- */
+.folder-badge {
+    -fx-background-color: #176b60;
+    -fx-background-radius: 9px;
+    -fx-text-fill: white;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-padding: 1px 7px;
+}
+
+.folder-name {
+    -fx-text-fill: #42514d;
+}
+
+.folder-list .list-cell:selected .folder-name {
+    -fx-text-fill: #174f47;
+    -fx-font-weight: bold;
+}
+
+/* ---- Thanh thao tác chọn nhiều ---- */
+.action-bar {
+    -fx-background-color: #f4f7f5;
+    -fx-border-color: transparent transparent #e0e5e1 transparent;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.danger-button {
+    -fx-text-fill: #a33f35;
+}
+
+.danger-button:hover {
+    -fx-background-color: #f6e7e5;
+}
+
+.quiet-button:disabled {
+    -fx-opacity: 0.4;
+}
+
+.status-row {
+    -fx-border-color: #e0e5e1 transparent transparent transparent;
+    -fx-border-width: 1px 0 0 0;
+}
+
+/* Thư đang chọn phải nổi bật hơn thư chưa đọc (đặt sau .unread-mail để thắng). */
+.mail-list .list-cell:selected,
+.mail-list .list-cell.unread-mail:selected {
+    -fx-background-color: #d5e6df;
+    -fx-border-color: transparent transparent #c9dbd3 #176b60;
+    -fx-border-width: 0 0 1px 4px;
+    -fx-padding: 14px 28px 14px 24px;
 }

@@ -107,18 +107,26 @@ RESPONSE khi `status = OK`.
 
 | Command | Payload | `data` khi OK |
 | --- | --- | --- |
-| `GET_FOLDERS` | không có | `[Folder]` |
+| `GET_FOLDERS` | không có | `[Folder]` (kèm `unreadCount`) |
 | `GET_MAIL_LIST` | `{folderId}` | `[MailSummary]`, mới nhất trước |
-| `GET_MAIL_DETAIL` | `{mailId}` | `MailDetail`; tự đánh dấu đã đọc (trừ thư trong TRASH) |
+| `GET_MAIL_DETAIL` | `{mailId, entryId?}` | `MailDetail`; tự đánh dấu **đúng bản `entryId`** là đã đọc (trừ thư trong TRASH) |
 | `SEARCH_MAIL` | `{keyword?, fromFilter?, folderId?}`, cần ít nhất 1 điều kiện | `[MailSummary]` |
-| `MARK_READ` | `{entryId}` | `null` |
-| `DELETE_MAIL` | `{entryId}` | `null` (chuyển vào TRASH) |
-| `RESTORE_TRASH_MAIL` | `{entryId}` | `null` (về thư mục gốc) |
-| `DELETE_TRASH_MAIL` | `{entryId}` | `null` (xoá vĩnh viễn) |
+| `MARK_READ` | `{entryId}` hoặc `{entryIds: [..]}` | `{processed, requested}` |
+| `DELETE_MAIL` | `{entryId}` hoặc `{entryIds: [..]}` | `{processed, requested}` (chuyển vào TRASH) |
+| `RESTORE_TRASH_MAIL` | `{entryId}` hoặc `{entryIds: [..]}` | `{processed, requested}` (về thư mục gốc) |
+| `DELETE_TRASH_MAIL` | `{entryId}` hoặc `{entryIds: [..]}` | `{processed, requested}` (xoá vĩnh viễn) |
 | `EMPTY_TRASH` | không có | số thư đã xoá (số nguyên JSON) |
 
 `entryId` là id của "bản thư của tôi" (dòng `mail_recipient`), khác `mailId`
-(nội dung thư dùng chung).
+(nội dung thư dùng chung). Một tài khoản có thể có **hai** bản của cùng một thư
+(bản `SENDER` trong Đã gửi và bản nhận trong Hộp thư đến khi tự gửi cho mình),
+nên Client gửi kèm `entryId` khi mở thư. Thiếu `entryId` thì Server ưu tiên
+bản nhận.
+
+**Thao tác hàng loạt**: `entryIds` chứa 1–500 id dương, id trùng được gộp. Mỗi
+bản thư được kiểm tra quyền riêng; bản không thuộc tài khoản bị bỏ qua và không
+tính vào `processed`. Nếu không bản nào được xử lý, Server trả `ERROR`. Toàn bộ
+lô chỉ sinh **một** EVENT.
 
 ### 4.3 Gửi thư và tệp đính kèm
 
@@ -149,7 +157,10 @@ cho tệp nhỏ).
 
 **Người nhận:** mỗi phần tử trong `to/cc/bcc` là một email hoặc một **tên
 nhóm** (không chứa `@`). Chỉ cần một người nhận không hợp lệ là cả thư bị từ
-chối (all-or-nothing) với thông báo nêu rõ người nhận đó.
+chối (all-or-nothing) với thông báo nêu rõ người nhận đó. Khi mở rộng nhóm,
+**người gửi bị loại** khỏi danh sách nhận (thư đã có trong Đã gửi); nhóm không
+còn ai khác ngoài người gửi sẽ bị từ chối. Ghi email của chính mình trực tiếp
+vào To/CC/BCC vẫn được phép.
 
 **Tải tệp xuống:** gửi `offset = 0`, ghi khối nhận được, rồi gửi
 `offset += số byte vừa nhận` cho tới khi đủ `sizeBytes`.
@@ -170,9 +181,9 @@ chối (all-or-nothing) với thông báo nêu rõ người nhận đó.
 | `eventName` | `data` | Gửi tới | Khi nào |
 | --- | --- | --- | --- |
 | `NEW_MAIL` | `{mailId}` | mọi phiên của người nhận **và** người gửi | `SEND_MAIL` thành công |
-| `MAIL_READ_UPDATED` | `{entryId}` | mọi phiên của tài khoản thao tác | `MARK_READ` |
-| `MAIL_DELETED` | `{entryId}` hoặc `{}` | mọi phiên của tài khoản thao tác | `DELETE_MAIL`, `DELETE_TRASH_MAIL`, `EMPTY_TRASH` |
-| `MAIL_RESTORED` | `{entryId}` | mọi phiên của tài khoản thao tác | `RESTORE_TRASH_MAIL` |
+| `MAIL_READ_UPDATED` | `{entryId, entryIds}` | mọi phiên của tài khoản thao tác | `MARK_READ` |
+| `MAIL_DELETED` | `{entryId, entryIds}` hoặc `{}` | mọi phiên của tài khoản thao tác | `DELETE_MAIL`, `DELETE_TRASH_MAIL`, `EMPTY_TRASH` |
+| `MAIL_RESTORED` | `{entryId, entryIds}` | mọi phiên của tài khoản thao tác | `RESTORE_TRASH_MAIL` |
 
 EVENT chỉ là **tín hiệu**: Client nhận EVENT thì tải lại dữ liệu bằng
 `GET_MAIL_LIST`/`SEARCH_MAIL`. Phiên đang offline không nhận EVENT, nhưng lần
@@ -181,7 +192,7 @@ EVENT chỉ là **tín hiệu**: Client nhận EVENT thì tải lại dữ liệ
 ## 6. Kiểu dữ liệu
 
 ```text
-Folder       {folderId, folderName, folderType: INBOX|SENT|TRASH|CUSTOM}
+Folder       {folderId, folderName, folderType: INBOX|SENT|TRASH|CUSTOM, unreadCount}
 MailSummary  {mailId, entryId, senderEmail, senderName, subject, sentAt, read}
 MailDetail   {mailId, senderEmail, senderName, subject, body, sentAt,
               to: [email], cc: [email], bcc: [email], attachments: [Attachment]}

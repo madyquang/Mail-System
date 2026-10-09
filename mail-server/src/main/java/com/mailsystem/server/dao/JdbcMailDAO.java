@@ -122,30 +122,37 @@ public class JdbcMailDAO implements MailDAO {
     }
 
     @Override
-    public Optional<MailDetail> getMailDetail(int mailId, int accountId) throws SQLException {
+    public Optional<MailDetail> getMailDetail(int mailId, int accountId, Integer entryId) throws SQLException {
         String sql = "SELECT mr.entry_id, mr.recipient_type, m.sender_id, sender.email AS sender_email, "
                 + "sender.display_name AS sender_name, m.subject, m.body, m.sent_at, f.folder_type "
                 + "FROM mail_recipient mr JOIN mail m ON m.mail_id = mr.mail_id "
                 + "JOIN account sender ON sender.account_id = m.sender_id "
                 + "JOIN folder f ON f.folder_id = mr.folder_id AND f.account_id = mr.account_id "
-                + "WHERE mr.mail_id = ? AND mr.account_id = ? AND mr.is_deleted = FALSE LIMIT 1";
+                + "WHERE mr.mail_id = ? AND mr.account_id = ? AND mr.is_deleted = FALSE "
+                + (entryId == null ? "" : "AND mr.entry_id = ? ")
+                // Một tài khoản có thể có 2 bản của cùng thư (SENDER trong SENT và
+                // bản nhận trong INBOX khi tự gửi cho mình): ưu tiên bản nhận.
+                + "ORDER BY (mr.recipient_type = 'SENDER'), mr.entry_id LIMIT 1";
         try (Connection connection = DatabaseConnection.getConnection()) {
             connection.setAutoCommit(false);
             try {
                 MailDetail detail;
-                int entryId;
+                int openedEntryId;
                 String recipientType;
                 String folderType;
                 int senderId;
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
                     statement.setInt(1, mailId);
                     statement.setInt(2, accountId);
+                    if (entryId != null) {
+                        statement.setInt(3, entryId);
+                    }
                     try (ResultSet result = statement.executeQuery()) {
                         if (!result.next()) {
                             connection.rollback();
                             return Optional.empty();
                         }
-                        entryId = result.getInt("entry_id");
+                        openedEntryId = result.getInt("entry_id");
                         recipientType = result.getString("recipient_type");
                         folderType = result.getString("folder_type");
                         senderId = result.getInt("sender_id");
@@ -166,7 +173,7 @@ public class JdbcMailDAO implements MailDAO {
                 if (!"TRASH".equalsIgnoreCase(folderType)) {
                     try (PreparedStatement statement = connection.prepareStatement(
                             "UPDATE mail_recipient SET is_read = TRUE WHERE entry_id = ? AND account_id = ?")) {
-                        statement.setInt(1, entryId);
+                        statement.setInt(1, openedEntryId);
                         statement.setInt(2, accountId);
                         statement.executeUpdate();
                     }

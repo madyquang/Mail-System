@@ -60,6 +60,9 @@ public class MailDetailController {
         }
         JsonObject payload = new JsonObject();
         payload.addProperty("mailId", mailId);
+        if (MailClientApp.getSelectedEntryId() > 0) {
+            payload.addProperty("entryId", MailClientApp.getSelectedEntryId());
+        }
         statusLabel.setText("Đang tải nội dung thư...");
         try {
             ServerConnection.getInstance().sendRequest(Command.GET_MAIL_DETAIL, payload)

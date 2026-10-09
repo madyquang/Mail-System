@@ -44,9 +44,11 @@ public interface MailDAO {
     List<MailSummary> getMailList(int accountId, int folderId) throws SQLException;
 
     /**
-     * Lay chi tiet thu ma account duoc phep xem; mo thu dong thoi danh dau da doc.
+     * Lay chi tiet thu ma account duoc phep xem; mo thu dong thoi danh dau da doc
+     * dung ban thu (entry) duoc mo. entryId == null: uu tien ban thu nhan (khong
+     * phai ban SENDER) de nguoi tu gui cho chinh minh van danh dau duoc da doc.
      */
-    Optional<MailDetail> getMailDetail(int mailId, int accountId) throws SQLException;
+    Optional<MailDetail> getMailDetail(int mailId, int accountId, Integer entryId) throws SQLException;
 
     List<Attachment> getAttachmentsByMailId(int mailId) throws SQLException;
 

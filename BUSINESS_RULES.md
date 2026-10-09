@@ -38,6 +38,8 @@ kết nối đồng thời qua TCP Socket, giao tiếp bằng giao thức JSON t
   trạng thái đã đọc/chưa đọc. **Thư chưa đọc phải in đậm** để phân biệt.
 - Mở 1 thư ra xem chi tiết → **tự động đánh dấu đã đọc** ngay lúc đó (không cần
   thao tác đánh dấu riêng).
+- Người dùng có thể chọn **nhiều thư** cùng lúc để đánh dấu đã đọc, chuyển vào
+  Thùng rác, khôi phục hoặc xóa vĩnh viễn; mỗi thư vẫn được kiểm tra quyền riêng.
 - Trạng thái đã đọc/chưa đọc và việc xóa thư là **riêng theo từng người nhận**:
   A đọc thư của mình không làm thư đó hiện "đã đọc" ở hộp thư của B (dù cùng
   nhận 1 thư gửi chung).
@@ -67,6 +69,10 @@ kết nối đồng thời qua TCP Socket, giao tiếp bằng giao thức JSON t
 - Nếu người nhận là 1 **Mail Group** (thay vì email cá nhân): Server tự động mở
   rộng thành danh sách từng thành viên trong group đó trước khi lưu — mỗi
   thành viên nhận 1 bản riêng, giống như được liệt kê tên trực tiếp.
+- **Người gửi không nhận lại thư gửi tới nhóm của chính mình** (thư đã nằm trong
+  Đã gửi). Nhóm không có thành viên nào khác ngoài người gửi thì thư bị từ
+  chối. Người dùng vẫn có thể tự gửi cho mình bằng cách ghi email của mình
+  trực tiếp; khi đó mở bản trong Hộp thư đến sẽ đánh dấu đúng bản đó là đã đọc.
 - Sau khi gửi thành công: thư xuất hiện trong **Đã gửi** của người gửi, và
   trong **Hộp thư đến** của từng người nhận (không tính người ở BCC hiện ra với
   người khác — BCC chỉ người gửi và chính người đó biết mình có trong BCC).

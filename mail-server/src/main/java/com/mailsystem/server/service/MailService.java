@@ -55,6 +55,9 @@ import java.sql.Connection;
  */
 public class MailService {
 
+    /** Số thư tối đa trong một thao tác hàng loạt (giới hạn kích thước request). */
+    static final int MAX_ENTRIES_PER_REQUEST = 500;
+
     private final MailDAO mailDAO;
     private final AccountDAO accountDAO;
     private final FolderDAO folderDAO;
@@ -99,8 +102,15 @@ public class MailService {
         if (mailId == null) {
             return ResponseMessage.error(requestId, "Thư không hợp lệ.");
         }
+        Integer entryId = null;
+        if (payload.getAsJsonObject().has("entryId")) {
+            entryId = readPositiveInt(payload, "entryId");
+            if (entryId == null) {
+                return ResponseMessage.error(requestId, "Thư không hợp lệ.");
+            }
+        }
         try {
-            Optional<MailDetail> detail = mailDAO.getMailDetail(mailId, accountId);
+            Optional<MailDetail> detail = mailDAO.getMailDetail(mailId, accountId, entryId);
             return detail.<ResponseMessage>map(mail -> ResponseMessage.ok(requestId,
                     ProtocolUtil.getGson().toJsonTree(mail)))
                     .orElseGet(() -> ResponseMessage.error(requestId, "Không tìm thấy thư."));
@@ -314,70 +324,118 @@ public class MailService {
         return ResponseMessage.ok(requestId, data);
     }
 
+    // ---- Thao tác trên một hoặc nhiều thư (payload: {entryId} hoặc {entryIds: [...]}) ----
+
     public ResponseMessage markRead(String requestId, Integer accountId, JsonElement payload) {
-        if (accountId == null) {
-            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
-        }
-        Integer entryId = readPositiveInt(payload, "entryId");
-        if (entryId == null) {
-            return ResponseMessage.error(requestId, "Thư cần đánh dấu đã đọc không hợp lệ.");
-        }
-        try {
-            if (!mailDAO.markRead(entryId, accountId)) {
-                return ResponseMessage.error(requestId, "Không tìm thấy thư trong hộp thư của bạn.");
-            }
-            JsonObject eventData = new JsonObject();
-            eventData.addProperty("entryId", entryId);
-            SessionManager.getInstance().pushEvent(accountId,
-                    new EventMessage(EventName.MAIL_READ_UPDATED, eventData));
-            return ResponseMessage.ok(requestId, null);
-        } catch (SQLException error) {
-            return ResponseMessage.error(requestId, "Không thể cập nhật trạng thái đã đọc của thư.");
-        }
+        return applyToEntries(requestId, accountId, payload, mailDAO::markRead, EventName.MAIL_READ_UPDATED,
+                "Thư cần đánh dấu đã đọc không hợp lệ.", "Không tìm thấy thư trong hộp thư của bạn.",
+                "Không thể cập nhật trạng thái đã đọc của thư.");
     }
 
     public ResponseMessage deleteMail(String requestId, Integer accountId, JsonElement payload) {
-        if (accountId == null) {
-            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
-        }
-        Integer entryId = readPositiveInt(payload, "entryId");
-        if (entryId == null) {
-            return ResponseMessage.error(requestId, "Thư cần xóa không hợp lệ.");
-        }
-        try {
-            if (!mailDAO.moveMailToTrash(entryId, accountId)) {
-                return ResponseMessage.error(requestId, "Không tìm thấy thư trong hộp thư của bạn.");
-            }
-            JsonObject eventData = new JsonObject();
-            eventData.addProperty("entryId", entryId);
-            SessionManager.getInstance().pushEvent(accountId, new EventMessage(EventName.MAIL_DELETED, eventData));
-            return ResponseMessage.ok(requestId, null);
-        } catch (SQLException error) {
-            return ResponseMessage.error(requestId, "Không thể chuyển thư vào Thùng rác.");
-        }
+        return applyToEntries(requestId, accountId, payload, mailDAO::moveMailToTrash, EventName.MAIL_DELETED,
+                "Thư cần xóa không hợp lệ.", "Không tìm thấy thư trong hộp thư của bạn.",
+                "Không thể chuyển thư vào Thùng rác.");
     }
 
     public ResponseMessage deleteTrashMail(String requestId, Integer accountId, JsonElement payload) {
+        return applyToEntries(requestId, accountId, payload, mailDAO::deleteTrashMail, EventName.MAIL_DELETED,
+                "Thư cần xóa không hợp lệ.", "Không tìm thấy thư trong Thùng rác của bạn.",
+                "Không thể xóa vĩnh viễn thư trong Thùng rác.");
+    }
+
+    public ResponseMessage restoreTrashMail(String requestId, Integer accountId, JsonElement payload) {
+        return applyToEntries(requestId, accountId, payload, mailDAO::restoreTrashMail, EventName.MAIL_RESTORED,
+                "Thư cần khôi phục không hợp lệ.", "Không tìm thấy thư trong Thùng rác của bạn.",
+                "Không thể khôi phục thư từ Thùng rác.");
+    }
+
+    @FunctionalInterface
+    private interface EntryOperation {
+        boolean apply(int entryId, int accountId) throws SQLException;
+    }
+
+    /**
+     * Áp dụng một thao tác cho nhiều bản thư trong MỘT request: Client chọn
+     * nhiều thư chỉ tốn một vòng gửi/nhận (round trip) thay vì N vòng, và các
+     * phiên khác chỉ nhận MỘT EVENT thay vì N lần tải lại danh sách.
+     * Mỗi bản thư được kiểm tra quyền riêng; bản không thuộc tài khoản bị bỏ qua.
+     */
+    private ResponseMessage applyToEntries(String requestId, Integer accountId, JsonElement payload,
+            EntryOperation operation, EventName eventName, String invalidMessage, String notFoundMessage,
+            String failureMessage) {
         if (accountId == null) {
             return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
         }
-        Integer entryId = readPositiveInt(payload, "entryId");
-        if (entryId == null) {
-            return ResponseMessage.error(requestId, "Thư cần xóa không hợp lệ.");
+        List<Integer> entryIds = readEntryIds(payload);
+        if (entryIds == null) {
+            return ResponseMessage.error(requestId, invalidMessage);
         }
-        try {
-            if (!mailDAO.deleteTrashMail(entryId, accountId)) {
-                return ResponseMessage.error(requestId, "Không tìm thấy thư trong Thùng rác của bạn.");
+
+        List<Integer> processed = new ArrayList<>();
+        SQLException failure = null;
+        for (int entryId : entryIds) {
+            try {
+                if (operation.apply(entryId, accountId)) {
+                    processed.add(entryId);
+                }
+            } catch (SQLException error) {
+                failure = error;
+                System.err.println("[MailService] " + eventName + " failed for accountId=" + accountId
+                        + ", entryId=" + entryId + ": " + error.getMessage());
+                break;
             }
-            JsonObject eventData = new JsonObject();
-            eventData.addProperty("entryId", entryId);
-            SessionManager.getInstance().pushEvent(accountId, new EventMessage(EventName.MAIL_DELETED, eventData));
-            return ResponseMessage.ok(requestId, null);
-        } catch (SQLException error) {
-            System.err.println("[MailService] deleteTrashMail failed for accountId=" + accountId
-                    + ", entryId=" + entryId + ": " + error.getMessage());
-            return ResponseMessage.error(requestId, "Không thể xóa vĩnh viễn thư trong Thùng rác.");
         }
+
+        if (!processed.isEmpty()) {
+            JsonObject eventData = new JsonObject();
+            eventData.addProperty("entryId", processed.get(0));
+            eventData.add("entryIds", ProtocolUtil.getGson().toJsonTree(processed));
+            SessionManager.getInstance().pushEvent(accountId, new EventMessage(eventName, eventData));
+        }
+        if (failure != null) {
+            return ResponseMessage.error(requestId, failureMessage
+                    + (processed.isEmpty() ? "" : " Đã xử lý " + processed.size() + "/" + entryIds.size() + " thư."));
+        }
+        if (processed.isEmpty()) {
+            return ResponseMessage.error(requestId, notFoundMessage);
+        }
+        JsonObject data = new JsonObject();
+        data.addProperty("processed", processed.size());
+        data.addProperty("requested", entryIds.size());
+        return ResponseMessage.ok(requestId, data);
+    }
+
+    /** Đọc {entryId} hoặc {entryIds: [...]}; trả null nếu không hợp lệ. */
+    private List<Integer> readEntryIds(JsonElement payload) {
+        if (payload == null || !payload.isJsonObject()) {
+            return null;
+        }
+        JsonObject values = payload.getAsJsonObject();
+        if (!values.has("entryIds")) {
+            Integer single = readPositiveInt(payload, "entryId");
+            return single == null ? null : List.of(single);
+        }
+        if (!values.get("entryIds").isJsonArray()) {
+            return null;
+        }
+        JsonArray array = values.getAsJsonArray("entryIds");
+        if (array.isEmpty() || array.size() > MAX_ENTRIES_PER_REQUEST) {
+            return null;
+        }
+        Set<Integer> ids = new LinkedHashSet<>();
+        for (JsonElement element : array) {
+            try {
+                int id = element.getAsInt();
+                if (id <= 0) {
+                    return null;
+                }
+                ids.add(id);
+            } catch (RuntimeException error) {
+                return null;
+            }
+        }
+        return new ArrayList<>(ids);
     }
 
     public ResponseMessage emptyTrash(String requestId, Integer accountId) {
@@ -395,30 +453,6 @@ public class MailService {
             System.err.println("[MailService] emptyTrash failed for accountId=" + accountId
                     + ": " + error.getMessage());
             return ResponseMessage.error(requestId, "Không thể xóa thư trong Thùng rác.");
-        }
-    }
-
-    public ResponseMessage restoreTrashMail(String requestId, Integer accountId, JsonElement payload) {
-        if (accountId == null) {
-            return ResponseMessage.error(requestId, "Bạn chưa đăng nhập.");
-        }
-        Integer entryId = readPositiveInt(payload, "entryId");
-        if (entryId == null) {
-            return ResponseMessage.error(requestId, "Thư cần khôi phục không hợp lệ.");
-        }
-        try {
-            if (!mailDAO.restoreTrashMail(entryId, accountId)) {
-                return ResponseMessage.error(requestId, "Không tìm thấy thư trong Thùng rác của bạn.");
-            }
-            JsonObject eventData = new JsonObject();
-            eventData.addProperty("entryId", entryId);
-            SessionManager.getInstance().pushEvent(accountId,
-                    new EventMessage(EventName.MAIL_RESTORED, eventData));
-            return ResponseMessage.ok(requestId, null);
-        } catch (SQLException error) {
-            System.err.println("[MailService] restoreTrashMail failed for accountId=" + accountId
-                    + ", entryId=" + entryId + ": " + error.getMessage());
-            return ResponseMessage.error(requestId, "Không thể khôi phục thư từ Thùng rác.");
         }
     }
 
@@ -523,12 +557,18 @@ public class MailService {
                 if (!groupDAO.isMember(groupId.get(), senderId)) {
                     throw new InvalidRecipientException("Bạn không phải thành viên của nhóm: " + recipient);
                 }
-                List<Integer> members = groupDAO.getMemberAccountIds(groupId.get());
-                if (members.isEmpty()) {
-                    throw new InvalidRecipientException("Nhóm không có thành viên: " + recipient);
-                }
-                for (int memberId : members) {
+                // Người gửi là thành viên nhóm nhưng không nhận lại bản thư của chính mình
+                // (thư đã nằm trong Đã gửi), giống cách mailing list thông thường hoạt động.
+                int otherMembers = 0;
+                for (int memberId : groupDAO.getMemberAccountIds(groupId.get())) {
+                    if (memberId == senderId) {
+                        continue;
+                    }
                     recipients.putIfAbsent(memberId, new Recipient(memberId, type));
+                    otherMembers++;
+                }
+                if (otherMembers == 0) {
+                    throw new InvalidRecipientException("Nhóm " + recipient + " chưa có thành viên nào khác ngoài bạn.");
                 }
             }
         }

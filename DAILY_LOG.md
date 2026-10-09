@@ -1,3 +1,17 @@
+## [1.0.4] - 2026-10-10
+
+Xử lý phản hồi sau khi test thủ công (gửi file, trạng thái thư mới, real-time, thùng rác, tìm kiếm, soạn thư, nhóm: đều OK).
+
+- Sửa giao diện đăng nhập/đăng ký: tiêu đề hiện nguyên văn `\n` và bị cắt chữ (thuộc tính FXML phải dùng `&#10;`); ô Máy chủ chuyển xuống cuối form với kiểu chữ nhỏ, con trỏ mặc định ở ô Email.
+- Nhóm thư không gửi lại cho chính người gửi; nhóm chỉ có người gửi bị từ chối kèm thông báo rõ ràng.
+- Sửa lỗi mở thư không bỏ được trạng thái chưa đọc khi một tài khoản có 2 bản của cùng thư (bản SENDER và bản nhận): `GET_MAIL_DETAIL` nhận `entryId` của bản được mở, thiếu `entryId` thì ưu tiên bản nhận.
+- Chọn nhiều thư (Ctrl/Shift + click, Chọn tất cả) cho đánh dấu đã đọc, chuyển vào Thùng rác, khôi phục, xóa vĩnh viễn; Server nhận `{entryIds: [...]}` trong một request (tối đa 500) và chỉ đẩy một EVENT cho cả lô. Lựa chọn được giữ khi danh sách tự tải lại do EVENT.
+- Màn hình chính: thẻ hồ sơ (ảnh đại diện chữ cái đầu, tên, email), số thư chưa đọc trên từng thư mục (`Folder.unreadCount`), phím tắt Enter/Delete, thanh công cụ không còn bị cắt chữ, thư đang chọn được tô nổi bật kể cả khi chưa đọc.
+- Thêm `MailServiceTest` (5 test: loại người gửi khỏi nhóm, nhóm một mình, tự gửi cho mình, thao tác hàng loạt, payload lô không hợp lệ). Tổng 28 test.
+- Tài liệu: PROTOCOL (entryIds, entryId khi mở thư, unreadCount, quy tắc nhóm), NETWORK_PROGRAMMING (gộp thao tác giảm số vòng gửi/nhận và EVENT), BUSINESS_RULES, FEATURES.
+
+---
+
 ## [1.0.3] - 2026-10-08
 
 Tập trung vào tầng mạng (độ bền, đồng thời, truyền tệp) và tài liệu kiến thức lập trình mạng.

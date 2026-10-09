@@ -6,49 +6,73 @@
 <BorderPane styleClass="mail-app" xmlns:fx="http://javafx.com/fxml"
             fx:controller="com.mailsystem.client.controller.InboxController">
     <left>
-        <VBox prefWidth="220" spacing="22" styleClass="mail-sidebar">
-            <padding><Insets top="26" right="16" bottom="18" left="18" /></padding>
+        <VBox prefWidth="240" minWidth="240" spacing="18" styleClass="mail-sidebar">
+            <padding><Insets top="24" right="16" bottom="18" left="16" /></padding>
             <Label text="POST /" styleClass="brand-mark" />
+
+            <!-- Thẻ hồ sơ người dùng đang đăng nhập -->
+            <HBox alignment="CENTER_LEFT" spacing="10" styleClass="profile-card">
+                <StackPane fx:id="avatarPane" styleClass="avatar" minWidth="40" minHeight="40"
+                           maxWidth="40" maxHeight="40">
+                    <Label fx:id="avatarLabel" styleClass="avatar-text" />
+                </StackPane>
+                <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
+                    <Label fx:id="profileNameLabel" styleClass="profile-name" />
+                    <Label fx:id="profileEmailLabel" styleClass="profile-email" />
+                </VBox>
+            </HBox>
+
             <Button text="＋   Soạn thư" onAction="#handleCompose" maxWidth="Infinity"
                     styleClass="primary-button" />
             <Label text="THƯ MỤC" styleClass="field-label" />
             <ListView fx:id="folderListView" VBox.vgrow="ALWAYS" styleClass="folder-list" />
-            <Button text="Quản lý nhóm thư" onAction="#handleManageGroups"
-                    styleClass="quiet-button" maxWidth="Infinity" />
-            <Button text="Đăng xuất" onAction="#handleLogout" styleClass="quiet-button" />
+            <VBox spacing="2">
+                <Button text="Quản lý nhóm thư" onAction="#handleManageGroups"
+                        styleClass="quiet-button, sidebar-button" maxWidth="Infinity" />
+                <Button text="Đăng xuất" onAction="#handleLogout"
+                        styleClass="quiet-button, sidebar-button" maxWidth="Infinity" />
+            </VBox>
         </VBox>
     </left>
     <center>
         <VBox spacing="0" styleClass="mail-content">
-            <HBox alignment="CENTER_LEFT" spacing="12" styleClass="mail-toolbar">
-                <padding><Insets top="22" right="28" bottom="18" left="28" /></padding>
-                <VBox HBox.hgrow="ALWAYS" spacing="4">
+            <HBox alignment="CENTER_LEFT" spacing="10" styleClass="mail-toolbar">
+                <padding><Insets top="20" right="24" bottom="16" left="24" /></padding>
+                <VBox spacing="4" minWidth="150">
                     <Label fx:id="folderTitle" text="Hộp thư đến" styleClass="page-title" />
-                    <Label text="Thư của bạn, được sắp xếp mới nhất trước." styleClass="muted-text" />
+                    <Label text="Mới nhất ở trên cùng" styleClass="muted-text" />
                 </VBox>
-                <TextField fx:id="searchField" promptText="Tìm thư..." onAction="#handleSearch"
-                           prefWidth="230" styleClass="text-input" />
+                <Region HBox.hgrow="ALWAYS" />
+                <TextField fx:id="searchField" promptText="Tìm trong tiêu đề, nội dung..."
+                           onAction="#handleSearch" prefWidth="230" minWidth="120" styleClass="text-input" />
                 <TextField fx:id="fromFilterField" promptText="Người gửi..." onAction="#handleSearch"
-                           prefWidth="180" styleClass="text-input" />
-                <Button text="Tìm" onAction="#handleSearch" styleClass="quiet-button" />
-                <Button text="Làm mới" onAction="#handleRefresh" styleClass="quiet-button" />
-                <Button fx:id="moveToTrashButton" text="Chuyển vào Thùng rác"
-                        onAction="#handleDeleteSelected" styleClass="quiet-button" />
+                           prefWidth="150" minWidth="90" styleClass="text-input" />
+                <Button text="Tìm" onAction="#handleSearch" styleClass="quiet-button" minWidth="-Infinity" />
+                <Button text="Làm mới" onAction="#handleRefresh" styleClass="quiet-button" minWidth="-Infinity" />
             </HBox>
-            <HBox alignment="CENTER_RIGHT" styleClass="mail-toolbar">
-                <padding><Insets top="0" right="28" bottom="12" left="28" /></padding>
+
+            <!-- Thanh thao tác: áp dụng cho MỘT hoặc NHIỀU thư đang chọn -->
+            <HBox alignment="CENTER_LEFT" spacing="6" styleClass="action-bar">
+                <padding><Insets top="8" right="24" bottom="8" left="24" /></padding>
+                <CheckBox fx:id="selectAllCheck" text="Chọn tất cả" onAction="#handleToggleSelectAll"
+                          minWidth="-Infinity" />
+                <Label fx:id="selectionLabel" styleClass="muted-text" minWidth="-Infinity" />
+                <Region HBox.hgrow="ALWAYS" />
                 <Button fx:id="markReadButton" text="Đánh dấu đã đọc"
-                        onAction="#handleMarkReadSelected" styleClass="quiet-button" />
-                <Button fx:id="deleteTrashMailButton" text="Xóa thư đã chọn"
-                        onAction="#handleDeleteSelectedTrashMail" styleClass="quiet-button"
-                        visible="false" managed="false" />
-                <Button fx:id="restoreTrashMailButton" text="Khôi phục thư"
+                        onAction="#handleMarkReadSelected" styleClass="quiet-button" minWidth="-Infinity" />
+                <Button fx:id="moveToTrashButton" text="Chuyển vào Thùng rác"
+                        onAction="#handleDeleteSelected" styleClass="quiet-button" minWidth="-Infinity" />
+                <Button fx:id="restoreTrashMailButton" text="Khôi phục"
                         onAction="#handleRestoreSelectedTrashMail" styleClass="quiet-button"
-                        visible="false" managed="false" />
+                        minWidth="-Infinity" visible="false" managed="false" />
+                <Button fx:id="deleteTrashMailButton" text="Xóa vĩnh viễn"
+                        onAction="#handleDeleteSelectedTrashMail" styleClass="quiet-button, danger-button"
+                        minWidth="-Infinity" visible="false" managed="false" />
                 <Button fx:id="emptyTrashButton" text="Dọn sạch Thùng rác"
-                        onAction="#handleEmptyTrash" styleClass="quiet-button"
-                        visible="false" managed="false" />
+                        onAction="#handleEmptyTrash" styleClass="quiet-button, danger-button"
+                        minWidth="-Infinity" visible="false" managed="false" />
             </HBox>
+
             <HBox alignment="CENTER_LEFT" styleClass="list-heading">
                 <padding><Insets top="10" right="28" bottom="10" left="28" /></padding>
                 <Label text="NGƯỜI GỬI  ·  TIÊU ĐỀ" styleClass="field-label" />
@@ -56,9 +80,13 @@
                 <Label text="THỜI GIAN" styleClass="field-label" />
             </HBox>
             <ListView fx:id="mailListView" VBox.vgrow="ALWAYS" styleClass="mail-list" />
-            <Label fx:id="statusLabel" text="Đang tải..." styleClass="status-bar">
-                <padding><Insets top="10" right="28" bottom="10" left="28" /></padding>
-            </Label>
+            <HBox alignment="CENTER_LEFT" styleClass="status-row">
+                <padding><Insets top="8" right="24" bottom="8" left="24" /></padding>
+                <Label fx:id="statusLabel" text="Đang tải..." styleClass="status-bar" HBox.hgrow="ALWAYS"
+                       maxWidth="Infinity" />
+                <Label text="Ctrl/Shift + click: chọn nhiều  ·  Enter: mở  ·  Delete: xóa"
+                       styleClass="status-bar" minWidth="-Infinity" />
+            </HBox>
         </VBox>
     </center>
 </BorderPane>

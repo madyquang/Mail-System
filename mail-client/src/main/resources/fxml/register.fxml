@@ -5,16 +5,16 @@
 
 <StackPane styleClass="auth-screen" xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.mailsystem.client.controller.RegisterController">
-    <HBox maxWidth="920" styleClass="auth-shell">
+    <HBox maxWidth="920" maxHeight="600" styleClass="auth-shell">
         <VBox alignment="CENTER_LEFT" spacing="22" styleClass="auth-aside">
             <Label text="POST /" styleClass="brand-mark" />
             <Region VBox.vgrow="ALWAYS" />
-            <Label text="Một hộp thư.\nMột cộng đồng." styleClass="auth-headline" />
+            <Label text="Một hộp thư.&#10;Một cộng đồng." styleClass="auth-headline" wrapText="true" />
             <Label text="Tạo tài khoản nội bộ để bắt đầu trao đổi." styleClass="auth-caption" wrapText="true" />
             <Region VBox.vgrow="ALWAYS" />
             <Label text="MAIL SYSTEM  ·  DESKTOP" styleClass="aside-footnote" />
         </VBox>
-        <VBox alignment="CENTER_LEFT" spacing="11" styleClass="auth-form">
+        <VBox alignment="CENTER_LEFT" spacing="11" styleClass="auth-form" HBox.hgrow="ALWAYS">
             <padding><Insets top="38" right="54" bottom="38" left="54" /></padding>
             <Label text="Tạo tài khoản" styleClass="page-title" />
             <Label text="Thông tin tài khoản mail nội bộ." styleClass="muted-text" />
