@@ -3,7 +3,7 @@
    Design tokens (màu, chữ, khoảng cách) khai báo một lần ở .root rồi dùng
    lại ở mọi component: đổi theme chỉ cần sửa khối này.
    ===================================================================== */
-.root {
+.root, .suggest-popup {
     -c-bg: #f6f8fc;
     -c-surface: #ffffff;
     -c-surface-2: #f1f4f9;
@@ -450,3 +450,20 @@
     -fx-border-color: transparent;
 }
 .tab-pane .tab .tab-label { -fx-text-fill: -c-text-2; }
+
+/* ---- Gợi ý khi gõ (autocomplete) ---- */
+.suggest-popup {
+    -fx-background-color: -c-surface;
+    -fx-background-radius: 12px;
+    -fx-padding: 6px 0;
+    -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.24), 18, 0.12, 0, 4);
+}
+.suggest-list { -fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0; }
+.suggest-list .list-cell { -fx-background-color: transparent; -fx-padding: 6px 14px; -fx-cursor: hand; }
+.suggest-list .list-cell:hover { -fx-background-color: -c-surface-2; }
+.suggest-list .list-cell:selected { -fx-background-color: -c-primary-softer; }
+.suggest-list .list-cell:empty { -fx-background-color: transparent; }
+.suggest-title { -fx-font-size: 13.5px; -fx-text-fill: -c-text; }
+.suggest-subtitle { -fx-font-size: 11.5px; -fx-text-fill: -c-text-3; }
+.suggest-section { -fx-font-size: 10.5px; -fx-font-weight: bold; -fx-text-fill: -c-text-3; -fx-padding: 4px 0 2px 0; }
+.suggest-row .icon { -fx-icon-color: -c-text-2; }

@@ -7,6 +7,7 @@ import com.google.gson.reflect.TypeToken;
 import com.mailsystem.client.network.ServerConnection;
 import com.mailsystem.common.model.Account;
 import com.mailsystem.common.model.Attachment;
+import com.mailsystem.common.model.Contact;
 import com.mailsystem.common.model.Draft;
 import com.mailsystem.common.model.Folder;
 import com.mailsystem.common.model.MailDetail;
@@ -92,6 +93,14 @@ public final class MailApi {
             payload.addProperty("folderId", folderId);
         }
         return call(Command.SEARCH_MAIL, payload, MailApi::summaries);
+    }
+
+    /** Gợi ý người nhận khi gõ: nhóm (nếu includeGroups) rồi tới người, tối đa limit kết quả. */
+    public CompletableFuture<List<Contact>> suggestContacts(String query, boolean includeGroups, int limit) {
+        JsonObject payload = object("query", query);
+        payload.addProperty("includeGroups", includeGroups);
+        payload.addProperty("limit", limit);
+        return call(Command.SUGGEST_CONTACTS, payload, data -> list(data, new TypeToken<List<Contact>>() { }.getType()));
     }
 
     public CompletableFuture<MailDetail> detail(int mailId, int entryId) {

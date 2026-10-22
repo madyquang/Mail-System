@@ -32,7 +32,7 @@ Mail-System/
 │       ├── config/              ServerConfig (đọc cấu hình nhiều lớp)
 │       ├── net/                 MailServer (accept), ClientHandler (1 kết nối), CommandRouter, ConnectionContext
 │       ├── service/             AuthService, AccountService, MailService, DraftService, FolderService,
-│       │                        GroupService, ServerServices
+│       │                        GroupService, ContactService, ServerServices
 │       ├── dao/                 Interface truy cập dữ liệu
 │       │   └── jdbc/            Cài đặt JDBC (PreparedStatement)
 │       ├── db/                  DatabaseConnection
@@ -52,8 +52,8 @@ Mail-System/
         ├── service/             AttachmentTransfer (upload/download theo khối), DesktopNotifier
         ├── controller/          Login, Register, Main, Compose, Groups, Account
         └── ui/                  Component dùng lại: Avatar, Toast, EmptyState, MailCell, DraftCell,
-                                 MailReader, NavButton, PasswordField2, PasswordStrength, Dialogs, Icons,
-                                 Formats, Fx
+                                 MailReader, NavButton, PasswordField2, PasswordStrength, AutoComplete,
+                                 ContactSuggestions, Dialogs, Icons, Formats, Fx
         resources/
         ├── fxml/                login, register, main, compose, groups, account
         └── css/app.css          Design tokens + style mọi component

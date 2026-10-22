@@ -4,6 +4,7 @@ import com.mailsystem.client.api.MailApi;
 import com.mailsystem.client.app.Navigator;
 import com.mailsystem.client.app.Session;
 import com.mailsystem.client.service.AttachmentTransfer;
+import com.mailsystem.client.ui.ContactSuggestions;
 import com.mailsystem.client.ui.Dialogs;
 import com.mailsystem.client.ui.Formats;
 import com.mailsystem.client.ui.Fx;
@@ -185,6 +186,10 @@ public class ComposeController {
             handleToggleCc();
         }
         renderAttachments();
+        // Gợi ý người nhận/nhóm khi gõ vài ký tự (↓↑ chọn, Enter/Tab dùng gợi ý).
+        ContactSuggestions.forRecipients(toField);
+        ContactSuggestions.forRecipients(ccField);
+        ContactSuggestions.forRecipients(bccField);
         for (TextField field : new TextField[] {toField, ccField, bccField, subjectField}) {
             field.textProperty().addListener((observable, old, value) -> dirty = true);
         }

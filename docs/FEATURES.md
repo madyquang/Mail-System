@@ -51,7 +51,19 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
   Delete xoá, S gắn sao, U chưa đọc, R trả lời, A trả lời tất cả, F chuyển tiếp,
   Ctrl+Enter gửi, Ctrl+S lưu nháp.
 
-## 4. Soạn thư
+## 4. Gợi ý khi gõ
+
+- **Ô Tới / Cc / Bcc**: gõ 1 ký tự trở lên là hiện gợi ý người (theo email hoặc
+  tên có dấu) và nhóm thư mình là thành viên. Người đã trao đổi thư nhiều được
+  xếp trước, kèm số thư đã trao đổi. Gợi ý chỉ áp dụng cho địa chỉ đang gõ sau
+  dấu phẩy cuối và bỏ qua địa chỉ đã có trong ô; chọn xong tự thêm ", " để gõ tiếp.
+- **Ô tìm thư**: khi ô trống hiện tối đa 8 từ khoá tìm gần đây (lưu trên máy);
+  gõ từ 2 ký tự hiện: "Tìm ... trong mọi thư mục" kèm số thư khớp, tối đa 5 thư
+  khớp (chọn là mở thư đó ngay) và người gửi khớp (chọn là lọc thư từ người đó).
+- **Ô Người gửi** (bộ lọc tìm kiếm) và **ô thêm thành viên nhóm**: gợi ý người.
+- Bàn phím: ↓ / ↑ chọn gợi ý, Enter hoặc Tab dùng gợi ý, Esc đóng; bấm chuột cũng chọn được.
+
+## 5. Soạn thư
 
 - Mỗi thư soạn trong một cửa sổ riêng (mở được nhiều cửa sổ cùng lúc).
 - Tới / Cc / Bcc (Cc, Bcc ẩn mặc định), phân cách bằng dấu phẩy; người nhận là
@@ -67,7 +79,7 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
   nháp tự xoá. Nháp không lưu tệp đính kèm. Tối đa 200 bản nháp / tài khoản.
 - Tiêu đề ≤ 255 ký tự (để trống thì hỏi xác nhận); nội dung ≤ 100 000 ký tự.
 
-## 5. Thông báo
+## 6. Thông báo
 
 - Thư mới đến khi cửa sổ không được chọn: thông báo desktop ở góc màn hình
   (Windows), bấm vào để mở ứng dụng. Khi đang dùng ứng dụng: toast trong cửa sổ.
@@ -75,14 +87,14 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
 - Mọi thay đổi (thư mới, đã đọc, gắn sao, xoá, khôi phục, nháp, tên hiển thị)
   đồng bộ ngay tới mọi thiết bị đang đăng nhập cùng tài khoản.
 
-## 6. Tài khoản & bảo mật
+## 7. Tài khoản & bảo mật
 
 - **Hồ sơ**: đổi tên hiển thị (đồng bộ tới các thiết bị khác).
 - **Bảo mật**: đổi mật khẩu (cần mật khẩu hiện tại; các thiết bị khác bị đăng
   xuất ngay), đăng xuất khỏi mọi thiết bị.
 - **Kết nối**: máy chủ, phiên bản TLS, bộ mã hoá, dấu vân tay chứng chỉ.
 
-## 7. Nhóm thư
+## 8. Nhóm thư
 
 - Tạo nhóm (tên ≤ 100 ký tự, không chứa `@` hoặc dấu phẩy, không trùng kể cả
   khác hoa/thường); người tạo là chủ nhóm và thành viên đầu tiên.
@@ -90,7 +102,7 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
   thường rời nhóm. Chủ nhóm không tự xoá mình / rời nhóm.
 - Chỉ thành viên được gửi tới nhóm; người gửi không nhận lại thư của chính mình.
 
-## 8. Giới hạn hiện tại
+## 9. Giới hạn hiện tại
 
 - Chưa có thư mục tự tạo từ giao diện, chưa gửi/nhận qua Internet (SMTP/IMAP),
   chưa có giao diện tối (dark mode) dù CSS đã tách token màu để bổ sung dễ dàng.

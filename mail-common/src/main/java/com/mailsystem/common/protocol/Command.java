@@ -21,6 +21,7 @@ public enum Command {
     GET_MAIL_LIST,      // {folderId} hoặc {view: "STARRED"}
     GET_MAIL_DETAIL,
     SEARCH_MAIL,
+    SUGGEST_CONTACTS,   // {query}: gợi ý người nhận / nhóm khi gõ (autocomplete)
     MARK_READ,          // {entryIds, read?: true|false}
     SET_STARRED,        // {entryIds, starred: true|false}
     DELETE_MAIL,

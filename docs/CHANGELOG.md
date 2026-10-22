@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0] - 2026-10-22
+
+- Gợi ý khi gõ (autocomplete) dùng chung một component `AutoComplete`: ô Tới/Cc/Bcc gợi ý người và nhóm (người đã trao đổi thư xếp trước), ô tìm thư gợi ý thư khớp, người gửi và tìm kiếm gần đây, ô Người gửi và ô thêm thành viên nhóm gợi ý người. Debounce 180 ms, bỏ phản hồi cũ về trễ, điều hướng bằng bàn phím.
+- Lệnh mới `SUGGEST_CONTACTS` (`ContactService`, `JdbcContactDAO`); tìm kiếm từ gợi ý chạy trên mọi thư mục và tự mở thư được chọn.
+- Sửa lỗi giờ hiển thị lệch +7 tiếng (đọc DATETIME bằng `LocalDateTime` thay vì `Timestamp` + `serverTimezone=UTC`).
+- Thêm `ContactServiceTest` (tổng 47 test) và 5 kịch bản gợi ý trong `EndToEndCheck` (tổng 56).
+
 ## [2.0.0] - 2026-10-22
 
 Tái cấu trúc toàn bộ dự án, giao diện mới, bảo mật TLS và các tính năng còn thiếu.

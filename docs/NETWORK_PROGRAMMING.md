@@ -429,6 +429,22 @@ Chi tiết quan trọng:
 
 ---
 
+### 8.1 Gợi ý khi gõ: debounce và bỏ phản hồi cũ
+
+Ô gợi ý ([AutoComplete](../mail-client/src/main/java/com/mailsystem/client/ui/AutoComplete.java))
+gửi `SUGGEST_CONTACTS` / `SEARCH_MAIL` trong lúc người dùng đang gõ. Hai vấn đề mạng:
+
+- **Quá nhiều request**: gõ "nguyen" là 6 lần đổi chữ. *Debounce* 180 ms: chỉ
+  gửi khi người dùng ngừng gõ 180 ms, nên thường chỉ tốn 1 request. Server vẫn có
+  giới hạn tốc độ (§12.3) cho client không debounce.
+- **Phản hồi về sai thứ tự**: request "ng" có thể về SAU request "nguyen" (truy vấn
+  ngắn khớp nhiều dòng hơn, chạy lâu hơn). Mỗi lần hỏi có một số thứ tự; kết quả
+  của lần hỏi cũ bị bỏ qua (`seq != requestSeq`). Đây là cùng ý tưởng với
+  `requestId` (§5.2) nhưng ở tầng giao diện.
+
+Server giữ request rẻ: tối đa 10 kết quả, chỉ trả email/tên/số thư đã trao đổi,
+và escape ký tự `%`, `_` của `LIKE` để người dùng gõ "50%" không quét toàn bảng.
+
 ## 9. Timeout, keep-alive, heartbeat
 
 Một kết nối TCP có thể **chết mà không ai biết** (half-open). Ví dụ: rút dây

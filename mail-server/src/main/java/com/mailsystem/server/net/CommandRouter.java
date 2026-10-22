@@ -56,6 +56,7 @@ public final class CommandRouter {
         secured(Command.GET_MAIL_LIST, (id, payload, ctx) -> services.mail().getMailList(id, ctx.accountId(), payload));
         secured(Command.GET_MAIL_DETAIL, (id, payload, ctx) -> services.mail().getMailDetail(id, ctx.accountId(), payload));
         secured(Command.SEARCH_MAIL, (id, payload, ctx) -> services.mail().searchMail(id, ctx.accountId(), payload));
+        secured(Command.SUGGEST_CONTACTS, (id, payload, ctx) -> services.contact().suggest(id, ctx.accountId(), payload));
         secured(Command.MARK_READ, (id, payload, ctx) -> services.mail().markRead(id, ctx.accountId(), payload));
         secured(Command.SET_STARRED, (id, payload, ctx) -> services.mail().setStarred(id, ctx.accountId(), payload));
         secured(Command.DELETE_MAIL, (id, payload, ctx) -> services.mail().deleteMail(id, ctx.accountId(), payload));

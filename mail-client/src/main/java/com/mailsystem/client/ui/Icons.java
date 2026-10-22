@@ -52,6 +52,10 @@ public final class Icons {
     public static final String OFFLINE = "mdi2c-cloud-off-outline";
     public static final String SELECT_ALL = "mdi2c-checkbox-multiple-marked-outline";
     public static final String FILE = "mdi2f-file-document-outline";
+    public static final String HISTORY = "mdi2h-history";
+    public static final String PERSON = "mdi2a-account-outline";
+    public static final String MAIL_SEARCH = "mdi2e-email-search-outline";
+    public static final String PERSON_SEARCH = "mdi2a-account-search-outline";
     public static final String FILE_PDF = "mdi2f-file-pdf-box";
     public static final String FILE_WORD = "mdi2f-file-word-box";
     public static final String FILE_SLIDES = "mdi2f-file-powerpoint-box";

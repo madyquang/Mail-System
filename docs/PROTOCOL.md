@@ -117,7 +117,8 @@ không quá phổ biến, không chứa tên email. Mỗi IP đăng ký tối đ
 | `GET_FOLDERS` | không có | `[Folder]` (kèm `unreadCount`) |
 | `GET_MAIL_LIST` | `{folderId}` hoặc `{view: "STARRED"}` | `[MailSummary]`, mới nhất trước (STARRED: thư gắn sao ở mọi thư mục trừ TRASH) |
 | `GET_MAIL_DETAIL` | `{mailId, entryId?}` | `MailDetail`; tự đánh dấu **đúng bản `entryId`** là đã đọc (trừ thư trong TRASH) |
-| `SEARCH_MAIL` | `{keyword?, fromFilter?, folderId?}`, cần ít nhất 1 điều kiện | `[MailSummary]` |
+| `SEARCH_MAIL` | `{keyword?, fromFilter?, folderId?}`, cần ít nhất 1 điều kiện; bỏ `folderId` = mọi thư mục | `[MailSummary]` |
+| `SUGGEST_CONTACTS` | `{query, limit?: 1..10, includeGroups?: true}` | `[Contact]`: nhóm mình là thành viên (tối đa 3) rồi tới người khớp email/tên, người đã trao đổi nhiều thư xếp trước; không gồm chính mình |
 | `MARK_READ` | `{entryIds: [..], read?: true}` (`read: false` = đánh dấu chưa đọc) | `{processed, requested}` |
 | `SET_STARRED` | `{entryIds: [..], starred: true\|false}` | `{processed, requested}` |
 | `DELETE_MAIL` | `{entryId}` hoặc `{entryIds: [..]}` | `{processed, requested}` (chuyển vào TRASH) |
@@ -226,6 +227,7 @@ MailSummary  {mailId, entryId, senderEmail, senderName, subject, snippet, sentAt
 MailDetail   {mailId, entryId, starred, folderType, senderEmail, senderName, subject, body, sentAt,
               to: [email], cc: [email], bcc: [email], attachments: [Attachment]}
 Draft        {draftId, to, cc, bcc, subject, body, updatedAt}
+Contact      {kind: PERSON|GROUP, email, displayName, interactions}  hoặc  {kind: GROUP, groupName, memberCount}
 Attachment   {attachmentId, filename, mimeType, sizeBytes, dataBase64?}
 MailGroupDTO {groupId, groupName, ownerEmail, owner: bool, memberEmails: [email]}
 ```

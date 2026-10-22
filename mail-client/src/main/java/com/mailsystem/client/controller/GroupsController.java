@@ -2,6 +2,7 @@ package com.mailsystem.client.controller;
 
 import com.mailsystem.client.api.MailApi;
 import com.mailsystem.client.app.Session;
+import com.mailsystem.client.ui.ContactSuggestions;
 import com.mailsystem.client.ui.Dialogs;
 import com.mailsystem.client.ui.EmptyState;
 import com.mailsystem.client.ui.Fx;
@@ -86,6 +87,7 @@ public class GroupsController {
                 "Tạo nhóm để gửi thư cho nhiều người cùng lúc."));
         detailEmpty.getChildren().setAll(new EmptyState().show(Icons.GROUPS, "Chọn một nhóm",
                 "Thành viên và thao tác của nhóm sẽ hiện ở đây."));
+        ContactSuggestions.forSinglePerson(memberEmailField, null);
         load(null);
     }
 

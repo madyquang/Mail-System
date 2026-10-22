@@ -6,7 +6,10 @@ import com.mailsystem.client.app.Session;
 import com.mailsystem.client.network.Connector;
 import com.mailsystem.client.network.ServerConnection;
 import com.mailsystem.client.service.DesktopNotifier;
+import com.mailsystem.client.ui.AutoComplete;
 import com.mailsystem.client.ui.Avatar;
+import com.mailsystem.client.ui.ContactSuggestions;
+import com.mailsystem.client.ui.Formats;
 import com.mailsystem.client.ui.Dialogs;
 import com.mailsystem.client.ui.DraftCell;
 import com.mailsystem.client.ui.EmptyState;
@@ -161,6 +164,10 @@ public class MainController implements MailReader.Actions {
     private int loadToken;
     private int openedEntryId;
     private boolean suppressSelectionEvents;
+    /** Tìm trên mọi thư mục (chọn từ gợi ý) thay vì chỉ thư mục đang mở. */
+    private boolean searchAllFolders;
+    /** Thư cần tự mở sau khi kết quả tìm kiếm về (chọn thư từ gợi ý). */
+    private int pendingOpenEntryId;
 
     @FXML
     public void initialize() {
@@ -185,6 +192,8 @@ public class MainController implements MailReader.Actions {
                         + "\nDấu vân tay máy chủ:\n" + security.fingerprint()
                 : "Kết nối không được mã hoá"));
         footerLabel.setText("Đã đăng nhập: " + (Session.account() == null ? "" : Session.account().getEmail()));
+
+        installSearchSuggestions();
 
         root.sceneProperty().addListener((observable, old, scene) -> {
             if (scene != null) {
@@ -302,6 +311,59 @@ public class MainController implements MailReader.Actions {
         });
     }
 
+    /**
+     * Gợi ý ở ô tìm thư: ô trống → tìm kiếm gần đây; gõ ≥ 2 ký tự → hành động
+     * "tìm ở mọi thư mục", tối đa 5 thư khớp (bấm là mở ngay) và người gửi khớp.
+     */
+    private void installSearchSuggestions() {
+        AutoComplete.attach(searchField, 0, false, query -> {
+            if (query.isEmpty()) {
+                List<AutoComplete.Suggestion> recent = new ArrayList<>();
+                for (String old : Session.recentSearches()) {
+                    recent.add(new AutoComplete.Suggestion("Tìm kiếm gần đây", Icons.HISTORY, old, null, () -> {
+                        searchField.setText(old);
+                        handleSearch();
+                    }));
+                }
+                return CompletableFuture.completedFuture(recent);
+            }
+            if (query.length() < 2) {
+                return CompletableFuture.completedFuture(List.of());
+            }
+            return api.search(null, query, "").thenCombine(api.suggestContacts(query, false, 3), (mails, people) -> {
+                List<AutoComplete.Suggestion> items = new ArrayList<>();
+                items.add(new AutoComplete.Suggestion("", Icons.SEARCH, "Tìm \"" + query + "\" trong mọi thư mục",
+                        mails.size() + " thư khớp", () -> searchEverywhere(query, 0)));
+                mails.stream().limit(5).forEach(mail -> items.add(new AutoComplete.Suggestion("Thư", Icons.MAIL_SEARCH,
+                        mail.getSubject() == null || mail.getSubject().isBlank() ? "(Không có tiêu đề)" : mail.getSubject(),
+                        senderName(mail) + "  ·  " + Formats.shortDate(mail.getSentAt()),
+                        () -> searchEverywhere(query, mail.getEntryId()))));
+                people.forEach(person -> items.add(new AutoComplete.Suggestion("Thư từ người gửi", Icons.PERSON_SEARCH,
+                        person.getDisplayName() == null || person.getDisplayName().isBlank()
+                                ? person.getEmail() : person.getDisplayName(),
+                        person.getEmail(), () -> {
+                            searchField.clear();
+                            fromFilterField.setText(person.getEmail());
+                            searchEverywhere("", 0);
+                        })));
+                return items;
+            });
+        });
+        ContactSuggestions.forSinglePerson(fromFilterField, this::handleSearch);
+    }
+
+    private static String senderName(MailSummary mail) {
+        return mail.getSenderName() == null || mail.getSenderName().isBlank() ? mail.getSenderEmail() : mail.getSenderName();
+    }
+
+    /** Tìm trên mọi thư mục; openEntryId > 0 thì tự mở thư đó khi kết quả về. */
+    private void searchEverywhere(String keyword, int openEntryId) {
+        searchField.setText(keyword);
+        searchAllFolders = true;
+        pendingOpenEntryId = openEntryId;
+        handleSearch();
+    }
+
     private void installShortcuts(Scene scene) {
         scene.getAccelerators().put(new KeyCodeCombination(KeyCode.N, KeyCombination.SHORTCUT_DOWN), this::handleCompose);
         scene.getAccelerators().put(new KeyCodeCombination(KeyCode.F, KeyCombination.SHORTCUT_DOWN), () -> {
@@ -336,6 +398,8 @@ public class MainController implements MailReader.Actions {
         view = target;
         navButtons.get(target).setSelected(true);
         searching = false;
+        searchAllFolders = false;
+        pendingOpenEntryId = 0;
         searchField.clear();
         fromFilterField.clear();
         clearSearchButton.setVisible(false);
@@ -387,7 +451,7 @@ public class MainController implements MailReader.Actions {
 
         CompletableFuture<List<MailSummary>> request;
         if (searching) {
-            Integer folderId = view == View.STARRED ? null : folderIds.get(view);
+            Integer folderId = view == View.STARRED || searchAllFolders ? null : folderIds.get(view);
             request = api.search(folderId, searchField.getText().trim(), fromFilterField.getText().trim());
         } else if (view == View.STARRED) {
             request = api.starred();
@@ -423,6 +487,17 @@ public class MainController implements MailReader.Actions {
         for (int i = 0; i < mails.size(); i++) {
             if (selected.contains(mails.get(i).getEntryId())) {
                 mailList.getSelectionModel().select(i);
+            }
+        }
+        if (pendingOpenEntryId > 0) {
+            int target = pendingOpenEntryId;
+            pendingOpenEntryId = 0;
+            mailList.getSelectionModel().clearSelection();
+            for (int i = 0; i < mails.size(); i++) {
+                if (mails.get(i).getEntryId() == target) {
+                    mailList.getSelectionModel().select(i);
+                    mailList.scrollTo(i);
+                }
             }
         }
         suppressSelectionEvents = false;
@@ -843,14 +918,20 @@ public class MainController implements MailReader.Actions {
             return;
         }
         if (view == View.DRAFTS) {
+            boolean everywhere = searchAllFolders;
+            int pending = pendingOpenEntryId;
             selectView(View.INBOX);
             searchField.setText(keyword);
             fromFilterField.setText(from);
+            searchAllFolders = everywhere;
+            pendingOpenEntryId = pending;
         }
+        Session.addRecentSearch(keyword);
         searching = true;
         clearSearchButton.setVisible(true);
         clearSearchButton.setManaged(true);
-        listTitle.setText("Kết quả tìm kiếm" + (view == View.STARRED ? "" : " · " + view.title));
+        listTitle.setText("Kết quả tìm kiếm" + (searchAllFolders ? " · Mọi thư mục"
+                : view == View.STARRED ? "" : " · " + view.title));
         mailList.setCellFactory(list -> new MailCell(this::toggleStar, true));
         mailList.getSelectionModel().clearSelection();
         loadList(true);

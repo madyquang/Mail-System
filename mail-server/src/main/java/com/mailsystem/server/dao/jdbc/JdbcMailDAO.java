@@ -16,7 +16,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Timestamp;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -100,8 +99,8 @@ public class JdbcMailDAO implements MailDAO {
     }
 
     /**
-     * Cột chung cho mọi danh sách thư. snippet lấy 160 ký tự đầu của nội dung;
-     * has_attachments dùng EXISTS (dừng ngay khi thấy 1 tệp, không đếm hết).
+     * Cá»™t chung cho má»i danh sÃ¡ch thÆ°. snippet láº¥y 160 kÃ½ tá»± Ä‘áº§u cá»§a ná»™i dung;
+     * has_attachments dÃ¹ng EXISTS (dá»«ng ngay khi tháº¥y 1 tá»‡p, khÃ´ng Ä‘áº¿m háº¿t).
      */
     private static final String SUMMARY_SELECT = "SELECT m.mail_id, mr.entry_id, sender.email AS sender_email, "
             + "sender.display_name AS sender_name, m.subject, LEFT(m.body, 160) AS snippet, m.sent_at, "
@@ -150,8 +149,8 @@ public class JdbcMailDAO implements MailDAO {
                 + "JOIN folder f ON f.folder_id = mr.folder_id AND f.account_id = mr.account_id "
                 + "WHERE mr.mail_id = ? AND mr.account_id = ? AND mr.is_deleted = FALSE "
                 + (entryId == null ? "" : "AND mr.entry_id = ? ")
-                // Một tài khoản có thể có 2 bản của cùng thư (SENDER trong SENT và
-                // bản nhận trong INBOX khi tự gửi cho mình): ưu tiên bản nhận.
+                // Má»™t tÃ i khoáº£n cÃ³ thá»ƒ cÃ³ 2 báº£n cá»§a cÃ¹ng thÆ° (SENDER trong SENT vÃ 
+                // báº£n nháº­n trong INBOX khi tá»± gá»­i cho mÃ¬nh): Æ°u tiÃªn báº£n nháº­n.
                 + "ORDER BY (mr.recipient_type = 'SENDER'), mr.entry_id LIMIT 1";
         try (Connection connection = DatabaseConnection.getConnection()) {
             connection.setAutoCommit(false);
@@ -185,7 +184,7 @@ public class JdbcMailDAO implements MailDAO {
                         detail.setSenderName(result.getString("sender_name"));
                         detail.setSubject(result.getString("subject"));
                         detail.setBody(result.getString("body"));
-                        detail.setSentAt(formatDateTime(result.getTimestamp("sent_at")));
+                        detail.setSentAt(formatDateTime(result.getObject("sent_at", java.time.LocalDateTime.class)));
                     }
                 }
 
@@ -278,8 +277,8 @@ public class JdbcMailDAO implements MailDAO {
     }
 
     /**
-     * Đặt một cờ boolean trên "bản thư của tôi". Trả true nếu bản thư thuộc tài
-     * khoản (kể cả khi giá trị không đổi, vì MySQL báo 0 dòng bị ảnh hưởng).
+     * Äáº·t má»™t cá» boolean trÃªn "báº£n thÆ° cá»§a tÃ´i". Tráº£ true náº¿u báº£n thÆ° thuá»™c tÃ i
+     * khoáº£n (ká»ƒ cáº£ khi giÃ¡ trá»‹ khÃ´ng Ä‘á»•i, vÃ¬ MySQL bÃ¡o 0 dÃ²ng bá»‹ áº£nh hÆ°á»Ÿng).
      */
     private boolean updateFlag(String column, int entryId, int accountId, boolean value) throws SQLException {
         String sql = "UPDATE mail_recipient SET " + column + " = ? "
@@ -493,7 +492,7 @@ public class JdbcMailDAO implements MailDAO {
             try {
                 Files.deleteIfExists(file);
             } catch (IOException error) {
-                System.err.println("[JdbcMailDAO] Không xóa được tệp đính kèm orphan "
+                System.err.println("[JdbcMailDAO] KhÃ´ng xÃ³a Ä‘Æ°á»£c tá»‡p Ä‘Ã­nh kÃ¨m orphan "
                         + file + ": " + error.getMessage());
             }
         }
@@ -650,7 +649,7 @@ public class JdbcMailDAO implements MailDAO {
         summary.setSubject(result.getString("subject"));
         String snippet = result.getString("snippet");
         summary.setSnippet(snippet == null ? "" : snippet.replaceAll("\\s+", " ").trim());
-        summary.setSentAt(formatDateTime(result.getTimestamp("sent_at")));
+        summary.setSentAt(formatDateTime(result.getObject("sent_at", java.time.LocalDateTime.class)));
         summary.setRead(result.getBoolean("is_read"));
         summary.setStarred(result.getBoolean("is_starred"));
         summary.setHasAttachments(result.getBoolean("has_attachments"));
@@ -658,7 +657,12 @@ public class JdbcMailDAO implements MailDAO {
         return summary;
     }
 
-    private String formatDateTime(Timestamp timestamp) {
-        return timestamp == null ? null : timestamp.toLocalDateTime().format(ISO_DATE_TIME);
+    /**
+     * Äá»c DATETIME thÃ nh LocalDateTime nguyÃªn tráº¡ng (khÃ´ng quy Ä‘á»•i mÃºi giá»).
+     * getTimestamp() + serverTimezone=UTC tá»«ng lÃ m giá» hiá»ƒn thá»‹ lá»‡ch +7 tiáº¿ng vÃ¬
+     * MySQL lÆ°u giá» Ä‘á»‹a phÆ°Æ¡ng cÃ²n driver láº¡i coi Ä‘Ã³ lÃ  giá» UTC.
+     */
+    private String formatDateTime(java.time.LocalDateTime time) {
+        return time == null ? null : time.format(ISO_DATE_TIME);
     }
 }

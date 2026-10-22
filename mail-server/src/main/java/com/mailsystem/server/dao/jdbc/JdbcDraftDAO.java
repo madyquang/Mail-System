@@ -9,7 +9,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Timestamp;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -113,8 +112,8 @@ public class JdbcDraftDAO implements DraftDAO {
         draft.setBcc(result.getString("bcc_text"));
         draft.setSubject(result.getString("subject"));
         draft.setBody(result.getString("body"));
-        Timestamp updated = result.getTimestamp("updated_at");
-        draft.setUpdatedAt(updated == null ? null : updated.toLocalDateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        java.time.LocalDateTime updated = result.getObject("updated_at", java.time.LocalDateTime.class);
+        draft.setUpdatedAt(updated == null ? null : updated.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         return draft;
     }
 

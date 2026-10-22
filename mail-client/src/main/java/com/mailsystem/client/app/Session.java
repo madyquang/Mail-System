@@ -47,6 +47,31 @@ public final class Session {
         }
     }
 
+    /** Tối đa 8 từ khoá tìm gần nhất (mới nhất trước), lưu trên máy này. */
+    public static java.util.List<String> recentSearches() {
+        String raw = PREFS.get("recentSearches", "");
+        return raw.isEmpty() ? java.util.List.of() : java.util.List.of(raw.split("\n"));
+    }
+
+    public static void addRecentSearch(String query) {
+        String value = query == null ? "" : query.trim().replace('\n', ' ');
+        if (value.isEmpty() || value.length() > 100) {
+            return;
+        }
+        java.util.List<String> updated = new java.util.ArrayList<>();
+        updated.add(value);
+        for (String old : recentSearches()) {
+            if (!old.equalsIgnoreCase(value) && updated.size() < 8) {
+                updated.add(old);
+            }
+        }
+        PREFS.put("recentSearches", String.join("\n", updated));
+    }
+
+    public static void clearRecentSearches() {
+        PREFS.remove("recentSearches");
+    }
+
     public static String lastEmail() {
         return PREFS.get("lastEmail", "");
     }

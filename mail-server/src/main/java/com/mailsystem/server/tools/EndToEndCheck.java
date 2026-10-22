@@ -307,6 +307,21 @@ public class EndToEndCheck {
                 check(!steal.isOk(), "Khong chuyen tiep duoc tep cua thu minh khong co quyen xem");
             }
 
+            System.out.println("== Goi y nguoi nhan (autocomplete)");
+            JsonArray sug = a1.req(Command.SUGGEST_CONTACTS, obj("query", "e2e-b-" + tag.substring(0, 3))).getData().getAsJsonArray();
+            boolean foundB = false;
+            for (JsonElement e : sug) foundB |= b.equals(e.getAsJsonObject().has("email") ? e.getAsJsonObject().get("email").getAsString() : "");
+            check(foundB, "Go vai ky tu email -> goi y dung nguoi");
+            JsonArray byName = a1.req(Command.SUGGEST_CONTACTS, obj("query", "Trần Thị")).getData().getAsJsonArray();
+            check(byName.size() >= 1 && byName.get(0).getAsJsonObject().get("email").getAsString().equals(b),
+                    "Tim theo ten hien thi co dau; nguoi da trao doi thu xep dau");
+            check(byName.get(0).getAsJsonObject().get("interactions").getAsInt() > 0, "Co so thu da trao doi");
+            JsonArray groupSug = a1.req(Command.SUGGEST_CONTACTS, obj("query", "e2e-nhom-")).getData().getAsJsonArray();
+            check(groupSug.size() >= 1 && groupSug.get(0).getAsJsonObject().get("kind").getAsString().equals("GROUP"),
+                    "Goi y nhom minh la thanh vien");
+            JsonArray selfSug = a1.req(Command.SUGGEST_CONTACTS, obj("query", a)).getData().getAsJsonArray();
+            check(selfSug.size() == 0, "Khong goi y chinh minh");
+
             System.out.println("== Thu nhap");
             a1.events.clear(); a2.events.clear();
             ResponseMessage saved = a1.req(Command.SAVE_DRAFT, obj("to", b, "cc", "", "bcc", "", "subject", "Nháp 1", "body", "đang viết"));

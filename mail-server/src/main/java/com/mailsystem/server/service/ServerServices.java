@@ -12,7 +12,7 @@ import java.time.Duration;
  * vụ được đồng thời nhiều thread.
  */
 public record ServerServices(AuthService auth, AccountService account, FolderService folder, MailService mail,
-        DraftService draft, GroupService group) {
+        DraftService draft, GroupService group, ContactService contact) {
 
     public static ServerServices createDefault() {
         LoginThrottle loginThrottle = new LoginThrottle(ServerConfig.loginMaxFailures(),
@@ -20,6 +20,6 @@ public record ServerServices(AuthService auth, AccountService account, FolderSer
         SlidingWindowLimiter registrations = new SlidingWindowLimiter(ServerConfig.registrationsPerHourPerIp(),
                 Duration.ofHours(1));
         return new ServerServices(new AuthService(loginThrottle, registrations), new AccountService(loginThrottle),
-                new FolderService(), new MailService(), new DraftService(), new GroupService());
+                new FolderService(), new MailService(), new DraftService(), new GroupService(), new ContactService());
     }
 }
