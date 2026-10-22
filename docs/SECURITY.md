@@ -11,7 +11,9 @@ cấu hình, và giới hạn còn lại. Phần giải thích khái niệm mạ
 | Người nghe lén trong cùng mạng LAN/Wi-Fi | Bắt gói (Wireshark), ARP spoofing | TLS 1.3 bắt buộc |
 | Kẻ giả mạo máy chủ (man-in-the-middle) | Dựng Server giả để lấy mật khẩu | Ghim chứng chỉ TOFU; cảnh báo khi chứng chỉ đổi |
 | Người dùng hợp lệ nhưng tò mò | Gửi request sửa `entryId`/`attachmentId` của người khác | Mọi truy vấn lọc theo `account_id` của phiên |
-| Kẻ dò mật khẩu | Thử hàng nghìn mật khẩu | Khoá tạm theo email + IP, PBKDF2 chậm có chủ đích |
+| Kẻ dò mật khẩu | Thử hàng nghìn mật khẩu | Khoá tạm theo email + IP (lưu bền trong DB), PBKDF2 chậm có chủ đích |
+| Kẻ đã lấy được mật khẩu | Đăng nhập từ máy khác | Xác minh 2 bước (TOTP); chứng chỉ thiết bị ở chế độ `need` |
+| Kẻ nghe lén mạng Server ↔ MySQL | Đọc mật khẩu băm, nội dung thư | MySQL qua TLS (`sslMode`) |
 | Client độc hại / bị lỗi | Gửi frame khổng lồ, spam request, mở nghìn kết nối | Giới hạn frame, token bucket, giới hạn kết nối, idle timeout |
 | Người gửi tệp độc hại | Đổi tên `virus.exe` thành `baocao.pdf` | Kiểm tra magic bytes, danh sách đuôi cho phép |
 | Ai đó đọc được repo Git | Lấy mật khẩu MySQL | Bí mật không bao giờ nằm trong file được commit |
@@ -38,6 +40,14 @@ cấu hình, và giới hạn còn lại. Phần giải thích khái niệm mạ
 - **Tạo lại chứng chỉ** (VD: lộ khoá riêng): dừng Server, xoá `data/tls/`, chạy
   lại. Mọi client sẽ thấy cảnh báo "chứng chỉ đã thay đổi" một lần; người dùng
   đối chiếu dấu vân tay mới rồi chấp nhận.
+- **Chứng chỉ thiết bị (mutual TLS)**: mỗi máy Client tự tạo khoá EC P-256 ở
+  `~/.mailsystem/device.p12` và trình chứng chỉ khi Server xin. Server lưu dấu
+  vân tay vào bảng `trusted_device`. `tls.clientAuth=need` chỉ cho thiết bị đã
+  được duyệt trên bảng giám sát; thiết bị lạ nhận `DEVICE_NOT_APPROVED` kèm dấu
+  vân tay (Client hiện ở Tài khoản → Kết nối) rồi bị ngắt.
+- **MySQL qua TLS**: `db.url` mặc định `sslMode=PREFERRED`; dùng `REQUIRED`
+  hoặc `VERIFY_IDENTITY` khi MySQL ở máy khác. Server in bộ mã hoá đang dùng
+  khi khởi động.
 
 ## 3. Xác thực và phiên
 
@@ -46,9 +56,10 @@ cấu hình, và giới hạn còn lại. Phần giải thích khái niệm mạ
 | Băm mật khẩu | PBKDF2-HMAC-SHA256, 210 000 vòng, salt ngẫu nhiên 16 byte, so sánh thời gian hằng |
 | Chính sách mật khẩu | ≥ 8 ký tự, có chữ và số, ≤ 128 ký tự (chặn DoS băm), không thuộc danh sách phổ biến, không chứa phần tên của email |
 | Không lộ email đã đăng ký | Sai email hay sai mật khẩu đều trả `"Email hoặc mật khẩu không đúng"`; email không tồn tại vẫn tốn thời gian băm như thật |
-| Chống dò mật khẩu | 5 lần sai theo email (từ bất kỳ IP nào) hoặc 20 lần sai theo IP → khoá 15 phút. Khoá áp dụng như nhau với email có/không tồn tại. `CHANGE_PASSWORD` dùng chung bộ đếm |
+| Chống dò mật khẩu | 5 lần sai theo email (từ bất kỳ IP nào) hoặc 20 lần sai theo IP → khoá 15 phút. Khoá áp dụng như nhau với email có/không tồn tại. `CHANGE_PASSWORD` và mã TOTP sai dùng chung bộ đếm. Bộ đếm lưu trong bảng `login_attempt` nên **khởi động lại Server không xoá khoá** |
+| Xác minh 2 bước (TOTP, RFC 6238) | Khoá 160 bit, mã 6 số đổi mỗi 30 giây, chấp nhận lệch ±1 bước; mỗi mã chỉ dùng được **một lần** (`totp_last_step`, cập nhật nguyên tử). Bật bằng cách quét QR rồi nhập một mã đúng; tắt cần cả mật khẩu và mã |
 | Giới hạn đăng ký | 10 tài khoản / IP / giờ |
-| Phiên gắn với kết nối TLS | Không có token để đánh cắp; mất kết nối = phải đăng nhập lại |
+| Phiên gắn với kết nối TLS + token tiếp tục phiên | Rớt mạng thì Client dùng `resumeToken` (256 bit, dùng một lần, hết hạn 12 giờ, xoay vòng mỗi lần dùng) để vào lại mà không cần mật khẩu. Server chỉ lưu SHA-256 của token, trong RAM; Client cũng chỉ giữ trong RAM. Đăng xuất / đổi mật khẩu / đăng xuất mọi nơi huỷ token |
 | Thu hồi phiên | Đổi mật khẩu: mọi phiên KHÁC nhận `SESSION_REVOKED` và bị ngắt. "Đăng xuất khỏi mọi thiết bị": thu hồi tất cả |
 | Không trả dữ liệu nhạy cảm | Không bao giờ gửi `password_hash`; lỗi nội bộ chỉ trả câu chung chung, chi tiết ghi log phía Server |
 
@@ -75,6 +86,10 @@ cấu hình, và giới hạn còn lại. Phần giải thích khái niệm mạ
 | Tệp dở dang mỗi kết nối | 5 | `ProtocolConstants.MAX_ATTACHMENTS_PER_MAIL` |
 | Thư nháp mỗi tài khoản | 200 | `DraftService.MAX_DRAFTS` |
 | Thao tác hàng loạt | 500 thư / request | `ProtocolConstants.MAX_ENTRIES_PER_REQUEST` |
+| Thư mục tự tạo | 50 / tài khoản | `ProtocolConstants.MAX_CUSTOM_FOLDERS` |
+| Hẹn giờ gửi | tối đa 365 ngày | `ProtocolConstants.MAX_SCHEDULE_DAYS` |
+| Tệp tải lên dở | giữ 30 phút kể từ khối cuối | `upload.expiryMinutes` |
+| Kết nối MySQL đồng thời | 10 | `db.poolSize` |
 | Nội dung thư | 100 000 ký tự | `ProtocolConstants.MAX_BODY_CHARS` |
 
 ## 6. Tệp đính kèm
@@ -94,12 +109,21 @@ cấu hình, và giới hạn còn lại. Phần giải thích khái niệm mạ
 - `scripts/setup-db.ps1` truyền mật khẩu MySQL qua biến môi trường `MYSQL_PWD`
   thay vì dòng lệnh (dòng lệnh có thể bị tiến trình khác đọc).
 
+- **Bảng giám sát** (`monitor.*`) chỉ lắng nghe `127.0.0.1`; mọi API cần header
+  `X-Admin-Token` (ngẫu nhiên 144 bit in ra lúc khởi động, hoặc `monitor.token`),
+  so sánh thời gian hằng; phản hồi có `Cache-Control: no-store`,
+  `X-Content-Type-Options: nosniff` và Content-Security-Policy.
+- **Báo đã đọc** là tuỳ chọn riêng tư: người nhận tắt thì người gửi không biết.
+
 ## 8. Nhật ký bảo mật
 
 `data/logs/security.log` (đồng thời in ra console với tiền tố `[SECURITY]`) ghi:
 `REGISTER`, `LOGIN`, `LOGIN_FAILED`, `LOGIN_LOCKED`, `LOGIN_BLOCKED`,
 `REGISTER_RATE_LIMITED`, `RATE_LIMITED`, `TLS_HANDSHAKE_FAILED`,
-`CHANGE_PASSWORD`, `CHANGE_PASSWORD_FAILED`, `LOGOUT_ALL`, kèm thời điểm và IP.
+`CHANGE_PASSWORD`, `CHANGE_PASSWORD_FAILED`, `LOGOUT_ALL`, `RESUME`,
+`RESUME_REJECTED`, `TOTP_ENABLED`, `TOTP_DISABLED`, `LOGIN_TOTP_FAILED`,
+`DEVICE_REJECTED`, `DEVICE_APPROVED`, `DEVICE_REVOKED`, kèm thời điểm và IP.
+100 sự kiện gần nhất hiện trên bảng giám sát.
 Không bao giờ ghi mật khẩu hay nội dung thư; ký tự xuống dòng trong dữ liệu từ
 client bị thay thế để chống giả mạo dòng log.
 
@@ -107,14 +131,23 @@ client bị thay thế để chống giả mạo dòng log.
 
 - `SecurityComponentsTest`, `TofuTrustManagerTest`, `ServerNetworkTest`,
   `CommandRouterTest` (chạy bằng `scripts/test.ps1`, không cần MySQL).
-- `scripts/e2e.ps1`: chạy với MySQL thật, gồm khoá đăng nhập, chặn tệp giả,
-  client không TLS bị từ chối, đổi mật khẩu thu hồi phiên, không chuyển tiếp
-  được tệp không có quyền xem.
+- `V3SecurityTest` (TOTP theo vector chuẩn RFC 6238, khoá đăng nhập còn sau
+  khởi động lại), `ResumeTokensTest` (token một lần, hết hạn, thu hồi),
+  `DeviceIdentityTest`.
+- `scripts/e2e.ps1` (109 kịch bản với MySQL thật): khoá đăng nhập, chặn tệp
+  giả, client không TLS bị từ chối, đổi mật khẩu thu hồi phiên, không chuyển
+  tiếp được tệp không có quyền xem, token dùng lại bị từ chối, TOTP thiếu/sai/
+  dùng lại, chứng chỉ thiết bị được ghi nhận và duyệt, bảng giám sát trả 401 khi
+  thiếu mã, không xem được tiến độ tải lên của người khác.
 
 ## 10. Giới hạn còn lại
 
 - TOFU phụ thuộc người dùng đối chiếu dấu vân tay ở lần kết nối đầu.
-- Bộ đếm khoá đăng nhập nằm trong bộ nhớ: khởi động lại Server thì bộ đếm về 0.
-- Kết nối MySQL mặc định không dùng TLS (`useSSL=false`) vì MySQL chạy cùng máy
-  với Server. Nếu tách MySQL sang máy khác, bật `useSSL=true` trong `db.url`.
-- Chưa có xác thực hai yếu tố và chưa mã hoá nội dung thư khi lưu trong DB.
+- `sslMode=PREFERRED` không kiểm chứng chỉ MySQL; tách MySQL sang máy khác thì
+  nên dùng `VERIFY_IDENTITY` với truststore chứa CA của MySQL.
+- Khoá TOTP lưu dạng rõ trong DB (Server cần nó để tính mã); ai đọc được DB thì
+  tạo được mã. Chưa có mã khôi phục khi mất điện thoại (quản trị viên tắt 2FA
+  bằng SQL: `UPDATE account SET totp_enabled=FALSE WHERE email=...`).
+- Token tiếp tục phiên nằm trong RAM của Server: khởi động lại Server thì
+  Client phải đăng nhập lại bằng mật khẩu.
+- Chưa mã hoá nội dung thư khi lưu trong DB (mã hoá đầu-cuối).

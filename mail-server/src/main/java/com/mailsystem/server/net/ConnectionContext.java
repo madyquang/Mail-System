@@ -16,7 +16,7 @@ public interface ConnectionContext {
     /** Địa chỉ IP phía client (dùng cho chống dò mật khẩu, log bảo mật). */
     String remoteIp();
 
-    /** Tệp đính kèm đang tải lên dở dang của kết nối này. */
+    /** Tệp đang tải lên dở dang của tài khoản đang đăng nhập (giữ qua các lần kết nối lại). */
     UploadManager uploads();
 
     /** Phiên dùng để nhận EVENT (để loại trừ chính phiên này khi thu hồi phiên khác). */
@@ -25,4 +25,10 @@ public interface ConnectionContext {
     void signIn(int accountId);
 
     void signOut();
+
+    /** Hash của token tiếp tục phiên đã cấp cho kết nối này (để huỷ khi LOGOUT). */
+    void setResumeTokenHash(String hash);
+
+    /** Dấu vân tay chứng chỉ thiết bị (mutual TLS), null nếu client không gửi chứng chỉ. */
+    String deviceFingerprint();
 }

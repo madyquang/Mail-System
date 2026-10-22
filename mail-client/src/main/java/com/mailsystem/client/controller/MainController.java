@@ -2,6 +2,7 @@ package com.mailsystem.client.controller;
 
 import com.mailsystem.client.api.MailApi;
 import com.mailsystem.client.app.Navigator;
+import com.mailsystem.client.app.Reconnector;
 import com.mailsystem.client.app.Session;
 import com.mailsystem.client.network.Connector;
 import com.mailsystem.client.network.ServerConnection;
@@ -18,12 +19,14 @@ import com.mailsystem.client.ui.Icons;
 import com.mailsystem.client.ui.MailCell;
 import com.mailsystem.client.ui.MailReader;
 import com.mailsystem.client.ui.NavButton;
+import com.mailsystem.client.ui.ScheduledCell;
 import com.mailsystem.client.ui.Toast;
 import com.mailsystem.common.model.Account;
 import com.mailsystem.common.model.Draft;
 import com.mailsystem.common.model.Folder;
 import com.mailsystem.common.model.MailDetail;
 import com.mailsystem.common.model.MailSummary;
+import com.mailsystem.common.model.ScheduledMail;
 import com.mailsystem.common.protocol.EventMessage;
 import com.mailsystem.common.protocol.EventName;
 import javafx.animation.PauseTransition;
@@ -70,13 +73,19 @@ import java.util.stream.Collectors;
  */
 public class MainController implements MailReader.Actions {
 
-    /** Các mục ở sidebar. DRAFTS và STARRED là "view" phía Client, không phải thư mục trong DB. */
+    /**
+     * Các mục ở sidebar. DRAFTS, STARRED, SCHEDULED là "view" phía Client, không
+     * phải thư mục trong DB. CUSTOM là thư mục người dùng tự tạo (nhiều cái, hiện
+     * ở mục "Thư mục" bên dưới).
+     */
     enum View {
         INBOX("Hộp thư đến", Icons.INBOX),
         STARRED("Có gắn sao", Icons.STAR_OUTLINE),
         SENT("Đã gửi", Icons.SENT),
+        SCHEDULED("Đã lên lịch", Icons.SCHEDULE),
         DRAFTS("Thư nháp", Icons.DRAFT),
-        TRASH("Thùng rác", Icons.TRASH);
+        TRASH("Thùng rác", Icons.TRASH),
+        CUSTOM("Thư mục", Icons.FOLDER);
 
         final String title;
         final String icon;
@@ -146,6 +155,8 @@ public class MainController implements MailReader.Actions {
     @FXML
     private ListView<Draft> draftList;
     @FXML
+    private StackPane listStack;
+    @FXML
     private StackPane listEmpty;
     @FXML
     private StackPane listLoading;
@@ -168,6 +179,17 @@ public class MainController implements MailReader.Actions {
     private boolean searchAllFolders;
     /** Thư cần tự mở sau khi kết quả tìm kiếm về (chọn thư từ gợi ý). */
     private int pendingOpenEntryId;
+    /** Thư mục tự tạo đang mở (view == CUSTOM). */
+    private Folder customFolder;
+    private final List<Folder> customFolders = new ArrayList<>();
+    private final VBox folderBox = new VBox(1);
+    private final ListView<ScheduledMail> scheduledList = new ListView<>();
+    private final Label reconnectLabel = new Label();
+    private final HBox reconnectBanner = new HBox(10);
+    private final MenuButton moveButton = new MenuButton();
+    /** Định dạng dữ liệu kéo-thả thư (chỉ có nghĩa trong ứng dụng này). */
+    private static final javafx.scene.input.DataFormat MAIL_ENTRIES =
+            new javafx.scene.input.DataFormat("application/x-mailsystem-entries");
 
     @FXML
     public void initialize() {
@@ -176,8 +198,11 @@ public class MainController implements MailReader.Actions {
         SplitPane.setResizableWithParent(readerHost, true);
 
         buildNavigation();
+        buildFolderSection();
         buildProfileMenu();
         configureLists();
+        buildReconnectBanner();
+        buildMoveButton();
         reloadDebounce.setOnFinished(event -> {
             loadList(false);
             refreshCounts();
@@ -208,18 +233,255 @@ public class MainController implements MailReader.Actions {
 
     private void buildNavigation() {
         for (View item : View.values()) {
+            if (item == View.CUSTOM) {
+                continue;
+            }
             NavButton button = new NavButton(item.icon, item.title);
             button.setToggleGroup(navGroup);
             button.setOnAction(event -> selectView(item));
             navButtons.put(item, button);
             navBox.getChildren().add(button);
         }
+        // Kéo thư thả vào Hộp thư đến (chuyển về) hoặc Thùng rác (xoá).
+        installDropTarget(navButtons.get(View.INBOX), entryIds -> moveTo(entryIds, folderIds.get(View.INBOX), "Hộp thư đến"));
+        installDropTarget(navButtons.get(View.TRASH), entryIds -> bulk(api.moveToTrash(entryIds), "Đã chuyển %d thư vào Thùng rác."));
         // Không cho bỏ chọn mục đang chọn bằng cách bấm lại vào nó.
         navGroup.selectedToggleProperty().addListener((observable, old, selected) -> {
             if (selected == null && old != null) {
                 old.setSelected(true);
             }
         });
+    }
+
+    // ------------------------------------------------------------------ thư mục tự tạo
+
+    private void buildFolderSection() {
+        Label title = new Label("Thư mục");
+        title.getStyleClass().add("sidebar-section");
+        Button add = new Button();
+        add.setGraphic(Icons.of(Icons.PLUS, 16));
+        add.getStyleClass().add("icon-button");
+        add.setTooltip(new Tooltip("Tạo thư mục mới"));
+        add.setOnAction(event -> handleCreateFolder());
+        javafx.scene.layout.Region spacer = new javafx.scene.layout.Region();
+        HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
+        HBox header = new HBox(4, title, spacer, add);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.getStyleClass().add("sidebar-section-row");
+        int index = sidebar.getChildren().indexOf(navBox) + 1;
+        javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(folderBox);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(javafx.scene.control.ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.setMaxHeight(260);
+        sidebar.getChildren().addAll(index, List.of(header, scroll));
+    }
+
+    private void renderFolders() {
+        List<javafx.scene.Node> old = new ArrayList<>(folderBox.getChildren());
+        folderBox.getChildren().clear();
+        for (Folder folder : customFolders) {
+            NavButton button = new NavButton(Icons.FOLDER, folder.getFolderName());
+            button.setToggleGroup(navGroup);
+            button.setCount(folder.getUnreadCount());
+            button.setSelected(view == View.CUSTOM && customFolder != null
+                    && customFolder.getFolderId() == folder.getFolderId());
+            button.setOnAction(event -> selectFolder(folder));
+            MenuItem rename = new MenuItem("Đổi tên", Icons.of(Icons.RENAME, 16));
+            rename.setOnAction(event -> renameFolder(folder));
+            MenuItem delete = new MenuItem("Xoá thư mục", Icons.of(Icons.TRASH, 16));
+            delete.setOnAction(event -> deleteFolder(folder));
+            button.setContextMenu(new javafx.scene.control.ContextMenu(rename, delete));
+            installDropTarget(button, entryIds -> moveTo(entryIds, folder.getFolderId(), folder.getFolderName()));
+            folderBox.getChildren().add(button);
+        }
+        if (customFolders.isEmpty()) {
+            Label hint = new Label("Bấm + để tạo thư mục, rồi kéo thư vào.");
+            hint.getStyleClass().add("hint");
+            hint.setWrapText(true);
+            hint.setPadding(new Insets(2, 8, 4, 18));
+            folderBox.getChildren().add(hint);
+        }
+        // Gỡ nút cũ khỏi ToggleGroup SAU khi nút mới đã được chọn (tránh nhóm mất lựa chọn).
+        old.forEach(node -> {
+            if (node instanceof NavButton button) {
+                button.setToggleGroup(null);
+            }
+        });
+        buildMoveButton();
+    }
+
+    private void selectFolder(Folder folder) {
+        customFolder = folder;
+        selectView(View.CUSTOM);
+    }
+
+    private void handleCreateFolder() {
+        Dialogs.prompt(Navigator.owner(), "Thư mục mới", "Tên thư mục:", "", "Tạo").ifPresent(name ->
+                Fx.then(api.createFolder(name), id -> {
+                    Toast.success(root, "Đã tạo thư mục \"" + name + "\".");
+                    refreshCounts();
+                }, error -> Toast.error(root, error)));
+    }
+
+    private void renameFolder(Folder folder) {
+        Dialogs.prompt(Navigator.owner(), "Đổi tên thư mục", "Tên mới:", folder.getFolderName(), "Lưu").ifPresent(name ->
+                Fx.then(api.renameFolder(folder.getFolderId(), name), ignored -> {
+                    if (customFolder != null && customFolder.getFolderId() == folder.getFolderId()) {
+                        customFolder.setFolderName(name);
+                        listTitle.setText(name);
+                    }
+                    refreshCounts();
+                }, error -> Toast.error(root, error)));
+    }
+
+    private void deleteFolder(Folder folder) {
+        if (!Dialogs.confirm(Navigator.owner(), "Xoá thư mục \"" + folder.getFolderName() + "\"?",
+                "Các thư trong thư mục sẽ được chuyển vào Thùng rác (khôi phục được).", "Xoá thư mục", true)) {
+            return;
+        }
+        Fx.then(api.deleteFolder(folder.getFolderId()), moved -> {
+            Toast.success(root, moved > 0 ? "Đã xoá thư mục, " + moved + " thư đã vào Thùng rác." : "Đã xoá thư mục.");
+            if (view == View.CUSTOM && customFolder != null && customFolder.getFolderId() == folder.getFolderId()) {
+                selectView(View.INBOX);
+            }
+            refreshCounts();
+        }, error -> Toast.error(root, error));
+    }
+
+    private void moveTo(List<Integer> entryIds, Integer folderId, String folderName) {
+        if (folderId == null || entryIds.isEmpty()) {
+            return;
+        }
+        bulk(api.moveMail(entryIds, folderId), "Đã chuyển %d thư tới " + folderName + ".");
+    }
+
+    /** Nút "Chuyển tới" trên thanh thao tác hàng loạt (thay cho kéo-thả khi dùng bàn phím). */
+    private void buildMoveButton() {
+        if (moveButton.getParent() == null) {
+            moveButton.setGraphic(Icons.of(Icons.FOLDER_MOVE, 18));
+            moveButton.getStyleClass().add("icon-button");
+            moveButton.setTooltip(new Tooltip("Chuyển tới thư mục"));
+            selectionBar.getChildren().add(selectionBar.getChildren().indexOf(bulkTrashButton), moveButton);
+        }
+        moveButton.getItems().clear();
+        MenuItem inbox = new MenuItem(View.INBOX.title, Icons.of(Icons.INBOX, 16));
+        inbox.setOnAction(event -> moveTo(ids(selectedMails()), folderIds.get(View.INBOX), View.INBOX.title));
+        moveButton.getItems().add(inbox);
+        if (!customFolders.isEmpty()) {
+            moveButton.getItems().add(new SeparatorMenuItem());
+        }
+        for (Folder folder : customFolders) {
+            MenuItem item = new MenuItem(folder.getFolderName(), Icons.of(Icons.FOLDER, 16));
+            item.setOnAction(event -> moveTo(ids(selectedMails()), folder.getFolderId(), folder.getFolderName()));
+            moveButton.getItems().add(item);
+        }
+        MenuItem create = new MenuItem("Thư mục mới...", Icons.of(Icons.FOLDER_PLUS, 16));
+        create.setOnAction(event -> handleCreateFolder());
+        moveButton.getItems().addAll(new SeparatorMenuItem(), create);
+    }
+
+    /** Mục sidebar nhận thư được kéo từ danh sách. */
+    private void installDropTarget(NavButton target, java.util.function.Consumer<List<Integer>> onDrop) {
+        target.setOnDragOver(event -> {
+            if (event.getGestureSource() != target && event.getDragboard().hasContent(MAIL_ENTRIES)) {
+                event.acceptTransferModes(javafx.scene.input.TransferMode.MOVE);
+            }
+            event.consume();
+        });
+        target.setOnDragEntered(event -> {
+            if (event.getDragboard().hasContent(MAIL_ENTRIES)) {
+                target.getStyleClass().add("drop-target");
+            }
+        });
+        target.setOnDragExited(event -> target.getStyleClass().remove("drop-target"));
+        target.setOnDragDropped(event -> {
+            Object content = event.getDragboard().getContent(MAIL_ENTRIES);
+            boolean done = false;
+            if (content instanceof String text && !text.isBlank()) {
+                List<Integer> entryIds = new ArrayList<>();
+                for (String id : text.split(",")) {
+                    entryIds.add(Integer.parseInt(id.trim()));
+                }
+                onDrop.accept(entryIds);
+                done = true;
+            }
+            event.setDropCompleted(done);
+            event.consume();
+        });
+    }
+
+    /** Ô thư có thể kéo đi: kéo một thư chưa chọn thì chỉ kéo thư đó, ngược lại kéo cả nhóm đang chọn. */
+    private MailCell mailCell(boolean showFolderTag) {
+        MailCell cell = new MailCell(this::toggleStar, showFolderTag);
+        cell.setOnDragDetected(event -> {
+            MailSummary item = cell.getItem();
+            if (item == null || view == View.TRASH) {
+                return;
+            }
+            if (!mailList.getSelectionModel().getSelectedItems().contains(item)) {
+                mailList.getSelectionModel().clearSelection();
+                mailList.getSelectionModel().select(item);
+            }
+            List<Integer> entryIds = ids(selectedMails());
+            javafx.scene.input.Dragboard board = cell.startDragAndDrop(javafx.scene.input.TransferMode.MOVE);
+            javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+            content.put(MAIL_ENTRIES, entryIds.stream().map(String::valueOf).collect(Collectors.joining(",")));
+            board.setContent(content);
+            Label ghost = new Label(selectedMails().size() == 1 ? "1 thư" : selectedMails().size() + " thư");
+            ghost.setStyle("-fx-background-color: #0b57d0; -fx-text-fill: white; -fx-padding: 4 10; -fx-background-radius: 12;");
+            new Scene(new StackPane(ghost));
+            board.setDragView(ghost.snapshot(null, null));
+            event.consume();
+        });
+        return cell;
+    }
+
+    // ------------------------------------------------------------------ kết nối lại
+
+    private void buildReconnectBanner() {
+        reconnectLabel.setWrapText(true);
+        reconnectLabel.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(reconnectLabel, javafx.scene.layout.Priority.ALWAYS);
+        javafx.scene.control.ProgressIndicator spin = new javafx.scene.control.ProgressIndicator();
+        spin.setMaxSize(16, 16);
+        reconnectBanner.getChildren().setAll(Icons.of(Icons.WIFI_OFF, 18), reconnectLabel, spin);
+        reconnectBanner.setAlignment(Pos.CENTER_LEFT);
+        reconnectBanner.getStyleClass().add("banner-reconnect");
+        reconnectBanner.setVisible(false);
+        reconnectBanner.setManaged(false);
+        javafx.scene.layout.BorderPane layout = (javafx.scene.layout.BorderPane) root.getChildren().get(0);
+        javafx.scene.Node appBar = layout.getTop();
+        layout.setTop(new VBox(appBar, reconnectBanner));
+
+        Reconnector reconnector = Reconnector.get();
+        javafx.beans.value.ChangeListener<String> onStatus = (obs, old, text) -> {
+            boolean show = text != null;
+            reconnectBanner.setVisible(show);
+            reconnectBanner.setManaged(show);
+            reconnectLabel.setText(text == null ? "" : text);
+            connectionLabel.setText(show ? "Đang kết nối lại..." : connectionText());
+        };
+        javafx.beans.value.ChangeListener<Number> onReconnected = (obs, old, count) -> {
+            Toast.success(root, "Đã kết nối lại tới máy chủ.");
+            // Trong lúc mất mạng có thể đã lỡ EVENT: tải lại toàn bộ.
+            reloadNow();
+        };
+        reconnector.statusProperty().addListener(onStatus);
+        reconnector.reconnectsProperty().addListener(onReconnected);
+        // Màn hình chính bị thay khi đăng xuất: gỡ listener để không giữ controller cũ.
+        root.sceneProperty().addListener((obs, old, scene) -> {
+            if (scene == null) {
+                reconnector.statusProperty().removeListener(onStatus);
+                reconnector.reconnectsProperty().removeListener(onReconnected);
+            }
+        });
+        onStatus.changed(null, null, reconnector.statusProperty().get());
+    }
+
+    private String connectionText() {
+        Connector.SecurityInfo security = ServerConnection.getInstance().securityInfo();
+        boolean encrypted = security != null && security.encrypted();
+        return encrypted ? "TLS 1.3 · " + Session.serverAddress() : "KHÔNG mã hoá";
     }
 
     private void buildProfileMenu() {
@@ -239,12 +501,23 @@ public class MainController implements MailReader.Actions {
         account.setOnAction(event -> handleOpenAccount());
         MenuItem groups = new MenuItem("Nhóm thư", Icons.of(Icons.GROUPS, 18));
         groups.setOnAction(event -> handleOpenGroups());
+        javafx.scene.control.CheckMenuItem dark = new javafx.scene.control.CheckMenuItem("Giao diện tối",
+                Icons.of(Icons.DARK, 18));
+        dark.setSelected(Session.darkMode());
+        dark.setOnAction(event -> Navigator.setDarkMode(dark.isSelected()));
+        javafx.scene.control.CheckMenuItem threaded = new javafx.scene.control.CheckMenuItem("Gộp thư theo hội thoại",
+                Icons.of(Icons.THREAD, 18));
+        threaded.setSelected(Session.threadedView());
+        threaded.setOnAction(event -> {
+            Session.setThreadedView(threaded.isSelected());
+            selectView(view);
+        });
         MenuItem logout = new MenuItem("Đăng xuất", Icons.of(Icons.LOGOUT, 18));
         logout.setOnAction(event -> handleLogout());
         MenuItem logoutAll = new MenuItem("Đăng xuất khỏi mọi thiết bị", Icons.of(Icons.DEVICES, 18));
         logoutAll.setOnAction(event -> handleLogoutAll());
         profileMenu.getItems().setAll(headerItem, new SeparatorMenuItem(), account, groups, new SeparatorMenuItem(),
-                logout, logoutAll);
+                dark, threaded, new SeparatorMenuItem(), logout, logoutAll);
 
         Runnable refresh = () -> {
             Account current = Session.account();
@@ -265,7 +538,7 @@ public class MainController implements MailReader.Actions {
 
     private void configureLists() {
         mailList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-        mailList.setCellFactory(list -> new MailCell(this::toggleStar, view == View.STARRED || searching));
+        mailList.setCellFactory(list -> mailCell(view == View.STARRED || searching));
         mailList.getSelectionModel().getSelectedItems()
                 .addListener((ListChangeListener<MailSummary>) change -> onSelectionChanged());
         mailList.setOnKeyPressed(event -> {
@@ -283,6 +556,11 @@ public class MainController implements MailReader.Actions {
                 }
             }
         });
+
+        scheduledList.getStyleClass().add("mail-list");
+        scheduledList.setVisible(false);
+        scheduledList.setCellFactory(list -> new ScheduledCell(this::cancelScheduled));
+        listStack.getChildren().add(2, scheduledList);
 
         draftList.setCellFactory(list -> new DraftCell());
         draftList.getSelectionModel().selectedItemProperty().addListener((observable, old, draft) -> {
@@ -396,7 +674,11 @@ public class MainController implements MailReader.Actions {
 
     private void selectView(View target) {
         view = target;
-        navButtons.get(target).setSelected(true);
+        if (target != View.CUSTOM) {
+            navButtons.get(target).setSelected(true);
+        } else {
+            renderFolders();
+        }
         searching = false;
         searchAllFolders = false;
         pendingOpenEntryId = 0;
@@ -405,16 +687,24 @@ public class MainController implements MailReader.Actions {
         clearSearchButton.setVisible(false);
         clearSearchButton.setManaged(false);
         listTitle.setText(target.title);
+        if (target == View.CUSTOM && customFolder != null) {
+            listTitle.setText(customFolder.getFolderName());
+        } else {
+            customFolder = null;
+        }
         boolean drafts = target == View.DRAFTS;
-        mailList.setVisible(!drafts);
+        boolean scheduled = target == View.SCHEDULED;
+        mailList.setVisible(!drafts && !scheduled);
         draftList.setVisible(drafts);
-        selectAllCheck.setVisible(!drafts);
-        selectAllCheck.setManaged(!drafts);
+        scheduledList.setVisible(scheduled);
+        selectAllCheck.setVisible(!drafts && !scheduled);
+        selectAllCheck.setManaged(!drafts && !scheduled);
         emptyTrashButton.setVisible(target == View.TRASH);
         emptyTrashButton.setManaged(target == View.TRASH);
-        mailList.setCellFactory(list -> new MailCell(this::toggleStar, view == View.STARRED || searching));
+        mailList.setCellFactory(list -> mailCell(view == View.STARRED || searching));
         mailList.getItems().clear();
         draftList.getItems().clear();
+        scheduledList.getItems().clear();
         openedEntryId = 0;
         currentDetail = null;
         reader.showEmpty();
@@ -448,13 +738,32 @@ public class MainController implements MailReader.Actions {
             }, error -> showLoadError(token, error));
             return;
         }
+        if (view == View.SCHEDULED) {
+            Fx.then(api.scheduled(), mails -> {
+                if (token != loadToken) {
+                    return;
+                }
+                listLoading.setVisible(false);
+                scheduledList.getItems().setAll(mails);
+                navButtons.get(View.SCHEDULED).setCount(mails.size());
+                listCount.setText(mails.isEmpty() ? "" : mails.size() + " thư chờ gửi");
+                showEmptyIfNeeded(mails.isEmpty());
+            }, error -> showLoadError(token, error));
+            return;
+        }
 
         CompletableFuture<List<MailSummary>> request;
         if (searching) {
-            Integer folderId = view == View.STARRED || searchAllFolders ? null : folderIds.get(view);
+            Integer folderId = view == View.STARRED || searchAllFolders ? null
+                    : view == View.CUSTOM && customFolder != null ? Integer.valueOf(customFolder.getFolderId()) : folderIds.get(view);
             request = api.search(folderId, searchField.getText().trim(), fromFilterField.getText().trim());
         } else if (view == View.STARRED) {
             request = api.starred();
+        } else if (view == View.CUSTOM) {
+            if (customFolder == null) {
+                return;
+            }
+            request = api.mailList(customFolder.getFolderId(), Session.threadedView());
         } else {
             Integer folderId = folderIds.get(view);
             if (folderId == null) {
@@ -467,7 +776,8 @@ public class MainController implements MailReader.Actions {
                 }, error -> showLoadError(token, error));
                 return;
             }
-            request = api.mailList(folderId);
+            // Gộp hội thoại ở Hộp thư đến / Đã gửi; Thùng rác luôn hiện từng thư.
+            request = api.mailList(folderId, Session.threadedView() && view != View.TRASH);
         }
         Fx.then(request, mails -> {
             if (token != loadToken) {
@@ -527,6 +837,9 @@ public class MainController implements MailReader.Actions {
                 case STARRED -> state.show(Icons.STAR_OUTLINE, "Chưa có thư gắn sao", "Gắn sao để đánh dấu thư quan trọng (phím S).");
                 case SENT -> state.show(Icons.SENT, "Chưa gửi thư nào", "Bấm Soạn thư (Ctrl+N) để gửi thư đầu tiên.");
                 case DRAFTS -> state.show(Icons.DRAFT, "Không có thư nháp", "Thư đang soạn sẽ được tự lưu vào đây.");
+                case SCHEDULED -> state.show(Icons.SCHEDULE, "Không có thư hẹn giờ",
+                        "Trong khung soạn thư, bấm biểu tượng lịch cạnh nút Gửi để hẹn giờ gửi.");
+                case CUSTOM -> state.show(Icons.FOLDER, "Thư mục trống", "Kéo thư từ danh sách thả vào thư mục ở thanh bên.");
                 case TRASH -> state.show(Icons.TRASH, "Thùng rác trống", "Thư bạn xoá sẽ nằm ở đây cho tới khi xoá vĩnh viễn.");
             }
         }
@@ -556,11 +869,31 @@ public class MainController implements MailReader.Actions {
             Fx.then(api.drafts(), drafts -> navButtons.get(View.DRAFTS).setCount(drafts.size()), error -> {
             });
         }
+        if (view != View.SCHEDULED) {
+            Fx.then(api.scheduled(), mails -> navButtons.get(View.SCHEDULED).setCount(mails.size()), error -> {
+            });
+        }
     }
 
     private int inboxUnread;
 
     private void applyFolders(List<Folder> folders) {
+        List<Folder> custom = folders.stream().filter(folder -> "CUSTOM".equals(folder.getFolderType()))
+                .sorted(java.util.Comparator.comparing(folder -> folder.getFolderName().toLowerCase()))
+                .collect(Collectors.toList());
+        customFolders.clear();
+        customFolders.addAll(custom);
+        if (customFolder != null) {
+            // Thư mục đang mở có thể vừa bị đổi tên / xoá ở máy khác.
+            int openId = customFolder.getFolderId();
+            customFolder = custom.stream().filter(folder -> folder.getFolderId() == openId).findFirst().orElse(null);
+            if (customFolder == null && view == View.CUSTOM) {
+                selectView(View.INBOX);
+            } else if (customFolder != null && !searching) {
+                listTitle.setText(customFolder.getFolderName());
+            }
+        }
+        renderFolders();
         for (Folder folder : folders) {
             View target = switch (folder.getFolderType()) {
                 case "INBOX" -> View.INBOX;
@@ -582,7 +915,8 @@ public class MainController implements MailReader.Actions {
 
     private void updateWindowTitle() {
         String unread = inboxUnread > 0 ? " (" + inboxUnread + ")" : "";
-        Navigator.primaryStage().setTitle(view.title + unread + " – Mail System");
+        String title = view == View.CUSTOM && customFolder != null ? customFolder.getFolderName() : view.title;
+        Navigator.primaryStage().setTitle(title + unread + " – Mail System");
     }
 
     // ------------------------------------------------------------------ chọn & đọc thư
@@ -630,6 +964,26 @@ public class MainController implements MailReader.Actions {
         }
         openedEntryId = summary.getEntryId();
         reader.showLoading();
+        if (summary.getThreadCount() > 1) {
+            // Hội thoại: tải mọi thư (Server đánh dấu đã đọc từng thư khi trả về).
+            Fx.then(api.thread(summary.getThreadId()), details -> {
+                if (openedEntryId != summary.getEntryId() || details.isEmpty()) {
+                    return;
+                }
+                currentDetail = details.get(details.size() - 1);
+                reader.showThread(details, Session.account() == null ? "" : Session.account().getEmail());
+                if (!summary.isRead()) {
+                    summary.setRead(true);
+                    mailList.refresh();
+                    updateListCount();
+                    refreshCounts();
+                }
+            }, error -> {
+                openedEntryId = 0;
+                reader.showError(error);
+            });
+            return;
+        }
         Fx.then(api.detail(summary.getMailId(), summary.getEntryId()), detail -> {
             if (openedEntryId != summary.getEntryId()) {
                 return;
@@ -652,8 +1006,9 @@ public class MainController implements MailReader.Actions {
         return new ArrayList<>(mailList.getSelectionModel().getSelectedItems());
     }
 
+    /** Mọi entryId của các dòng đang chọn (một dòng hội thoại = mọi thư trong hội thoại). */
     private static List<Integer> ids(List<MailSummary> mails) {
-        return mails.stream().map(MailSummary::getEntryId).distinct().collect(Collectors.toList());
+        return mails.stream().flatMap(mail -> mail.getThreadEntryIds().stream()).distinct().collect(Collectors.toList());
     }
 
     // ------------------------------------------------------------------ thao tác hàng loạt
@@ -743,7 +1098,7 @@ public class MainController implements MailReader.Actions {
 
     private void toggleStar(MailSummary mail) {
         boolean star = !mail.isStarred();
-        Fx.then(api.setStarred(List.of(mail.getEntryId()), star), processed -> {
+        Fx.then(api.setStarred(mail.getThreadEntryIds(), star), processed -> {
             mail.setStarred(star);
             mailList.refresh();
             if (currentDetail != null && currentDetail.getEntryId() == mail.getEntryId()) {
@@ -849,6 +1204,17 @@ public class MainController implements MailReader.Actions {
         }, error -> Toast.error(root, error));
     }
 
+    /** Huỷ thư hẹn giờ và mở lại khung soạn với nội dung đó. */
+    private void cancelScheduled(ScheduledMail mail) {
+        Fx.then(api.cancelScheduled(mail.getOutboxId()), data -> {
+            int files = data.has("attachmentCount") ? data.get("attachmentCount").getAsInt() : 0;
+            ComposeController.open(ComposeController.Request.reopened(data, List.of(), List.of()));
+            Toast.info(root, files > 0 ? "Đã huỷ hẹn giờ. Hãy đính kèm lại " + files + " tệp trước khi gửi."
+                    : "Đã huỷ hẹn giờ, thư được mở lại để sửa.");
+            reloadNow();
+        }, error -> Toast.error(root, error));
+    }
+
     // ------------------------------------------------------------------ EVENT real-time
 
     private void onEvent(EventMessage event) {
@@ -863,7 +1229,22 @@ public class MainController implements MailReader.Actions {
                 notifyNewMail(event);
                 reloadDebounce.playFromStart();
             }
-            case MAIL_READ_UPDATED, MAIL_STARRED, MAIL_DELETED, MAIL_RESTORED -> reloadDebounce.playFromStart();
+            case MAIL_READ_UPDATED, MAIL_STARRED, MAIL_DELETED, MAIL_RESTORED, MAIL_MOVED -> reloadDebounce.playFromStart();
+            case FOLDERS_UPDATED -> refreshCounts();
+            case SCHEDULED_UPDATED -> {
+                if (view == View.SCHEDULED) {
+                    loadList(false);
+                } else {
+                    refreshCounts();
+                }
+            }
+            case SCHEDULED_FAILED -> {
+                String reason = text(event, "reason", "Không gửi được thư hẹn giờ.");
+                Toast.error(root, "Thư hẹn giờ \"" + text(event, "subject", "") + "\" không gửi được: " + reason
+                        + " Thư đã được chuyển về Thư nháp.");
+                refreshCounts();
+            }
+            case READ_RECEIPT -> onReadReceipt(event);
             case DRAFTS_UPDATED -> {
                 if (view == View.DRAFTS) {
                     loadList(false);
@@ -882,10 +1263,35 @@ public class MainController implements MailReader.Actions {
                         && event.getData().getAsJsonObject().has("reason")
                         ? event.getData().getAsJsonObject().get("reason").getAsString()
                         : "Phiên đăng nhập đã bị thu hồi.";
+                Reconnector.get().cancel();
                 DesktopNotifier.shutdown();
                 Navigator.showLogin(reason);
             }
         }
+    }
+
+    /** Người nhận vừa mở thư mình gửi: báo nhẹ, và cập nhật khung đọc nếu đang xem đúng thư đó. */
+    private void onReadReceipt(EventMessage event) {
+        String reader = text(event, "readerName", "");
+        if (reader.isBlank()) {
+            reader = text(event, "readerEmail", "Người nhận");
+        }
+        String subject = text(event, "subject", "");
+        Toast.info(root, reader + " đã đọc thư \"" + (subject.isBlank() ? "(Không có tiêu đề)" : subject) + "\".");
+        int mailId = event.getData().getAsJsonObject().has("mailId")
+                ? event.getData().getAsJsonObject().get("mailId").getAsInt() : 0;
+        if (currentDetail != null && currentDetail.getMailId() == mailId) {
+            int entryId = openedEntryId;
+            openedEntryId = 0;
+            mailList.getItems().stream().filter(item -> item.getEntryId() == entryId).findFirst().ifPresent(this::openMail);
+        }
+    }
+
+    private static String text(EventMessage event, String field, String fallback) {
+        if (event.getData() == null || !event.getData().isJsonObject() || !event.getData().getAsJsonObject().has(field)) {
+            return fallback;
+        }
+        return event.getData().getAsJsonObject().get(field).getAsString();
     }
 
     private void notifyNewMail(EventMessage event) {
@@ -917,7 +1323,7 @@ public class MainController implements MailReader.Actions {
             handleClearSearch();
             return;
         }
-        if (view == View.DRAFTS) {
+        if (view == View.DRAFTS || view == View.SCHEDULED) {
             boolean everywhere = searchAllFolders;
             int pending = pendingOpenEntryId;
             selectView(View.INBOX);
@@ -931,8 +1337,9 @@ public class MainController implements MailReader.Actions {
         clearSearchButton.setVisible(true);
         clearSearchButton.setManaged(true);
         listTitle.setText("Kết quả tìm kiếm" + (searchAllFolders ? " · Mọi thư mục"
-                : view == View.STARRED ? "" : " · " + view.title));
-        mailList.setCellFactory(list -> new MailCell(this::toggleStar, true));
+                : view == View.STARRED ? "" : " · " + (view == View.CUSTOM && customFolder != null
+                        ? customFolder.getFolderName() : view.title)));
+        mailList.setCellFactory(list -> mailCell(true));
         mailList.getSelectionModel().clearSelection();
         loadList(true);
     }
@@ -968,10 +1375,11 @@ public class MainController implements MailReader.Actions {
     }
 
     public void handleOpenAccount() {
-        Navigator.openWindow(Navigator.ACCOUNT, "Tài khoản & bảo mật – Mail System", 680, 640, true, null);
+        Navigator.openWindow(Navigator.ACCOUNT, "Tài khoản & bảo mật – Mail System", 720, 760, true, null);
     }
 
     private void handleLogout() {
+        Reconnector.get().cancel();
         Fx.then(api.logout(), ignored -> afterLogout(null), error -> afterLogout(null));
     }
 
@@ -986,6 +1394,7 @@ public class MainController implements MailReader.Actions {
     }
 
     private void afterLogout(String notice) {
+        Reconnector.get().cancel();
         DesktopNotifier.shutdown();
         Navigator.showLogin(notice);
     }

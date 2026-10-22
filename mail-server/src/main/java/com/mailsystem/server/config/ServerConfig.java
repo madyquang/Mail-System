@@ -45,6 +45,52 @@ public final class ServerConfig {
         return intValue("server.idleTimeoutSeconds", "MAIL_SERVER_IDLE_TIMEOUT", 300);
     }
 
+    /**
+     * Mô hình thread cho kết nối: "virtual" (Java 21+, rẻ, phục vụ hàng nghìn
+     * kết nối), "platform" (thread hệ điều hành), "auto" = virtual nếu JDK hỗ trợ.
+     */
+    public static String threadMode() {
+        return value("server.threads", "MAIL_SERVER_THREADS", "auto");
+    }
+
+    /** Số kết nối MySQL tối đa trong pool. */
+    public static int dbPoolSize() {
+        return intValue("db.poolSize", "MAIL_DB_POOL_SIZE", 10);
+    }
+
+    /** Bảng giám sát HTTP (chỉ nghe trên 127.0.0.1). */
+    public static boolean monitorEnabled() {
+        return !"false".equalsIgnoreCase(value("monitor.enabled", "MAIL_MONITOR_ENABLED", "true"));
+    }
+
+    public static int monitorPort() {
+        return intValue("monitor.port", "MAIL_MONITOR_PORT", 8090);
+    }
+
+    /** Mã truy cập bảng giám sát; rỗng = sinh ngẫu nhiên mỗi lần khởi động. */
+    public static String monitorToken() {
+        return value("monitor.token", "MAIL_MONITOR_TOKEN", "");
+    }
+
+    /**
+     * Xác thực thiết bị bằng chứng chỉ client (mutual TLS):
+     * "off" = không hỏi; "want" = ghi nhận thiết bị nếu có (mặc định);
+     * "need" = chỉ thiết bị đã được phê duyệt trên bảng giám sát mới kết nối được.
+     */
+    public static String tlsClientAuth() {
+        return value("tls.clientAuth", "MAIL_TLS_CLIENT_AUTH", "want").toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** Thời hạn token tiếp tục phiên sau khi rớt mạng (phút). */
+    public static int resumeTokenMinutes() {
+        return intValue("security.resumeTokenMinutes", "MAIL_RESUME_TOKEN_MINUTES", 720);
+    }
+
+    /** Tệp tải lên dở dang được giữ để tải tiếp sau khi rớt mạng (phút). */
+    public static int uploadExpiryMinutes() {
+        return intValue("upload.expiryMinutes", "MAIL_UPLOAD_EXPIRY_MINUTES", 30);
+    }
+
     // ------------------------------------------------------------------ lưu trữ
 
     public static Path homeDir() {
@@ -104,7 +150,7 @@ public final class ServerConfig {
 
     public static String dbUrl() {
         return value("db.url", "MAIL_DB_URL",
-                "jdbc:mysql://localhost:3306/mail_system?useSSL=false&serverTimezone=UTC");
+                "jdbc:mysql://localhost:3306/mail_system?sslMode=PREFERRED");
     }
 
     public static String dbUsername() {

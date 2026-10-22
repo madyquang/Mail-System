@@ -1,5 +1,7 @@
 -- =========================================================
--- MAIL SYSTEM DATABASE SCHEMA (MySQL)
+-- MAIL SYSTEM DATABASE SCHEMA (MySQL) — v3.0
+-- Cài mới: chạy tệp này. CSDL đã có từ bản cũ: chạy các tệp trong
+-- database/migrations theo thứ tự tên (scripts/setup-db.ps1 làm tự động).
 -- =========================================================
 
 CREATE DATABASE IF NOT EXISTS mail_system
@@ -15,7 +17,11 @@ CREATE TABLE account (
     email           VARCHAR(150) NOT NULL UNIQUE,   -- địa chỉ mail nội bộ, VD: an@mail.local
     password_hash   VARCHAR(255) NOT NULL,
     display_name    VARCHAR(100) NOT NULL,
-    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    share_read_receipts BOOLEAN NOT NULL DEFAULT TRUE,  -- cho người gửi biết mình đã đọc thư
+    totp_secret     VARCHAR(64) NULL,                -- khoá TOTP (Base32), NULL = chưa thiết lập 2FA
+    totp_enabled    BOOLEAN NOT NULL DEFAULT FALSE,
+    totp_last_step  BIGINT NULL                      -- bước 30 giây đã dùng gần nhất (chống dùng lại mã)
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------
@@ -40,6 +46,8 @@ CREATE TABLE folder (
 CREATE TABLE mail (
     mail_id         INT AUTO_INCREMENT PRIMARY KEY,
     sender_id       INT NOT NULL,
+    thread_id       INT NULL,                       -- mail_id của thư đầu hội thoại (NULL = chính nó)
+    in_reply_to     INT NULL,                       -- thư được trả lời
     subject         VARCHAR(255) NOT NULL DEFAULT '(Không có tiêu đề)',
     body            MEDIUMTEXT,                     -- tối đa 100 000 ký tự (kiểm tra ở Server)
     sent_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -60,6 +68,7 @@ CREATE TABLE mail_recipient (
     original_folder_id INT NULL,           -- thư mục trước khi chuyển vào TRASH
     recipient_type  ENUM('TO','CC','BCC','SENDER') NOT NULL,
     is_read         BOOLEAN NOT NULL DEFAULT FALSE,
+    read_at         DATETIME NULL,                  -- lần đầu mở thư (báo đã đọc cho người gửi)
     is_starred      BOOLEAN NOT NULL DEFAULT FALSE,  -- gắn sao: riêng từng người như is_read
     is_deleted      BOOLEAN NOT NULL DEFAULT FALSE,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -129,6 +138,56 @@ CREATE TABLE draft (
     INDEX idx_draft_account (account_id, updated_at)
 ) ENGINE=InnoDB;
 
+-- ---------------------------------------------------------
+-- 9. LOGIN_ATTEMPT: bộ đếm đăng nhập sai, lưu bền để khởi động lại
+--    Server không xoá khoá chống dò mật khẩu.
+-- ---------------------------------------------------------
+CREATE TABLE login_attempt (
+    attempt_key     VARCHAR(200) PRIMARY KEY,     -- "email:<email>" hoặc "ip:<địa chỉ>"
+    failures        INT NOT NULL DEFAULT 0,
+    last_failure    DATETIME NULL,
+    locked_until    DATETIME NULL
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------
+-- 10. TRUSTED_DEVICE: chứng chỉ thiết bị (mutual TLS) Server đã thấy,
+--     và quản trị viên đã phê duyệt hay chưa.
+-- ---------------------------------------------------------
+CREATE TABLE trusted_device (
+    fingerprint     CHAR(95) PRIMARY KEY,         -- SHA-256 dạng AB:CD:...
+    subject         VARCHAR(255) NOT NULL,
+    approved        BOOLEAN NOT NULL DEFAULT FALSE,
+    first_seen      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_ip         VARCHAR(64) NULL,
+    last_account_id INT NULL
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------
+-- 11. OUTBOX: thư chờ gửi — hoàn tác được (gửi sau vài giây) hoặc hẹn giờ.
+--     Bộ điều phối của Server lấy thư tới hạn ra (SELECT ... FOR UPDATE)
+--     và giao trong CÙNG giao dịch, nên một thư không bao giờ gửi hai lần.
+-- ---------------------------------------------------------
+CREATE TABLE outbox (
+    outbox_id       INT AUTO_INCREMENT PRIMARY KEY,
+    account_id      INT NOT NULL,
+    payload         MEDIUMTEXT NOT NULL,          -- JSON: to/cc/bcc/subject/body/inReplyTo/draftId
+    send_at         DATETIME NOT NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (account_id) REFERENCES account(account_id) ON DELETE CASCADE,
+    INDEX idx_outbox_due (send_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE outbox_attachment (
+    outbox_attachment_id INT AUTO_INCREMENT PRIMARY KEY,
+    outbox_id       INT NOT NULL,
+    filename        VARCHAR(255) NOT NULL,
+    mime_type       VARCHAR(100) NOT NULL,
+    size_bytes      BIGINT NOT NULL,
+    storage_path    VARCHAR(500) NOT NULL,
+    FOREIGN KEY (outbox_id) REFERENCES outbox(outbox_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- =========================================================
 -- GHI CHÚ NGHIỆP VỤ (đọc trước khi code DAO/Service)
 -- =========================================================
@@ -153,4 +212,7 @@ CREATE TABLE draft (
 -- 6. Owner của mail_group không được LEAVE_GROUP, chỉ được DELETE_GROUP.
 -- 7. "Có gắn sao" và "Thư nháp" là view phía Client, không phải dòng trong bảng folder:
 --    gắn sao = mail_recipient.is_starred (trừ TRASH), thư nháp = bảng draft.
+-- 8. Hội thoại: thư trả lời có thread_id = thread của thư gốc (chỉ khi người gửi
+--    có quyền xem thư gốc). Danh sách thư gộp theo COALESCE(thread_id, mail_id).
+-- 9. Thư mục CUSTOM: tối đa 50/tài khoản; xoá thư mục = chuyển thư trong đó vào TRASH.
 -- =========================================================

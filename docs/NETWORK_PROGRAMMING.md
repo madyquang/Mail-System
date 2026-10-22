@@ -21,6 +21,7 @@ Mục lục
 13. [Quan sát và kiểm thử](#13-quan-sát-và-kiểm-thử)
 14. [Câu hỏi ôn tập](#14-câu-hỏi-ôn-tập)
 15. [Hướng phát triển](#15-hướng-phát-triển)
+16. [Kỹ thuật mạng nâng cao (v3)](#16-kỹ-thuật-mạng-nâng-cao-v3)
 
 ---
 
@@ -294,17 +295,19 @@ if (!connectionSlots.tryAcquire()) { rejectBusy(client); return; }
 clientThreads.execute(new ClientHandler(client, onClose));
 ```
 
-- **Thread pool** (`Executors.newCachedThreadPool`) tái sử dụng thread đã kết
-  thúc thay vì `new Thread()` mỗi lần.
+- **Thread pool** tái sử dụng thread đã kết thúc thay vì `new Thread()` mỗi
+  lần. Từ v3, khi chạy trên Java 21+ Server dùng **virtual thread** (xem
+  [mục 16.6](#166-virtual-thread-và-connection-pool)), Java 17 thì quay về
+  `newCachedThreadPool`.
 - **Semaphore** giới hạn `server.maxClients` kết nối đồng thời. Kết nối vượt
   mức **không bị treo**: Server gửi một frame lỗi "Máy chủ đang quá tải" rồi
   đóng, nên Client hiển thị được lý do.
 
 | Mô hình | Thread | Phù hợp |
 | --- | --- | --- |
-| Thread-per-connection + blocking I/O (dự án) | 2 / kết nối | Vài trăm kết nối, code dễ hiểu |
+| Thread-per-connection + blocking I/O (dự án, Java 17) | 2 / kết nối | Vài trăm kết nối, code dễ hiểu |
 | NIO `Selector` (non-blocking, event loop) | Vài thread cho hàng nghìn kết nối | Server lớn (Netty, Nginx) |
-| Virtual threads (Java 21+) | Hàng triệu thread "nhẹ" | Viết như blocking, chi phí như NIO |
+| Virtual threads (Java 21+, dự án mặc định từ v3) | Hàng triệu thread "nhẹ" | Viết như blocking, chi phí như NIO |
 
 ### 6.2 Vì sao mỗi kết nối có thêm một thread ghi
 
@@ -712,6 +715,21 @@ Không có CA nào xác nhận, nên Client dùng TOFU: người dùng đối ch
 công man-in-the-middle xảy ra sau lần kết nối đầu tiên (giống SSH).
 </details>
 
+<details><summary>Sau khi rớt mạng, vì sao Client gửi lại GET_MAIL_LIST mà không gửi lại SEND_MAIL?</summary>
+GET_MAIL_LIST chỉ đọc nên gửi hai lần vẫn đúng (idempotent). SEND_MAIL có thể đã được Server
+lưu trước khi mất kết nối; gửi lại sẽ tạo hai thư. Client không biết lần đầu thành công hay chưa.
+</details>
+
+<details><summary>Token tiếp tục phiên bị lộ thì sao?</summary>
+Token chỉ dùng được một lần và hết hạn sau 12 giờ; người dùng hợp lệ dùng token trước thì token
+bị lộ vô dụng. Server chỉ lưu SHA-256 của token. Đổi mật khẩu hoặc đăng xuất mọi nơi huỷ mọi token.
+</details>
+
+<details><summary>Hoàn tác gửi làm sao không bị gửi trùng?</summary>
+Cả Hoàn tác lẫn bộ điều phối đều phải SELECT ... FOR UPDATE rồi DELETE dòng outbox trong một
+giao dịch; ai khoá trước thắng, người sau thấy dòng không còn.
+</details>
+
 <details><summary>Vì sao khoá đăng nhập theo cả email lẫn IP?</summary>
 Theo email: chặn thử nhiều mật khẩu cho một tài khoản (kể cả đổi IP). Theo IP: chặn thử một
 mật khẩu phổ biến cho rất nhiều tài khoản. IP có ngưỡng cao hơn vì nhiều người có thể dùng
@@ -724,11 +742,203 @@ chung một địa chỉ NAT.
 
 | Hướng | Lợi ích | Thay đổi chính |
 | --- | --- | --- |
-| Mutual TLS (chứng chỉ phía Client) | Chỉ máy được cấp chứng chỉ mới kết nối được | `TlsContextFactory`, `TlsConnector` |
+Đã làm trong v3 (xem mục 16): mutual TLS, virtual thread, tự kết nối lại +
+gửi lại request an toàn, truyền tiếp upload/download, HikariCP, MySQL qua TLS.
+
+| Hướng | Lợi ích | Thay đổi chính |
+| --- | --- | --- |
 | Chứng chỉ do CA nội bộ ký | Bỏ bước xác nhận dấu vân tay thủ công | Phân phối chứng chỉ CA cho Client |
-| Java NIO / Netty hoặc virtual threads | Phục vụ hàng nghìn kết nối | `MailServer`, `ClientHandler` |
-| Tự kết nối lại + gửi lại request an toàn | Không phải đăng nhập lại khi rớt mạng ngắn | Phiên có token, request idempotent |
-| Sliding window khi upload | Tận dụng băng thông trên đường truyền có RTT cao | `ComposeController`, `UploadManager` |
-| Resume upload/download sau khi rớt mạng | Không phải tải lại từ đầu | Giữ `uploadId` qua các kết nối |
-| Connection pool JDBC (HikariCP) | Giảm thời gian mở kết nối MySQL | `DatabaseConnection` |
+| Java NIO / Netty | Vài thread phục vụ hàng chục nghìn kết nối | `MailServer`, `ClientHandler` |
+| Sliding window khi upload | Tận dụng băng thông trên đường truyền có RTT cao | `AttachmentTransfer`, `UploadManager` |
 | Framing nhị phân (length-prefix) | Không tốn 33% cho Base64 | `FrameReader` + định dạng gói tin |
+| Nhiều Server + message broker | Mở rộng ngang; EVENT đi qua Redis/Kafka giữa các Server | `SessionManager` |
+
+---
+
+## 16. Kỹ thuật mạng nâng cao (v3)
+
+### 16.1 Tự kết nối lại: exponential backoff và token tiếp tục phiên
+
+Rớt Wi-Fi vài giây hay Server khởi động lại không nên bắt người dùng đăng nhập
+lại. [Reconnector](../mail-client/src/main/java/com/mailsystem/client/app/Reconnector.java)
+xử lý khi `ServerConnection` báo mất kết nối ngoài ý muốn:
+
+```text
+mất kết nối ──▶ chờ 1s ──▶ TCP + TLS ──▶ RESUME_SESSION{token} ──OK──▶ tải lại dữ liệu
+                   ▲            │ lỗi              │ RESUME_REJECTED
+                   └─ 2,4,8,16,30,30... giây ◀──────┘──────────────▶ màn đăng nhập
+```
+
+- **Exponential backoff**: khoảng chờ tăng gấp đôi (tối đa 30 giây). Nếu cả
+  trăm Client cùng thử lại mỗi giây ngay khi Server vừa bật lên, Server bị dội
+  quá tải. Bỏ cuộc sau 5 phút.
+- **Token tiếp tục phiên** (`resumeToken`): `LOGIN` trả về 32 byte ngẫu nhiên
+  (Base64). Client giữ trong RAM (không ghi ra đĩa, không lưu mật khẩu). Server
+  chỉ lưu **SHA-256** của token
+  ([ResumeTokens](../mail-server/src/main/java/com/mailsystem/server/session/ResumeTokens.java)),
+  nên lộ bộ nhớ Server cũng không dùng lại được token. Token **dùng một lần**:
+  mỗi lần `RESUME_SESSION` thành công Server cấp token mới (token rotation); ai
+  bắt được token cũ cũng vô dụng. `LOGOUT`, `LOGOUT_ALL`, `CHANGE_PASSWORD` huỷ
+  token.
+- **Gửi lại request an toàn (idempotency)**: request đang bay khi mất kết nối
+  không biết Server đã xử lý chưa. `MailApi.RETRY_SAFE` chỉ gồm lệnh đọc
+  (`GET_*`, `SEARCH_MAIL`, `DOWNLOAD_ATTACHMENT`...) và lệnh lặp lại vô hại
+  (`MARK_READ`, `SET_STARRED`: đặt cùng giá trị hai lần vẫn ra một kết quả).
+  Những lệnh này được giữ lại, chờ kết nối xong rồi gửi lại **một lần**.
+  `SEND_MAIL` thì **không**: gửi lại có thể tạo hai thư nếu lần đầu Server đã
+  lưu nhưng phản hồi bị mất. Người dùng thấy lỗi và tự quyết định.
+
+### 16.2 Truyền tiếp (resume) tệp khi rớt mạng
+
+Giao thức chia khối ở mục 10 đã có `offset` trong mỗi khối, nên truyền tiếp chỉ
+cần **trạng thái sống lâu hơn kết nối**:
+
+- **Tải lên**: phiên tải lên trước đây gắn với kết nối, nay gắn với **tài
+  khoản** ([UploadRegistry](../mail-server/src/main/java/com/mailsystem/server/transfer/UploadRegistry.java)),
+  hết hạn sau 30 phút không hoạt động. Client kết nối lại, hỏi
+  `UPLOAD_STATUS {uploadId}` → `receivedBytes`, rồi gửi tiếp từ đó
+  (`AttachmentTransfer.uploadChunk`).
+- **Tải xuống**: Client ghi vào `.<tên>.<id>.mailpart` cạnh tệp đích, ghi khối
+  đúng vị trí `offset` bằng `RandomAccessFile` (không `APPEND` mù: khối gửi lại
+  không bị nhân đôi). Lần tải sau thấy `.mailpart` thì bắt đầu từ kích thước
+  của nó, kể cả sau khi tắt ứng dụng. Tải đủ byte mới đổi tên thành tệp đích.
+
+Kiểm chứng: `EndToEndCheck` tải khối 1 trên kết nối A, đóng A, mở kết nối B,
+`UPLOAD_STATUS` thấy đúng 524 288 byte rồi gửi nốt và gửi thư thành công.
+
+### 16.3 Mutual TLS: Server cũng xác thực Client
+
+TLS thường chỉ Server trình chứng chỉ. **Mutual TLS** thêm chiều ngược lại:
+
+```text
+Client                                          Server
+  │── ClientHello (key_share ECDHE) ─────────────▶│
+  │◀── ServerHello, Certificate(server),          │
+  │    CertificateRequest, CertificateVerify,     │  ← Server XIN chứng chỉ client
+  │    Finished ──────────────────────────────────│
+  │── Certificate(device), CertificateVerify, ───▶│  ← Client ký bằng khoá riêng của máy
+  │   Finished                                    │
+```
+
+- Mỗi máy cài Client tự tạo cặp khoá EC P-256 + chứng chỉ tự ký lần đầu chạy
+  ([DeviceIdentity](../mail-client/src/main/java/com/mailsystem/client/network/DeviceIdentity.java),
+  `~/.mailsystem/device.p12`). Khoá riêng **không bao giờ rời máy**;
+  `CertificateVerify` chứng minh Client có khoá mà không gửi khoá đi.
+- Server bật `setWantClientAuth(true)` và ghi nhận dấu vân tay SHA-256 vào bảng
+  `trusted_device`. Ba chế độ `tls.clientAuth`:
+  `off` (không xin), `want` (xin, ghi nhận, vẫn cho vào: mặc định), `need`
+  (chỉ thiết bị đã được quản trị viên duyệt trên bảng giám sát).
+- Server không từ chối ngay trong bước bắt tay mà để `ClientHandler` gửi một
+  frame lỗi `DEVICE_NOT_APPROVED` kèm dấu vân tay rồi mới đóng: người dùng biết
+  **vì sao** bị chặn thay vì chỉ thấy "handshake failed".
+- Mật khẩu + TOTP xác thực **người**, chứng chỉ thiết bị xác thực **máy**: kẻ
+  có mật khẩu nhưng ngồi ở máy lạ vẫn bị chặn ở chế độ `need`.
+
+### 16.4 Thời gian là một "kênh": TOTP
+
+Mã xác minh 2 bước (RFC 6238) là `HMAC-SHA1(khoá, ⌊thời_gian/30⌋)` rút còn 6
+chữ số. Điện thoại và Server **không trao đổi gì qua mạng** lúc tạo mã: cả hai
+cùng biết khoá (chia sẻ một lần qua mã QR) và cùng xem đồng hồ. Vì đồng hồ hai
+bên có thể lệch, Server chấp nhận bước hiện tại ±1 (±30 giây). Để chống **phát
+lại** (replay: kẻ nghe trộm dùng lại mã vừa thấy), Server lưu bước đã dùng
+(`totp_last_step`) và cập nhật bằng một câu `UPDATE ... WHERE totp_last_step < ?`
+nguyên tử: hai kết nối dùng cùng một mã thì chỉ một cái thắng.
+
+### 16.5 Một Server, hai giao thức: bảng giám sát HTTP
+
+[DashboardServer](../mail-server/src/main/java/com/mailsystem/server/monitor/DashboardServer.java)
+dùng `com.sun.net.httpserver.HttpServer` (có sẵn trong JDK) chạy **song song**
+với giao thức JSON-trên-TLS ở cổng khác:
+
+| | Cổng 5000 (Client) | Cổng 8090 (quản trị) |
+| --- | --- | --- |
+| Giao thức | Tự thiết kế: JSON + `\n` trên TLS 1.3 | HTTP/1.1 chuẩn |
+| Kết nối | Lâu dài, hai chiều, Server đẩy EVENT | Ngắn: mỗi lần trình duyệt hỏi một request |
+| Lắng nghe | Mọi địa chỉ (`0.0.0.0`) | Chỉ `127.0.0.1` (máy khác không thể mở) |
+| Xác thực | Mật khẩu + TOTP + chứng chỉ thiết bị | Mã truy cập ngẫu nhiên trong header `X-Admin-Token` |
+
+Trang HTML tự **polling** `/api/stats` mỗi 2 giây: số kết nối, request/giây
+(cửa sổ trượt 60 giây trong `ServerMetrics`), độ trễ trung bình, byte vào/ra,
+trạng thái pool MySQL, danh sách kết nối (có nút ngắt), thiết bị chờ duyệt,
+nhật ký bảo mật. So sánh mã truy cập dùng `MessageDigest.isEqual` (thời gian
+hằng) để không lộ mã qua thời gian phản hồi (timing attack).
+
+### 16.6 Virtual thread và connection pool
+
+- **Virtual thread** (Java 21): JVM tự "gỡ" thread ảo khỏi thread hệ điều hành
+  mỗi khi nó chặn ở I/O, nên viết code blocking như mục 6 mà vẫn chạy được
+  hàng chục nghìn kết nối. Mã nguồn biên dịch ở mức Java 17, nên
+  [ServerThreads](../mail-server/src/main/java/com/mailsystem/server/net/ServerThreads.java)
+  gọi `Executors.newVirtualThreadPerTaskExecutor` qua **reflection**, không có
+  thì dùng thread pool thường (`server.threads=auto|virtual|platform`).
+- **HikariCP**: mở một kết nối MySQL tốn một lần bắt tay TCP + TLS + xác thực
+  (vài ms tới vài chục ms). Pool giữ sẵn tối đa `db.poolSize` (10) kết nối và
+  cho mượn. Pool cũng là một **giới hạn đồng thời**: 1 000 Client cùng gửi thư
+  thì chỉ 10 câu SQL chạy cùng lúc, số còn lại xếp hàng (`waiting` trên bảng
+  giám sát) thay vì làm MySQL quá tải.
+
+### 16.7 Hộp thư chờ gửi: hoàn tác, hẹn giờ và "gửi đúng một lần"
+
+"Hoàn tác gửi" của Gmail không rút được thư đã gửi: thư thật ra **chưa gửi**.
+`SEND_MAIL {delaySeconds: 8}` chỉ cất thư vào bảng `outbox`; bộ điều phối
+(`ScheduledExecutorService`, mỗi giây) mới giao thư khi tới hạn. Hẹn giờ gửi
+là cùng cơ chế với `sendAt` xa hơn.
+
+Bài toán khó là **không gửi trùng** khi người dùng bấm Hoàn tác đúng lúc bộ
+điều phối đang gửi. Cả hai đường đều đi qua cùng một hàm `claim`:
+
+```sql
+SELECT ... FROM outbox WHERE outbox_id = ? FOR UPDATE   -- khoá dòng
+DELETE FROM outbox WHERE outbox_id = ?                    -- lấy ra khỏi hàng chờ
+-- (bộ điều phối) INSERT mail, mail_recipient ...         -- giao thư
+COMMIT
+```
+
+Ai khoá dòng trước thì thắng; người đến sau thấy dòng đã mất và nhận "Thư đã
+được gửi hoặc không còn trong hàng chờ". Vì giao thư và xoá khỏi hàng chờ nằm
+trong **một giao dịch**, Server sập giữa chừng thì cả hai cùng bị huỷ và thư
+vẫn còn trong hàng chờ để gửi lại sau: không mất thư, không gửi hai lần.
+
+### 16.8 Báo đã đọc: EVENT đi tới một người KHÁC
+
+Các EVENT trước đây chủ yếu đồng bộ các phiên của **cùng** một tài khoản.
+`READ_RECEIPT` đi từ thread của người nhận (B mở thư) tới mọi phiên của người
+gửi (A), qua `SessionManager.pushEvent(A, ...)` và hàng đợi ghi của từng kết nối
+(mục 6.2). Server chỉ báo **lần đầu** mở thư: `read_at = COALESCE(read_at, NOW())`
+cho biết lần này có phải lần đầu không, nên mở đi mở lại không làm A nhận
+thông báo lặp. Quyền riêng tư: B tắt `shareReadReceipts` thì không EVENT nào
+được gửi.
+
+### 16.9 Server ↔ MySQL cũng là một kết nối mạng
+
+Mã hoá Client ↔ Server mà để Server ↔ MySQL chạy rõ thì mật khẩu băm và nội
+dung thư vẫn đi rõ trên mạng nội bộ khi MySQL nằm ở máy khác. MySQL 8 hỗ trợ
+TLS sẵn; JDBC chọn qua `sslMode` trong `db.url`:
+
+| `sslMode` | Ý nghĩa |
+| --- | --- |
+| `DISABLED` | Không mã hoá |
+| `PREFERRED` (mặc định v3) | Mã hoá nếu MySQL hỗ trợ, không thì thôi |
+| `REQUIRED` | Bắt buộc mã hoá (không kiểm chứng chỉ MySQL) |
+| `VERIFY_CA` / `VERIFY_IDENTITY` | Bắt buộc + kiểm chứng chỉ MySQL (cần truststore) |
+
+Lúc khởi động Server in bộ mã hoá đang dùng (`SHOW SESSION STATUS LIKE 'Ssl_cipher'`),
+VD `Ket noi MySQL ma hoa TLS: TLS_AES_256_GCM_SHA384`; bảng giám sát cũng hiện
+dòng này.
+
+### 16.10 Kiểm thử tải
+
+`scripts/loadtest.ps1 -Clients 100 -Seconds 20` dựng Server riêng rồi cho 100
+Client TLS đồng thời lặp lại: xem thư mục, mở danh sách, gửi thư cho một người
+ngẫu nhiên ([LoadTest](../mail-server/src/main/java/com/mailsystem/server/tools/LoadTest.java)).
+Kết quả trên máy phát triển (Windows 11, MySQL 8 cùng máy, Java 26, virtual thread):
+
+| Chỉ số | Giá trị |
+| --- | --- |
+| Kết nối + đăng ký + đăng nhập 100 Client | 2,3 giây (bắt tay TLS trung bình 40 ms) |
+| Thông lượng | ~2 760 request/giây, 0 lỗi |
+| Thư đã gửi / EVENT `NEW_MAIL` đã đẩy | 18 531 / 36 870 |
+| Độ trễ p50 / p95 / p99 / max | 1,1 / 6,5 / 15,6 / 64,8 ms |
+
+p99 cao hơn p50 hơn 10 lần là bình thường: đa số request chỉ đọc, còn một số
+`SEND_MAIL` phải chờ khoá ghi của MySQL và chờ mượn kết nối từ pool.

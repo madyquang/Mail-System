@@ -6,6 +6,11 @@ import java.util.List;
 public class MailDetail {
     private int mailId;
     private int entryId;          // bản thư của người xem đã được mở
+    private int threadId;
+    private List<ReadReceipt> readReceipts; // chỉ có khi người xem là người gửi
+    /** Chỉ dùng phía Server (transient: Gson không gửi đi): lần mở này là lần đọc đầu tiên. */
+    private transient boolean newlyRead;
+    private transient int senderAccountId;
     private boolean starred;
     private String folderType;
     private String senderEmail;
@@ -20,6 +25,18 @@ public class MailDetail {
 
     public MailDetail() {
     }
+
+    public int getThreadId() { return threadId == 0 ? mailId : threadId; }
+    public void setThreadId(int threadId) { this.threadId = threadId; }
+
+    public boolean isNewlyRead() { return newlyRead; }
+    public void setNewlyRead(boolean newlyRead) { this.newlyRead = newlyRead; }
+
+    public int getSenderAccountId() { return senderAccountId; }
+    public void setSenderAccountId(int senderAccountId) { this.senderAccountId = senderAccountId; }
+
+    public List<ReadReceipt> getReadReceipts() { return readReceipts; }
+    public void setReadReceipts(List<ReadReceipt> readReceipts) { this.readReceipts = readReceipts; }
 
     public int getEntryId() { return entryId; }
     public void setEntryId(int entryId) { this.entryId = entryId; }

@@ -28,6 +28,10 @@ public class EndToEndCheck {
     static int failures = 0;
     static int checks = 0;
     static int port;
+    static int monitorPort;
+    static String monitorToken;
+    /** Dấu vân tay thiết bị tạo trong lúc kiểm thử (xoá khi dọn dẹp). */
+    static String deviceFingerprint;
 
     static void check(boolean ok, String what) {
         checks++;
@@ -54,7 +58,12 @@ public class EndToEndCheck {
         volatile boolean closedByServer;
 
         Conn() throws Exception {
-            socket = (SSLSocket) trustAll().getSocketFactory().createSocket("localhost", port);
+            this(trustAll());
+        }
+
+        /** context có KeyManager = kết nối mutual TLS (trình chứng chỉ thiết bị). */
+        Conn(SSLContext context) throws Exception {
+            socket = (SSLSocket) context.getSocketFactory().createSocket("localhost", port);
             socket.startHandshake();
             out = new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8);
             FrameReader reader = new FrameReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8),
@@ -171,6 +180,8 @@ public class EndToEndCheck {
 
     public static void main(String[] args) throws Exception {
         port = args.length > 0 ? Integer.parseInt(args[0]) : 5098;
+        monitorPort = args.length > 1 ? Integer.parseInt(args[1]) : 0;
+        monitorToken = args.length > 2 ? args[2] : "";
         String tag = Long.toString(System.currentTimeMillis() % 100_000_000L);
         try {
             run(tag);
@@ -186,13 +197,242 @@ public class EndToEndCheck {
     static void cleanup(String tag) {
         try (java.sql.Connection connection = DatabaseConnection.getConnection();
              java.sql.PreparedStatement groups = connection.prepareStatement("DELETE FROM mail_group WHERE group_name = ?");
-             java.sql.PreparedStatement accounts = connection.prepareStatement("DELETE FROM account WHERE email LIKE ?")) {
+             java.sql.PreparedStatement accounts = connection.prepareStatement("DELETE FROM account WHERE email LIKE ?");
+             java.sql.PreparedStatement attempts = connection.prepareStatement("DELETE FROM login_attempt WHERE attempt_key LIKE ?");
+             java.sql.PreparedStatement devices = connection.prepareStatement("DELETE FROM trusted_device WHERE fingerprint = ?")) {
             groups.setString(1, "e2e-nhom-" + tag);
             groups.executeUpdate();
+            attempts.setString(1, "email:e2e-%-" + tag + "@test.local");
+            attempts.executeUpdate();
+            devices.setString(1, String.valueOf(deviceFingerprint));
+            devices.executeUpdate();
             accounts.setString(1, "e2e-%-" + tag + "@test.local");
             System.out.println("Da don " + accounts.executeUpdate() + " tai khoan kiem thu.");
         } catch (java.sql.SQLException error) {
             System.err.println("Khong don duoc du lieu kiem thu: " + error.getMessage());
+        }
+    }
+
+    static JsonObject data(ResponseMessage r) {
+        return r.getData() != null && r.getData().isJsonObject() ? r.getData().getAsJsonObject() : new JsonObject();
+    }
+
+    static JsonObject findBySubject(JsonArray mails, String subject) {
+        for (JsonElement e : mails) {
+            if (e.getAsJsonObject().get("subject").getAsString().equals(subject)) return e.getAsJsonObject();
+        }
+        return null;
+    }
+
+    /** Các tính năng v3: tiếp tục phiên, thư mục, hội thoại, báo đã đọc, hoàn tác/hẹn giờ, tải tiếp, 2FA, mTLS, giám sát. */
+    static void runV3(String tag, String pw, String a, String b, Conn a1, Conn b1, int fileEntry) throws Exception {
+        System.out.println("== v3: Tiep tuc phien sau khi rot mang (RESUME_SESSION)");
+        String token1;
+        try (Conn r1 = new Conn()) {
+            ResponseMessage login = r1.req(Command.LOGIN, obj("email", b, "password", pw));
+            token1 = data(login).has("resumeToken") ? data(login).get("resumeToken").getAsString() : null;
+            check(token1 != null && token1.length() >= 40, "LOGIN tra resumeToken");
+        } // đóng socket đột ngột = mô phỏng rớt mạng
+        try (Conn r2 = new Conn(); Conn r3 = new Conn()) {
+            ResponseMessage resumed = r2.req(Command.RESUME_SESSION, obj("resumeToken", token1));
+            check(resumed.isOk() && data(resumed).get("email").getAsString().equals(b), "RESUME_SESSION dang nhap lai khong can mat khau");
+            check(!token1.equals(data(resumed).get("resumeToken").getAsString()), "Server cap token MOI (token xoay vong)");
+            check(r2.req(Command.GET_FOLDERS, null).isOk(), "Phien tiep tuc dung duoc lenh can dang nhap");
+            ResponseMessage replay = r3.req(Command.RESUME_SESSION, obj("resumeToken", token1));
+            check(!replay.isOk() && ErrorCodes.RESUME_REJECTED.equals(replay.getCode()), "Dung lai token cu bi tu choi (mot lan)");
+        }
+
+        System.out.println("== v3: Thu muc tu tao + chuyen thu");
+        ResponseMessage created = b1.req(Command.CREATE_FOLDER, obj("name", "Dự án " + tag));
+        check(created.isOk(), "CREATE_FOLDER");
+        int folder = data(created).get("folderId").getAsInt();
+        check(!b1.req(Command.CREATE_FOLDER, obj("name", "Dự án " + tag)).isOk(), "Trung ten thu muc bi tu choi");
+        check(b1.req(Command.MOVE_MAIL, obj("entryIds", arr(fileEntry), "folderId", folder)).isOk(), "MOVE_MAIL vao thu muc");
+        JsonArray inFolder = b1.req(Command.GET_MAIL_LIST, obj("folderId", folder)).getData().getAsJsonArray();
+        check(inFolder.size() == 1 && inFolder.get(0).getAsJsonObject().get("entryId").getAsInt() == fileEntry, "Thu nam trong thu muc moi");
+        check(!a1.req(Command.MOVE_MAIL, obj("entryIds", arr(fileEntry), "folderId", folder)).isOk(), "Khong chuyen duoc thu cua nguoi khac");
+        check(b1.req(Command.RENAME_FOLDER, obj("folderId", folder, "name", "Dự án (đổi) " + tag)).isOk(), "RENAME_FOLDER");
+        check(!b1.req(Command.RENAME_FOLDER, obj("folderId", folderId(b1, "INBOX"), "name", "x")).isOk(), "Khong doi ten thu muc he thong");
+        ResponseMessage deleted = b1.req(Command.DELETE_FOLDER, obj("folderId", folder));
+        check(deleted.isOk() && data(deleted).get("movedToTrash").getAsInt() == 1, "DELETE_FOLDER chuyen thu vao Thung rac");
+        check(b1.req(Command.RESTORE_TRASH_MAIL, obj("entryIds", arr(fileEntry))).isOk(), "Khoi phuc thu tu Thung rac");
+
+        System.out.println("== v3: Bao da doc");
+        a1.events.clear();
+        check(a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Đọc chưa " + tag, "body", "?")).isOk(), "A gui thu cho B");
+        JsonObject toRead = findBySubject(list(b1, "INBOX"), "Đọc chưa " + tag);
+        b1.req(Command.GET_MAIL_DETAIL, obj("mailId", toRead.get("mailId").getAsInt(), "entryId", toRead.get("entryId").getAsInt()));
+        EventMessage receipt = a1.awaitEvent("READ_RECEIPT", 3000);
+        check(receipt != null && receipt.getData().getAsJsonObject().get("readerEmail").getAsString().equals(b),
+                "A nhan EVENT READ_RECEIPT khi B mo thu");
+        JsonObject sentCopy = findBySubject(list(a1, "SENT"), "Đọc chưa " + tag);
+        JsonObject sentDetail = data(a1.req(Command.GET_MAIL_DETAIL, obj("mailId", sentCopy.get("mailId").getAsInt(),
+                "entryId", sentCopy.get("entryId").getAsInt())));
+        check(sentDetail.has("readReceipts") && sentDetail.getAsJsonArray("readReceipts").size() == 1,
+                "Ban da gui cua A co danh sach nguoi da doc");
+        check(b1.req(Command.UPDATE_SETTINGS, obj("shareReadReceipts", false)).isOk(), "B tat gui xac nhan da doc");
+        check(!data(b1.req(Command.GET_SETTINGS, null)).get("shareReadReceipts").getAsBoolean(), "GET_SETTINGS phan anh thay doi");
+        a1.events.clear();
+        a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Riêng tư " + tag, "body", "?"));
+        JsonObject privateMail = findBySubject(list(b1, "INBOX"), "Riêng tư " + tag);
+        b1.req(Command.GET_MAIL_DETAIL, obj("mailId", privateMail.get("mailId").getAsInt(), "entryId", privateMail.get("entryId").getAsInt()));
+        check(a1.awaitEvent("READ_RECEIPT", 1500) == null, "Tat xac nhan -> nguoi gui khong duoc bao");
+        b1.req(Command.UPDATE_SETTINGS, obj("shareReadReceipts", true));
+
+        System.out.println("== v3: Hoi thoai (thread)");
+        a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Họp nhóm " + tag, "body", "Thứ 2 nhé?"));
+        JsonObject first = findBySubject(list(b1, "INBOX"), "Họp nhóm " + tag);
+        int rootMail = first.get("mailId").getAsInt();
+        check(b1.req(Command.SEND_MAIL, obj("to", arr(a), "subject", "Re: Họp nhóm " + tag, "body", "OK", "inReplyTo", rootMail)).isOk(),
+                "B tra loi (inReplyTo)");
+        JsonObject reply = findBySubject(list(a1, "INBOX"), "Re: Họp nhóm " + tag);
+        check(reply != null && reply.get("threadId").getAsInt() == rootMail, "Thu tra loi cung threadId voi thu goc");
+        a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Re: Họp nhóm " + tag, "body", "Chốt 9h",
+                "inReplyTo", reply.get("mailId").getAsInt()));
+        JsonArray threaded = b1.req(Command.GET_MAIL_LIST, obj("folderId", folderId(b1, "INBOX"), "threaded", true)).getData().getAsJsonArray();
+        JsonObject head = null;
+        for (JsonElement e : threaded) if (e.getAsJsonObject().get("threadId").getAsInt() == rootMail) head = e.getAsJsonObject();
+        check(head != null && head.get("threadCount").getAsInt() == 2 && head.getAsJsonArray("threadEntryIds").size() == 2,
+                "Danh sach gop hoi thoai: 1 dong, 2 thu trong Hop thu den");
+        JsonArray thread = b1.req(Command.GET_THREAD, obj("threadId", rootMail)).getData().getAsJsonArray();
+        check(thread.size() == 3 && thread.get(0).getAsJsonObject().get("mailId").getAsInt() == rootMail,
+                "GET_THREAD tra 3 thu (ca thu da gui), cu truoc moi sau");
+        check(!a1.req(Command.GET_THREAD, obj("threadId", fileEntry + 999_999)).isOk(), "Hoi thoai khong co quyen xem -> loi");
+
+        System.out.println("== v3: Hoan tac gui / hen gio");
+        ResponseMessage queued = a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Hoàn tác " + tag, "body", "x", "delaySeconds", 30));
+        check(queued.isOk() && data(queued).has("outboxId"), "Gui co delaySeconds -> vao hop cho gui");
+        int outboxId = data(queued).get("outboxId").getAsInt();
+        JsonArray pending = a1.req(Command.GET_SCHEDULED, null).getData().getAsJsonArray();
+        check(pending.size() == 1 && pending.get(0).getAsJsonObject().get("subject").getAsString().equals("Hoàn tác " + tag), "GET_SCHEDULED");
+        check(!b1.req(Command.CANCEL_SCHEDULED, obj("outboxId", outboxId)).isOk(), "Nguoi khac khong huy duoc thu cho");
+        ResponseMessage undone = a1.req(Command.CANCEL_SCHEDULED, obj("outboxId", outboxId));
+        check(undone.isOk() && data(undone).get("subject").getAsString().equals("Hoàn tác " + tag), "CANCEL_SCHEDULED tra lai noi dung");
+        check(!a1.req(Command.CANCEL_SCHEDULED, obj("outboxId", outboxId)).isOk(), "Huy lan 2 bao loi (da huy)");
+        check(findBySubject(list(b1, "INBOX"), "Hoàn tác " + tag) == null, "Thu da hoan tac khong toi nguoi nhan");
+        check(!a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "x", "body", "x", "sendAt", "2020-01-01T08:00:00")).isOk(),
+                "Hen gio o qua khu bi tu choi");
+        ResponseMessage future = a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Hẹn " + tag, "body", "x",
+                "sendAt", java.time.LocalDateTime.now().plusDays(1).withNano(0).toString()));
+        check(future.isOk() && data(future).get("scheduled").getAsBoolean(), "Hen gio ngay mai");
+        a1.req(Command.CANCEL_SCHEDULED, obj("outboxId", data(future).get("outboxId").getAsInt()));
+        byte[] note = "ghi chu dinh kem\n".getBytes(StandardCharsets.UTF_8);
+        JsonArray noteAtt = new JsonArray();
+        noteAtt.add(obj("uploadId", upload(a1, "ghi-chu.txt", note)));
+        b1.events.clear();
+        check(a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Trễ 2 giây " + tag, "body", "x", "delaySeconds", 2,
+                "attachments", noteAtt)).isOk(), "Gui tre 2 giay kem tep");
+        EventMessage delayed = b1.awaitEvent("NEW_MAIL", 8000);
+        check(delayed != null && delayed.getData().getAsJsonObject().get("subject").getAsString().equals("Trễ 2 giây " + tag),
+                "Bo dieu phoi gui thu khi het thoi gian cho");
+        JsonObject delayedMail = findBySubject(list(b1, "INBOX"), "Trễ 2 giây " + tag);
+        check(delayedMail != null && delayedMail.get("hasAttachments").getAsBoolean(), "Thu gui tre giu nguyen tep dinh kem");
+
+        System.out.println("== v3: Tai len tiep sau khi rot mang (UPLOAD_STATUS)");
+        byte[] big = new byte[ProtocolConstants.CHUNK_SIZE_BYTES + 1000];
+        new Random(3).nextBytes(big);
+        System.arraycopy(new byte[] {'P', 'K', 3, 4}, 0, big, 0, 4);
+        String partial;
+        try (Conn u1 = new Conn()) {
+            u1.req(Command.LOGIN, obj("email", b, "password", pw));
+            ResponseMessage chunk = u1.req(Command.UPLOAD_ATTACHMENT_CHUNK, obj("filename", "du-lieu.zip", "sizeBytes", big.length,
+                    "offset", 0, "dataBase64", Base64.getEncoder().encodeToString(Arrays.copyOf(big, ProtocolConstants.CHUNK_SIZE_BYTES))));
+            partial = data(chunk).get("uploadId").getAsString();
+        }
+        try (Conn u2 = new Conn()) {
+            u2.req(Command.LOGIN, obj("email", b, "password", pw));
+            ResponseMessage status = u2.req(Command.UPLOAD_STATUS, obj("uploadId", partial));
+            check(status.isOk() && data(status).get("receivedBytes").getAsLong() == ProtocolConstants.CHUNK_SIZE_BYTES,
+                    "Ket noi moi thay Server da nhan khoi 1");
+            ResponseMessage rest = u2.req(Command.UPLOAD_ATTACHMENT_CHUNK, obj("uploadId", partial, "filename", "du-lieu.zip",
+                    "sizeBytes", big.length, "offset", ProtocolConstants.CHUNK_SIZE_BYTES, "dataBase64",
+                    Base64.getEncoder().encodeToString(Arrays.copyOfRange(big, ProtocolConstants.CHUNK_SIZE_BYTES, big.length))));
+            check(rest.isOk() && data(rest).get("complete").getAsBoolean(), "Gui tiep phan con lai thanh cong");
+            JsonArray resumedAtt = new JsonArray();
+            resumedAtt.add(obj("uploadId", partial));
+            check(u2.req(Command.SEND_MAIL, obj("to", arr(a), "subject", "Tải tiếp " + tag, "body", "x", "attachments", resumedAtt)).isOk(),
+                    "Gui thu voi tep tai len qua 2 ket noi");
+        }
+        try (Conn other = new Conn()) {
+            other.req(Command.LOGIN, obj("email", a, "password", pw));
+            check(!other.req(Command.UPLOAD_STATUS, obj("uploadId", partial)).isOk(), "Tai khoan khac khong xem duoc tien do tai len");
+        }
+
+        System.out.println("== v3: Xac minh 2 buoc (TOTP)");
+        String e = "e2e-e-" + tag + "@test.local";
+        try (Conn e1 = new Conn()) {
+            e1.req(Command.REGISTER, obj("email", e, "password", pw, "displayName", "E"));
+            e1.req(Command.LOGIN, obj("email", e, "password", pw));
+            ResponseMessage setup = e1.req(Command.TOTP_SETUP, null);
+            String secret = data(setup).get("secret").getAsString();
+            check(setup.isOk() && data(setup).get("otpauthUri").getAsString().startsWith("otpauth://totp/"), "TOTP_SETUP tra khoa + otpauth URI");
+            long step = System.currentTimeMillis() / 1000 / com.mailsystem.server.security.Totp.STEP_SECONDS;
+            check(!e1.req(Command.TOTP_ENABLE, obj("code", "000000".equals(com.mailsystem.server.security.Totp.code(secret, step))
+                    ? "111111" : "000000")).isOk(), "Ma sai khong bat duoc 2FA");
+            check(e1.req(Command.TOTP_ENABLE, obj("code", com.mailsystem.server.security.Totp.code(secret, step))).isOk(), "TOTP_ENABLE");
+            try (Conn e2 = new Conn(); Conn e3 = new Conn()) {
+                ResponseMessage noCode = e2.req(Command.LOGIN, obj("email", e, "password", pw));
+                check(!noCode.isOk() && ErrorCodes.TOTP_REQUIRED.equals(noCode.getCode()), "Thieu ma -> TOTP_REQUIRED");
+                String next = com.mailsystem.server.security.Totp.code(secret, step + 1);
+                check(e2.req(Command.LOGIN, obj("email", e, "password", pw, "totpCode", next)).isOk(), "Mat khau + ma dung -> dang nhap");
+                check(!e3.req(Command.LOGIN, obj("email", e, "password", pw, "totpCode", next)).isOk(), "Dung lai cung ma bi tu choi (chong replay)");
+            }
+        }
+
+        System.out.println("== v3: Chung chi thiet bi (mutual TLS) + bang giam sat");
+        java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("e2e-device");
+        java.nio.file.Path p12 = dir.resolve("device.p12");
+        String keytool = java.nio.file.Path.of(System.getProperty("java.home"), "bin", "keytool").toString();
+        Process gen = new ProcessBuilder(keytool, "-genkeypair", "-noprompt", "-alias", "device", "-keyalg", "EC",
+                "-groupname", "secp256r1", "-dname", "CN=e2e-" + tag, "-validity", "2", "-storetype", "PKCS12",
+                "-keystore", p12.toString(), "-storepass", "e2e-pass", "-keypass", "e2e-pass").redirectErrorStream(true).start();
+        gen.getInputStream().readAllBytes();
+        gen.waitFor(60, TimeUnit.SECONDS);
+        java.security.KeyStore store = java.security.KeyStore.getInstance("PKCS12");
+        try (InputStream in = java.nio.file.Files.newInputStream(p12)) {
+            store.load(in, "e2e-pass".toCharArray());
+        }
+        deviceFingerprint = com.mailsystem.common.security.CertificateFingerprints.sha256(
+                (X509Certificate) store.getCertificate("device"));
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(store, "e2e-pass".toCharArray());
+        SSLContext mutual = SSLContext.getInstance("TLSv1.3");
+        mutual.init(kmf.getKeyManagers(), new TrustManager[] {new X509TrustManager() {
+            public void checkClientTrusted(X509Certificate[] c, String x) { }
+            public void checkServerTrusted(X509Certificate[] c, String x) { }
+            public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+        }}, null);
+        try (Conn m1 = new Conn(mutual)) {
+            check(m1.req(Command.LOGIN, obj("email", b, "password", pw)).isOk(), "Ket noi co chung chi thiet bi dang nhap duoc");
+            check(m1.socket.getSession().getLocalCertificates() != null, "Client da trinh chung chi trong bat tay TLS");
+        }
+        boolean recorded;
+        try (java.sql.Connection db = DatabaseConnection.getConnection();
+             java.sql.PreparedStatement q = db.prepareStatement("SELECT approved, last_account_id FROM trusted_device WHERE fingerprint = ?")) {
+            q.setString(1, deviceFingerprint);
+            try (java.sql.ResultSet rs = q.executeQuery()) {
+                recorded = rs.next() && !rs.getBoolean("approved") && rs.getInt("last_account_id") > 0;
+            }
+        }
+        check(recorded, "Server ghi nhan thiet bi moi (chua duyet) + tai khoan dung no");
+
+        if (monitorPort > 0) {
+            java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();
+            java.net.URI stats = java.net.URI.create("http://127.0.0.1:" + monitorPort + "/api/stats");
+            java.net.http.HttpResponse<String> noToken = http.send(java.net.http.HttpRequest.newBuilder(stats).build(),
+                    java.net.http.HttpResponse.BodyHandlers.ofString());
+            check(noToken.statusCode() == 401, "Bang giam sat: thieu ma truy cap -> 401");
+            java.net.http.HttpResponse<String> withToken = http.send(java.net.http.HttpRequest.newBuilder(stats)
+                    .header("X-Admin-Token", monitorToken).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+            JsonObject snapshot = ProtocolUtil.fromJson(withToken.body(), JsonObject.class);
+            check(withToken.statusCode() == 200 && snapshot.getAsJsonArray("connections").size() >= 2,
+                    "Bang giam sat liet ke cac ket noi dang mo");
+            check(snapshot.getAsJsonObject("metrics").get("requests").getAsLong() > 50, "Bang giam sat dem request");
+            java.net.http.HttpResponse<String> approve = http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(
+                    "http://127.0.0.1:" + monitorPort + "/api/devices/approve?fp=" + java.net.URLEncoder.encode(deviceFingerprint,
+                            StandardCharsets.UTF_8))).header("X-Admin-Token", monitorToken)
+                    .POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+            check(approve.statusCode() == 200 && approve.body().contains("true"), "Quan tri vien phe duyet thiet bi qua bang giam sat");
         }
     }
 
@@ -334,6 +574,8 @@ public class EndToEndCheck {
             check(!b1.req(Command.DELETE_DRAFTS, obj("draftIds", arr(draftId))).isOk(), "B khong xoa duoc nhap cua A");
             check(a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Nháp 1 (sửa)", "body", "xong", "draftId", draftId)).isOk(), "Gui tu nhap");
             check(a1.req(Command.GET_DRAFTS, null).getData().getAsJsonArray().size() == 0, "Gui xong thi nhap bi xoa");
+
+            runV3(tag, pw, a, b, a1, b1, fileEntry);
 
             System.out.println("== Ho so / doi mat khau / thu hoi phien");
             a2.events.clear();

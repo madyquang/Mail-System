@@ -37,11 +37,19 @@ public class JdbcMailDAO implements MailDAO {
 
     @Override
     public int insertMail(Connection connection, int senderId, String subject, String body) throws SQLException {
-        String sql = "INSERT INTO mail (sender_id, subject, body) VALUES (?, ?, ?)";
+        return insertMail(connection, senderId, subject, body, null, null);
+    }
+
+    @Override
+    public int insertMail(Connection connection, int senderId, String subject, String body, Integer threadId,
+            Integer inReplyTo) throws SQLException {
+        String sql = "INSERT INTO mail (sender_id, subject, body, thread_id, in_reply_to) VALUES (?, ?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             statement.setInt(1, senderId);
             statement.setString(2, subject);
             statement.setString(3, body);
+            statement.setObject(4, threadId);
+            statement.setObject(5, inReplyTo);
             statement.executeUpdate();
             try (ResultSet keys = statement.getGeneratedKeys()) {
                 if (keys.next()) {
@@ -104,7 +112,7 @@ public class JdbcMailDAO implements MailDAO {
      */
     private static final String SUMMARY_SELECT = "SELECT m.mail_id, mr.entry_id, sender.email AS sender_email, "
             + "sender.display_name AS sender_name, m.subject, LEFT(m.body, 160) AS snippet, m.sent_at, "
-            + "mr.is_read, mr.is_starred, f.folder_type, "
+            + "mr.is_read, mr.is_starred, f.folder_type, COALESCE(m.thread_id, m.mail_id) AS thread_id, "
             + "EXISTS(SELECT 1 FROM attachment a WHERE a.mail_id = m.mail_id) AS has_attachments "
             + "FROM mail_recipient mr "
             + "JOIN folder f ON f.folder_id = mr.folder_id AND f.account_id = mr.account_id "
@@ -142,7 +150,8 @@ public class JdbcMailDAO implements MailDAO {
 
     @Override
     public Optional<MailDetail> getMailDetail(int mailId, int accountId, Integer entryId) throws SQLException {
-        String sql = "SELECT mr.entry_id, mr.recipient_type, mr.is_starred, m.sender_id, sender.email AS sender_email, "
+        String sql = "SELECT mr.entry_id, mr.recipient_type, mr.is_starred, mr.is_read, COALESCE(m.thread_id, m.mail_id) AS thread_id, "
+                + "m.sender_id, sender.email AS sender_email, "
                 + "sender.display_name AS sender_name, m.subject, m.body, m.sent_at, f.folder_type "
                 + "FROM mail_recipient mr JOIN mail m ON m.mail_id = mr.mail_id "
                 + "JOIN account sender ON sender.account_id = m.sender_id "
@@ -180,6 +189,10 @@ public class JdbcMailDAO implements MailDAO {
                         detail.setEntryId(openedEntryId);
                         detail.setStarred(result.getBoolean("is_starred"));
                         detail.setFolderType(folderType);
+                        detail.setThreadId(result.getInt("thread_id"));
+                        detail.setNewlyRead(!result.getBoolean("is_read") && !"TRASH".equalsIgnoreCase(folderType)
+                                && !"SENDER".equals(recipientType));
+                        detail.setSenderAccountId(result.getInt("sender_id"));
                         detail.setSenderEmail(result.getString("sender_email"));
                         detail.setSenderName(result.getString("sender_name"));
                         detail.setSubject(result.getString("subject"));
@@ -191,10 +204,14 @@ public class JdbcMailDAO implements MailDAO {
                 boolean isSender = accountId == senderId || "SENDER".equals(recipientType);
                 boolean isBccRecipient = "BCC".equals(recipientType);
                 loadRecipients(connection, detail, mailId, accountId, isSender, isBccRecipient);
+                if (isSender) {
+                    detail.setReadReceipts(loadReadReceipts(connection, mailId, accountId));
+                }
                 detail.setAttachments(loadAttachments(connection, mailId));
                 if (!"TRASH".equalsIgnoreCase(folderType)) {
                     try (PreparedStatement statement = connection.prepareStatement(
-                            "UPDATE mail_recipient SET is_read = TRUE WHERE entry_id = ? AND account_id = ?")) {
+                            "UPDATE mail_recipient SET is_read = TRUE, read_at = COALESCE(read_at, NOW()) "
+                                    + "WHERE entry_id = ? AND account_id = ?")) {
                         statement.setInt(1, openedEntryId);
                         statement.setInt(2, accountId);
                         statement.executeUpdate();
@@ -571,6 +588,86 @@ public class JdbcMailDAO implements MailDAO {
         }
     }
 
+    /** Ai đã mở thư (chỉ người nhận bật chia sẻ báo đã đọc). */
+    private List<com.mailsystem.common.model.ReadReceipt> loadReadReceipts(Connection connection, int mailId,
+            int senderId) throws SQLException {
+        String sql = "SELECT a.email, a.display_name, mr.read_at FROM mail_recipient mr "
+                + "JOIN account a ON a.account_id = mr.account_id "
+                + "WHERE mr.mail_id = ? AND mr.recipient_type IN ('TO','CC','BCC') AND mr.read_at IS NOT NULL "
+                + "AND a.share_read_receipts = TRUE AND mr.account_id <> ? ORDER BY mr.read_at";
+        List<com.mailsystem.common.model.ReadReceipt> receipts = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, mailId);
+            statement.setInt(2, senderId);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    receipts.add(new com.mailsystem.common.model.ReadReceipt(result.getString("email"),
+                            result.getString("display_name"),
+                            formatDateTime(result.getObject("read_at", java.time.LocalDateTime.class))));
+                }
+            }
+        }
+        return receipts;
+    }
+
+    @Override
+    public boolean moveToFolder(int entryId, int accountId, int folderId) throws SQLException {
+        // Chỉ chuyển tới thư mục của CHÍNH tài khoản và không phải Thùng rác (xoá dùng DELETE_MAIL).
+        String sql = "UPDATE mail_recipient mr "
+                + "JOIN folder target ON target.folder_id = ? AND target.account_id = mr.account_id "
+                + "AND target.folder_type <> 'TRASH' "
+                + "SET mr.folder_id = target.folder_id, mr.original_folder_id = NULL "
+                + "WHERE mr.entry_id = ? AND mr.account_id = ? AND mr.is_deleted = FALSE";
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, folderId);
+            statement.setInt(2, entryId);
+            statement.setInt(3, accountId);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    @Override
+    public List<int[]> findThreadEntries(int accountId, int threadId) throws SQLException {
+        // Mỗi thư một dòng (tự gửi cho mình có 2 bản: ưu tiên bản nhận), cũ trước mới sau, bỏ Thùng rác.
+        String sql = "SELECT mr.mail_id, mr.entry_id FROM mail_recipient mr "
+                + "JOIN mail m ON m.mail_id = mr.mail_id "
+                + "JOIN folder f ON f.folder_id = mr.folder_id AND f.account_id = mr.account_id "
+                + "WHERE mr.account_id = ? AND COALESCE(m.thread_id, m.mail_id) = ? AND mr.is_deleted = FALSE "
+                + "AND f.folder_type <> 'TRASH' "
+                + "ORDER BY m.sent_at, m.mail_id, (mr.recipient_type = 'SENDER')";
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, accountId);
+            statement.setInt(2, threadId);
+            try (ResultSet result = statement.executeQuery()) {
+                List<int[]> entries = new ArrayList<>();
+                Set<Integer> seenMails = new LinkedHashSet<>();
+                while (result.next()) {
+                    if (seenMails.add(result.getInt("mail_id"))) {
+                        entries.add(new int[] {result.getInt("mail_id"), result.getInt("entry_id")});
+                    }
+                }
+                return entries;
+            }
+        }
+    }
+
+    @Override
+    public Optional<Integer> findThreadRoot(int mailId, int accountId) throws SQLException {
+        String sql = "SELECT COALESCE(m.thread_id, m.mail_id) AS thread_id FROM mail m WHERE m.mail_id = ? "
+                + "AND EXISTS (SELECT 1 FROM mail_recipient mr WHERE mr.mail_id = m.mail_id AND mr.account_id = ? "
+                + "AND mr.is_deleted = FALSE)";
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, mailId);
+            statement.setInt(2, accountId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(result.getInt("thread_id")) : Optional.empty();
+            }
+        }
+    }
+
     @Override
     public List<Integer> getRecipientAccountIds(int mailId) throws SQLException {
         String sql = "SELECT DISTINCT account_id FROM mail_recipient "
@@ -654,6 +751,7 @@ public class JdbcMailDAO implements MailDAO {
         summary.setStarred(result.getBoolean("is_starred"));
         summary.setHasAttachments(result.getBoolean("has_attachments"));
         summary.setFolderType(result.getString("folder_type"));
+        summary.setThreadId(result.getInt("thread_id"));
         return summary;
     }
 

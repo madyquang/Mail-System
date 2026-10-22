@@ -68,10 +68,12 @@ class MailServiceTest {
         List<Integer> inboxLookups = new ArrayList<>();
         FolderDAO folders = fake(FolderDAO.class, Map.of(
                 "findFolderIdByType", (args, c) -> {
-                    if ("INBOX".equals(args[1])) {
-                        inboxLookups.add((Integer) args[0]);
+                    // Hai overload: (accountId, type) và (connection, accountId, type).
+                    int accountId = (Integer) args[args.length - 2];
+                    if ("INBOX".equals(args[args.length - 1])) {
+                        inboxLookups.add(accountId);
                     }
-                    return Optional.of(100 + (Integer) args[0]);
+                    return Optional.of(100 + accountId);
                 }), calls);
         MailService service = new MailService(fake(MailDAO.class, Map.of(), calls),
                 fake(AccountDAO.class, Map.of(), calls), folders, groups, attachments);
@@ -115,8 +117,8 @@ class MailServiceTest {
         List<Integer> inboxLookups = new ArrayList<>();
         FolderDAO folders = fake(FolderDAO.class, Map.of(
                 "findFolderIdByType", (args, c) -> {
-                    if ("INBOX".equals(args[1])) {
-                        inboxLookups.add((Integer) args[0]);
+                    if ("INBOX".equals(args[args.length - 1])) {
+                        inboxLookups.add((Integer) args[args.length - 2]);
                     }
                     return Optional.of(1);
                 }), calls);

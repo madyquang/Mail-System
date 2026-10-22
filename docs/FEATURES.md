@@ -1,4 +1,4 @@
-# FEATURES — Chức năng và ràng buộc (v2.0)
+# FEATURES — Chức năng và ràng buộc (v3.0)
 
 Ứng dụng mail nội bộ: thư chỉ gửi giữa các tài khoản đăng ký trên cùng một
 Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối được mã hoá TLS 1.3.
@@ -14,8 +14,14 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
   đối chiếu; chứng chỉ đổi bất thường thì hiện cảnh báo đỏ.
 - Đăng ký: tên hiển thị (≤ 100 ký tự), email đúng định dạng và chưa dùng, mật
   khẩu ≥ 8 ký tự có chữ và số (thanh độ mạnh mật khẩu), nhập lại khớp.
-- Sai mật khẩu 5 lần: tạm khoá đăng nhập 15 phút.
-- Mất kết nối: cảnh báo kèm lý do, quay về màn hình đăng nhập.
+- Sai mật khẩu 5 lần: tạm khoá đăng nhập 15 phút (khởi động lại Server vẫn giữ khoá).
+- Tài khoản bật xác minh 2 bước: sau mật khẩu đúng, thẻ đăng nhập hiện thêm ô
+  **Mã xác minh 2 bước** (6 số từ Google/Microsoft Authenticator).
+- Mất kết nối khi đang dùng: dải thông báo "Thử kết nối lại sau N giây (lần K)"
+  hiện dưới thanh trên cùng, ứng dụng **tự kết nối lại** (1, 2, 4, 8, 16, 30 giây...)
+  và đăng nhập lại bằng token, không cần nhập mật khẩu. Thao tác xem thư trong
+  lúc đó được gửi lại tự động. Chỉ khi token hết hạn / Server từ chối / quá 5
+  phút mới quay về màn hình đăng nhập.
 
 ## 2. Màn hình chính (bố cục 3 cột)
 
@@ -102,7 +108,25 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
   thường rời nhóm. Chủ nhóm không tự xoá mình / rời nhóm.
 - Chỉ thành viên được gửi tới nhóm; người gửi không nhận lại thư của chính mình.
 
-## 9. Giới hạn hiện tại
+## 9. Tính năng v3
 
-- Chưa có thư mục tự tạo từ giao diện, chưa gửi/nhận qua Internet (SMTP/IMAP),
-  chưa có giao diện tối (dark mode) dù CSS đã tách token màu để bổ sung dễ dàng.
+| Tính năng | Cách dùng |
+| --- | --- |
+| **Thư mục tự tạo** | Mục "Thư mục" ở thanh bên: nút + để tạo, chuột phải để đổi tên / xoá (thư bên trong vào Thùng rác). **Kéo thư** từ danh sách thả vào thư mục, Hộp thư đến hoặc Thùng rác; hoặc nút "Chuyển tới" trên thanh thao tác khi chọn nhiều thư |
+| **Hội thoại** | Trả lời tự nối vào hội thoại. Danh sách gộp các thư cùng hội thoại thành một dòng có số thư; khung đọc xếp thư cũ → mới, thư cũ thu gọn (bấm để mở). Bật/tắt ở menu ảnh đại diện → "Gộp thư theo hội thoại" |
+| **Hoàn tác gửi** | Bấm Gửi: toast "Đang gửi thư... Hoàn tác (8)" đếm ngược; bấm Hoàn tác thì khung soạn mở lại nguyên nội dung và tệp |
+| **Hẹn giờ gửi** | Nút lịch cạnh nút Gửi: sau 1 giờ, sáng mai 8:00, chiều mai 13:00, sáng thứ Hai, hoặc tự chọn ngày giờ. Mục **Đã lên lịch** liệt kê thư chờ, nút "Huỷ & sửa" |
+| **Giao diện tối** | Menu ảnh đại diện → "Giao diện tối"; đổi ngay cho mọi cửa sổ, được nhớ cho lần sau |
+| **Xem trước tệp** | Ảnh PNG/JPG, PDF (từng trang) và TXT mở ngay trong ứng dụng (nút con mắt); vẫn có nút lưu về máy / mở bằng ứng dụng khác |
+| **Kéo thả tệp vào thư** | Kéo tệp từ Explorer thả vào cửa sổ soạn thư |
+| **Báo đã đọc** | Người gửi thấy "Đã xem: Bình (20:06)" trong thư đã gửi và nhận thông báo khi người nhận mở thư. Tắt ở Tài khoản → Bảo mật → Quyền riêng tư |
+| **Xác minh 2 bước** | Tài khoản → Bảo mật → Bật: quét QR, nhập mã để xác nhận |
+| **Chứng chỉ thiết bị** | Tài khoản → Kết nối hiện dấu vân tay thiết bị để gửi quản trị viên duyệt |
+| **Tải tiếp khi rớt mạng** | Tệp đang tải lên/xuống tiếp tục từ chỗ dừng sau khi kết nối lại |
+
+## 10. Giới hạn hiện tại
+
+- Chưa gửi/nhận qua Internet (SMTP/IMAP), chưa có mã khôi phục cho 2FA.
+- Hẹn giờ dùng giờ của máy chủ (Client và Server cùng múi giờ trong mạng nội bộ).
+- Huỷ thư hẹn giờ từ mục Đã lên lịch thì phải đính kèm lại tệp (tệp đã nằm ở
+  Server, không còn trên máy). Hoàn tác ngay sau khi gửi thì vẫn giữ tệp.

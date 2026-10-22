@@ -25,4 +25,16 @@ public interface FolderDAO {
 
     Optional<Integer> findFolderIdByType(Connection connection, int accountId, String folderType)
             throws SQLException;
+
+    /** Thư mục (bất kỳ loại) của tài khoản; rỗng nếu không thuộc tài khoản. */
+    Optional<Folder> findById(int accountId, int folderId) throws SQLException;
+
+    int countCustom(int accountId) throws SQLException;
+
+    int createCustom(int accountId, String name) throws SQLException;
+
+    boolean renameCustom(int accountId, int folderId, String name) throws SQLException;
+
+    /** Chuyển thư trong thư mục vào Thùng rác rồi xoá thư mục (một transaction). @return số thư đã chuyển */
+    int deleteCustom(int accountId, int folderId) throws SQLException;
 }

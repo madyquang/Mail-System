@@ -6,6 +6,23 @@
 db.username=root
 db.password=MAT_KHAU_MYSQL_CUA_BAN
 
+# Kết nối MySQL. sslMode: DISABLED | PREFERRED (mặc định) | REQUIRED | VERIFY_CA | VERIFY_IDENTITY.
+# MySQL nằm ở máy khác thì dùng REQUIRED trở lên để mật khẩu băm và nội dung thư không đi rõ trên mạng.
+# db.url=jdbc:mysql://localhost:3306/mail_system?sslMode=REQUIRED&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8
+# db.poolSize=10
+
 # Bỏ comment để đổi cổng hoặc nới giới hạn khi demo:
 # server.port=5000
 # security.loginMaxFailures=5
+
+# Chứng chỉ thiết bị (mutual TLS): off | want (ghi nhận, vẫn cho vào) | need (chỉ thiết bị đã duyệt)
+# tls.clientAuth=want
+
+# Bảng giám sát HTTP (chỉ mở được trên chính máy Server). Để trống token = sinh ngẫu nhiên mỗi lần chạy.
+# monitor.enabled=true
+# monitor.port=8090
+# monitor.token=
+
+# server.threads=auto          # auto | virtual (Java 21+) | platform
+# security.resumeTokenMinutes=720
+# upload.expiryMinutes=30

@@ -45,12 +45,22 @@ class CommandRouterTest {
         @Override
         public void signOut() {
         }
+
+        @Override
+        public void setResumeTokenHash(String hash) {
+        }
+
+        @Override
+        public String deviceFingerprint() {
+            return null;
+        }
     }
 
     @Test
     void everyCommandHasARouteAndOnlyPublicOnesSkipLogin() {
         CommandRouter router = new CommandRouter(ServerServices.createDefault());
-        Set<Command> publicCommands = EnumSet.of(Command.PING, Command.REGISTER, Command.LOGIN);
+        Set<Command> publicCommands = EnumSet.of(Command.PING, Command.REGISTER, Command.LOGIN,
+                Command.RESUME_SESSION);
         for (Command command : Command.values()) {
             if (publicCommands.contains(command)) {
                 continue;

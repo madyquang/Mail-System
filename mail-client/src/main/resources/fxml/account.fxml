@@ -29,7 +29,7 @@
             <Tab text="Bảo mật">
                 <graphic><FontIcon iconLiteral="mdi2s-shield-check-outline" iconSize="16" styleClass="icon" /></graphic>
                 <ScrollPane fitToWidth="true">
-                    <VBox spacing="14">
+                    <VBox fx:id="securityBox" spacing="14">
                         <VBox styleClass="panel" spacing="10">
                             <Label text="Đổi mật khẩu" styleClass="title-md" />
                             <Label text="Mật khẩu hiện tại" styleClass="field-label" />
@@ -72,7 +72,12 @@
                         <Label text="Dấu vân tay SHA-256" styleClass="kv-key" GridPane.rowIndex="3" GridPane.columnIndex="0" />
                         <TextArea fx:id="fingerprintValue" styleClass="fingerprint" editable="false" wrapText="true"
                                   prefRowCount="3" GridPane.rowIndex="3" GridPane.columnIndex="1" />
+                        <Label text="Chứng chỉ thiết bị" styleClass="kv-key" GridPane.rowIndex="4" GridPane.columnIndex="0" />
+                        <TextArea fx:id="deviceValue" styleClass="fingerprint" editable="false" wrapText="true"
+                                  prefRowCount="3" GridPane.rowIndex="4" GridPane.columnIndex="1" />
                     </GridPane>
+                    <Label text="Chứng chỉ thiết bị (mutual TLS) được tạo riêng cho máy này và gửi cho máy chủ khi bắt tay TLS. Nếu quản trị viên bật chế độ chỉ cho thiết bị đã duyệt, hãy gửi dấu vân tay trên để được phê duyệt."
+                           styleClass="hint" wrapText="true" />
                     <Label text="Ứng dụng ghi nhớ dấu vân tay của máy chủ (mô hình TOFU). Nếu chứng chỉ máy chủ thay đổi bất thường, bạn sẽ được cảnh báo trước khi gửi mật khẩu."
                            styleClass="hint" wrapText="true" />
                 </VBox>

@@ -1,6 +1,7 @@
 package com.mailsystem.client;
 
 import com.mailsystem.client.app.Navigator;
+import com.mailsystem.client.app.Reconnector;
 import com.mailsystem.client.network.ServerConnection;
 import com.mailsystem.client.network.TlsConnector;
 import com.mailsystem.client.service.DesktopNotifier;
@@ -25,6 +26,14 @@ public class MailClientApp extends Application {
         stage.setWidth(1240);
         stage.setHeight(780);
 
+        installConnectionHandlers();
+
+        Navigator.show(Navigator.LOGIN);
+        stage.show();
+    }
+
+    /** Hộp thoại xác nhận chứng chỉ TLS + phản ứng khi mất kết nối (tự kết nối lại hoặc về màn đăng nhập). */
+    public static void installConnectionHandlers() {
         TlsConnector tls = ServerConnection.getInstance().tlsConnector();
         if (tls != null) {
             tls.setDecider(identity -> Dialogs.trustServer(Navigator.owner(), identity));
@@ -34,16 +43,21 @@ public class MailClientApp extends Application {
             if (Navigator.LOGIN.equals(screen) || Navigator.REGISTER.equals(screen)) {
                 return; // chưa có phiên nào bị mất; lần bấm tiếp theo tự kết nối lại
             }
-            DesktopNotifier.shutdown();
-            Navigator.showLogin(reason + " Vui lòng đăng nhập lại khi máy chủ sẵn sàng.");
+            // Đang đăng nhập: tự kết nối lại bằng token thay vì đá về màn đăng nhập.
+            if (!Reconnector.get().start(reason)) {
+                DesktopNotifier.shutdown();
+                Navigator.showLogin(reason + " Vui lòng đăng nhập lại khi máy chủ sẵn sàng.");
+            }
         }));
-
-        Navigator.show(Navigator.LOGIN);
-        stage.show();
+        Reconnector.get().setOnGiveUp(reason -> {
+            DesktopNotifier.shutdown();
+            Navigator.showLogin(reason + " Vui lòng đăng nhập lại.");
+        });
     }
 
     @Override
     public void stop() {
+        Reconnector.get().cancel();
         DesktopNotifier.shutdown();
         ServerConnection.getInstance().disconnect();
     }

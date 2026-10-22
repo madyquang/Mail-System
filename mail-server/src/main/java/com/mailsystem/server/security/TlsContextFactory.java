@@ -56,7 +56,10 @@ public final class TlsContextFactory {
         KeyManagerFactory keyManagers = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
         keyManagers.init(store, password);
         SSLContext context = SSLContext.getInstance("TLSv1.3");
-        context.init(keyManagers.getKeyManagers(), null, new SecureRandom());
+        // Chứng chỉ CLIENT (mutual TLS) là tự ký nên không kiểm theo CA: chấp nhận ở bước bắt tay,
+        // rồi ClientHandler đối chiếu dấu vân tay với danh sách thiết bị đã duyệt (DeviceRegistry).
+        context.init(keyManagers.getKeyManagers(), new javax.net.ssl.TrustManager[] {new ClientCertificateRecorder()},
+                new SecureRandom());
         return new ServerTls(context, certificate, CertificateFingerprints.sha256(certificate));
     }
 
@@ -132,6 +135,29 @@ public final class TlsContextFactory {
             }
         }
         throw new GeneralSecurityException("Keystore không chứa chứng chỉ X.509");
+    }
+
+    /** Chỉ kiểm hạn dùng của chứng chỉ client; quyết định cho phép nằm ở DeviceRegistry. */
+    private static final class ClientCertificateRecorder implements javax.net.ssl.X509TrustManager {
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType)
+                throws java.security.cert.CertificateException {
+            if (chain == null || chain.length == 0) {
+                throw new java.security.cert.CertificateException("Thiếu chứng chỉ client");
+            }
+            chain[0].checkValidity();
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType)
+                throws java.security.cert.CertificateException {
+            throw new java.security.cert.CertificateException("Server không đóng vai client TLS");
+        }
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            return new X509Certificate[0];
+        }
     }
 
     private static void restrictToOwner(Path file) {

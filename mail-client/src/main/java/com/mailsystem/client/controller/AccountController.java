@@ -5,6 +5,12 @@ import com.mailsystem.client.app.Navigator;
 import com.mailsystem.client.app.Session;
 import com.mailsystem.client.network.Connector;
 import com.mailsystem.client.network.ServerConnection;
+import com.mailsystem.client.network.TlsConnector;
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.EncodeHintType;
+import com.google.zxing.WriterException;
+import com.google.zxing.common.BitMatrix;
+import com.google.zxing.qrcode.QRCodeWriter;
 import com.mailsystem.client.service.DesktopNotifier;
 import com.mailsystem.client.ui.Avatar;
 import com.mailsystem.client.ui.Dialogs;
@@ -16,6 +22,13 @@ import com.mailsystem.common.model.Account;
 import com.mailsystem.common.protocol.ProtocolConstants;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.PasswordField;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.image.WritableImage;
+import javafx.scene.paint.Color;
+import javafx.scene.layout.VBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
@@ -58,6 +71,16 @@ public class AccountController {
     private Label cipherValue;
     @FXML
     private TextArea fingerprintValue;
+    @FXML
+    private TextArea deviceValue;
+    @FXML
+    private VBox securityBox;
+
+    private final Label totpStatus = new Label();
+    private final Button totpButton = new Button();
+    private final VBox totpSetupBox = new VBox(10);
+    private final CheckBox shareReceipts = new CheckBox("Gửi xác nhận đã đọc cho người gửi");
+    private boolean totpEnabled;
 
     private final MailApi api = MailApi.get();
     private final Avatar avatar = new Avatar(56);
@@ -84,6 +107,157 @@ public class AccountController {
         protocolValue.setText(encrypted ? security.protocol() : "—");
         cipherValue.setText(encrypted ? security.cipherSuite() : "—");
         fingerprintValue.setText(encrypted && security.fingerprint() != null ? security.fingerprint() : "—");
+        TlsConnector tls = ServerConnection.getInstance().tlsConnector();
+        String device = tls == null ? null : tls.device().fingerprint();
+        deviceValue.setText(device == null ? "Không có (máy này không tạo được chứng chỉ thiết bị)" : device);
+
+        buildTwoFactorPanel();
+        buildPrivacyPanel();
+        Fx.then(api.settings(), settings -> {
+            shareReceipts.setSelected(settings.isShareReadReceipts());
+            shareReceipts.setDisable(false);
+            showTotpState(settings.isTotpEnabled());
+        }, error -> totpStatus.setText("Không tải được cài đặt: " + error));
+    }
+
+    // ------------------------------------------------------------------ xác minh 2 bước (TOTP)
+
+    private void buildTwoFactorPanel() {
+        Label title = new Label("Xác minh 2 bước");
+        title.getStyleClass().add("title-md");
+        Label hint = new Label("Ngoài mật khẩu, mỗi lần đăng nhập cần thêm mã 6 số đổi mỗi 30 giây từ ứng dụng "
+                + "Google Authenticator / Microsoft Authenticator trên điện thoại. Kẻ lấy được mật khẩu vẫn không vào được.");
+        hint.getStyleClass().add("hint");
+        hint.setWrapText(true);
+        totpStatus.setWrapText(true);
+        totpButton.setOnAction(event -> {
+            if (totpEnabled) {
+                disableTotp();
+            } else {
+                startTotpSetup();
+            }
+        });
+        totpSetupBox.setVisible(false);
+        totpSetupBox.setManaged(false);
+        VBox panel = new VBox(10, title, hint, totpStatus, new HBox(totpButton), totpSetupBox);
+        panel.getStyleClass().add("panel");
+        securityBox.getChildren().add(1, panel);
+    }
+
+    private void showTotpState(boolean enabled) {
+        totpEnabled = enabled;
+        totpStatus.setText(enabled ? "Đang BẬT: đăng nhập cần mật khẩu + mã xác minh." : "Đang tắt.");
+        totpStatus.getStyleClass().setAll("label", enabled ? "success-text" : "text-muted");
+        totpButton.setText(enabled ? "Tắt xác minh 2 bước" : "Bật xác minh 2 bước");
+        totpButton.getStyleClass().setAll("button", enabled ? "secondary-button" : "primary-button");
+        totpSetupBox.setVisible(false);
+        totpSetupBox.setManaged(false);
+    }
+
+    private void startTotpSetup() {
+        totpButton.setDisable(true);
+        Fx.then(api.totpSetup(), setup -> {
+            totpButton.setDisable(false);
+            StackPane qr = new StackPane(new ImageView(qrImage(setup.otpauthUri(), 200)));
+            qr.getStyleClass().add("qr-frame");
+            qr.setMaxSize(StackPane.USE_PREF_SIZE, StackPane.USE_PREF_SIZE);
+            Label step1 = new Label("1. Quét mã QR bằng ứng dụng xác thực (hoặc nhập khoá thủ công):");
+            step1.setWrapText(true);
+            TextField secret = new TextField(setup.secret().replaceAll("(.{4})", "$1 ").trim());
+            secret.setEditable(false);
+            secret.getStyleClass().add("mono");
+            Label step2 = new Label("2. Nhập mã 6 số ứng dụng hiển thị để xác nhận:");
+            TextField code = new TextField();
+            code.setPromptText("123456");
+            code.getStyleClass().add("totp-field");
+            code.setMaxWidth(180);
+            Button confirm = new Button("Xác nhận và bật");
+            confirm.getStyleClass().add("primary-button");
+            Runnable submit = () -> {
+                confirm.setDisable(true);
+                Fx.then(api.totpEnable(code.getText().trim()), ignored -> {
+                    showTotpState(true);
+                    Toast.success(root, "Đã bật xác minh 2 bước.");
+                }, error -> {
+                    confirm.setDisable(false);
+                    Toast.error(root, error);
+                });
+            };
+            confirm.setOnAction(event -> submit.run());
+            code.setOnAction(event -> submit.run());
+            totpSetupBox.getChildren().setAll(step1, qr, secret, step2, new HBox(10, code, confirm));
+            totpSetupBox.setVisible(true);
+            totpSetupBox.setManaged(true);
+            code.requestFocus();
+        }, error -> {
+            totpButton.setDisable(false);
+            Toast.error(root, error);
+        });
+    }
+
+    private void disableTotp() {
+        PasswordField password = new PasswordField();
+        password.setPromptText("Mật khẩu hiện tại");
+        TextField code = new TextField();
+        code.setPromptText("Mã 6 số");
+        Button confirm = new Button("Tắt xác minh 2 bước");
+        confirm.getStyleClass().add("danger-button");
+        confirm.setOnAction(event -> {
+            confirm.setDisable(true);
+            Fx.then(api.totpDisable(password.getText(), code.getText().trim()), ignored -> {
+                showTotpState(false);
+                Toast.success(root, "Đã tắt xác minh 2 bước.");
+            }, error -> {
+                confirm.setDisable(false);
+                Toast.error(root, error);
+            });
+        });
+        Label hint = new Label("Xác nhận bằng mật khẩu và một mã hiện tại:");
+        totpSetupBox.getChildren().setAll(hint, password, code, new HBox(confirm));
+        totpSetupBox.setVisible(true);
+        totpSetupBox.setManaged(true);
+        password.requestFocus();
+    }
+
+    /** Vẽ mã QR (ZXing tính ma trận điểm, JavaFX tô từng điểm). */
+    private static Image qrImage(String text, int size) {
+        try {
+            BitMatrix matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size,
+                    java.util.Map.of(EncodeHintType.MARGIN, 1));
+            WritableImage image = new WritableImage(matrix.getWidth(), matrix.getHeight());
+            for (int y = 0; y < matrix.getHeight(); y++) {
+                for (int x = 0; x < matrix.getWidth(); x++) {
+                    image.getPixelWriter().setColor(x, y, matrix.get(x, y) ? Color.BLACK : Color.WHITE);
+                }
+            }
+            return image;
+        } catch (WriterException error) {
+            throw new IllegalStateException(error);
+        }
+    }
+
+    // ------------------------------------------------------------------ quyền riêng tư
+
+    private void buildPrivacyPanel() {
+        Label title = new Label("Quyền riêng tư");
+        title.getStyleClass().add("title-md");
+        Label hint = new Label("Khi bật, người gửi thấy bạn đã mở thư của họ lúc nào. Khi tắt, bạn cũng vẫn thấy "
+                + "xác nhận từ những người khác vẫn bật.");
+        hint.getStyleClass().add("hint");
+        hint.setWrapText(true);
+        shareReceipts.setDisable(true);
+        shareReceipts.setOnAction(event -> {
+            boolean value = shareReceipts.isSelected();
+            Fx.then(api.setShareReadReceipts(value),
+                    ignored -> Toast.success(root, value ? "Đã bật gửi xác nhận đã đọc." : "Đã tắt gửi xác nhận đã đọc."),
+                    error -> {
+                        shareReceipts.setSelected(!value);
+                        Toast.error(root, error);
+                    });
+        });
+        VBox panel = new VBox(10, title, shareReceipts, hint);
+        panel.getStyleClass().add("panel");
+        securityBox.getChildren().add(2, panel);
     }
 
     private void showAccount(Account account) {

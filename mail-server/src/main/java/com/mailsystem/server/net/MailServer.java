@@ -16,10 +16,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import javax.net.ServerSocketFactory;
 import javax.net.ssl.SSLServerSocket;
@@ -42,6 +40,7 @@ public class MailServer {
     private final ServerSocketFactory socketFactory;
     private final CommandRouter router;
     private final Supplier<RateLimiter> rateLimiters;
+    private final String clientAuthMode;
     private final Semaphore connectionSlots;
     private final Set<ClientHandler> connections = ConcurrentHashMap.newKeySet();
     private final ExecutorService clientThreads;
@@ -51,6 +50,13 @@ public class MailServer {
 
     public MailServer(int port, int maxClients, int idleTimeoutMillis, ServerSocketFactory socketFactory,
             CommandRouter router, Supplier<RateLimiter> rateLimiters) {
+        this(port, maxClients, idleTimeoutMillis, socketFactory, router, rateLimiters, "want");
+    }
+
+    /** clientAuthMode: off | want | need (mutual TLS, xem DeviceRegistry). */
+    public MailServer(int port, int maxClients, int idleTimeoutMillis, ServerSocketFactory socketFactory,
+            CommandRouter router, Supplier<RateLimiter> rateLimiters, String clientAuthMode) {
+        this.clientAuthMode = clientAuthMode;
         this.port = port;
         this.maxClients = maxClients;
         this.idleTimeoutMillis = idleTimeoutMillis;
@@ -58,12 +64,8 @@ public class MailServer {
         this.router = router;
         this.rateLimiters = rateLimiters;
         this.connectionSlots = new Semaphore(maxClients);
-        AtomicInteger threadNumber = new AtomicInteger();
-        this.clientThreads = Executors.newCachedThreadPool(task -> {
-            Thread thread = new Thread(task, "mail-client-" + threadNumber.incrementAndGet());
-            thread.setDaemon(true);
-            return thread;
-        });
+        // Virtual thread (Java 21+) hoặc thread pool thường, xem ServerThreads.
+        this.clientThreads = ServerThreads.newConnectionExecutor();
     }
 
     /** Mở cổng lắng nghe. Trả về cổng thực tế (hữu ích khi port = 0 trong test). */
@@ -71,7 +73,9 @@ public class MailServer {
         ServerSocket socket = socketFactory.createServerSocket();
         if (socket instanceof SSLServerSocket sslSocket) {
             sslSocket.setEnabledProtocols(ProtocolConstants.TLS_PROTOCOLS);
-            sslSocket.setNeedClientAuth(false); // xác thực người dùng bằng mật khẩu ở tầng ứng dụng
+            // Chứng chỉ thiết bị (mutual TLS): "want" xin nhưng không bắt buộc ở bước bắt tay;
+            // quyết định cho phép nằm ở ClientHandler (để báo lỗi rõ ràng thay vì cắt kết nối).
+            sslSocket.setWantClientAuth(!"off".equals(clientAuthMode));
         }
         // Cho phép bind lại cổng ngay sau khi Server cũ vừa tắt (cổng còn ở TIME_WAIT).
         socket.setReuseAddress(true);
@@ -80,7 +84,8 @@ public class MailServer {
         running = true;
         System.out.println("[MailServer] Dang lang nghe tai cong " + socket.getLocalPort()
                 + (socket instanceof SSLServerSocket ? " (TLS 1.3)" : " (KHONG MA HOA)")
-                + ", toi da " + maxClients + " ket noi");
+                + ", toi da " + maxClients + " ket noi, " + ServerThreads.activeMode() + " thread, "
+                + "chung chi thiet bi: " + clientAuthMode);
         return socket.getLocalPort();
     }
 
@@ -116,6 +121,7 @@ public class MailServer {
         }
 
         if (!connectionSlots.tryAcquire()) {
+            com.mailsystem.server.monitor.ServerMetrics.get().recordConnection(false);
             // Gửi lỗi trên thread pool: với TLS, ghi dữ liệu cần bắt tay xong,
             // không được để client chậm chặn vòng accept().
             clientThreads.execute(() -> rejectBusy(client));
@@ -125,7 +131,8 @@ public class MailServer {
                 + " (dang mo " + (maxClients - connectionSlots.availablePermits()) + " ket noi)");
 
         ClientHandler[] holder = new ClientHandler[1];
-        ClientHandler handler = new ClientHandler(client, router, rateLimiters.get(), () -> {
+        com.mailsystem.server.monitor.ServerMetrics.get().recordConnection(true);
+        ClientHandler handler = new ClientHandler(client, router, rateLimiters.get(), clientThreads, clientAuthMode, () -> {
             connections.remove(holder[0]);
             connectionSlots.release();
         });
@@ -173,5 +180,27 @@ public class MailServer {
 
     public int activeConnections() {
         return connections.size();
+    }
+
+    public int maxClients() {
+        return maxClients;
+    }
+
+    /** Danh sách kết nối cho bảng giám sát. */
+    public java.util.List<java.util.Map<String, Object>> connectionSnapshot() {
+        return connections.stream().map(ClientHandler::snapshot)
+                .sorted(java.util.Comparator.comparing(info -> (Integer) info.get("id")))
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /** Quản trị viên ngắt một kết nối. */
+    public boolean kick(int connectionId) {
+        for (ClientHandler handler : connections) {
+            if (handler.id() == connectionId) {
+                handler.forceClose();
+                return true;
+            }
+        }
+        return false;
     }
 }

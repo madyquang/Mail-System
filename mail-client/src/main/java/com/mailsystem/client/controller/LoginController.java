@@ -6,6 +6,7 @@ import com.mailsystem.client.app.Session;
 import com.mailsystem.client.network.ServerConnection;
 import com.mailsystem.client.ui.Fx;
 import com.mailsystem.client.ui.PasswordField2;
+import com.mailsystem.common.protocol.ErrorCodes;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
@@ -32,6 +33,10 @@ public class LoginController {
     @FXML
     private Hyperlink serverToggle;
     @FXML
+    private VBox totpBox;
+    @FXML
+    private TextField totpField;
+    @FXML
     private Label errorLabel;
     @FXML
     private Label noticeLabel;
@@ -46,6 +51,16 @@ public class LoginController {
         serverToggle.setText("Máy chủ: " + Session.serverAddress());
         emailField.setText(Session.lastEmail());
         passwordField.setOnAction(event -> handleLogin());
+        // Chỉ nhận chữ số, tối đa 6 ký tự.
+        totpField.textProperty().addListener((obs, old, value) -> {
+            String digits = value.replaceAll("\\D", "");
+            if (digits.length() > 6) {
+                digits = digits.substring(0, 6);
+            }
+            if (!digits.equals(value)) {
+                totpField.setText(digits);
+            }
+        });
         String notice = Navigator.consumeNotice();
         if (notice != null) {
             show(noticeLabel, notice);
@@ -74,21 +89,45 @@ public class LoginController {
             showError(addressError);
             return;
         }
+        String totp = totpBox.isVisible() ? totpField.getText().trim() : null;
+        if (totp != null && totp.length() != 6) {
+            showError("Nhập mã 6 chữ số trong ứng dụng xác thực.");
+            totpField.requestFocus();
+            return;
+        }
         serverToggle.setText("Máy chủ: " + Session.serverAddress());
         hide(errorLabel);
         setBusy(true);
-        Fx.then(ServerConnection.getInstance().ensureConnectedAsync(Session.serverHost(), Session.serverPort())
-                        .thenCompose(ignored -> MailApi.get().login(email, password)),
-                account -> {
+        ServerConnection.getInstance().ensureConnectedAsync(Session.serverHost(), Session.serverPort())
+                .thenCompose(ignored -> MailApi.get().login(email, password, totp))
+                .whenComplete((result, error) -> Platform.runLater(() -> {
                     setBusy(false);
-                    Session.signIn(account);
-                    Navigator.show(Navigator.MAIN);
-                },
-                error -> {
-                    setBusy(false);
-                    showError(error);
-                    passwordField.requestInputFocus();
-                });
+                    if (error == null) {
+                        Session.signIn(result.account());
+                        Session.setResumeToken(result.resumeToken());
+                        Navigator.show(Navigator.MAIN);
+                        return;
+                    }
+                    if (ErrorCodes.TOTP_REQUIRED.equals(Fx.code(error))) {
+                        // Mật khẩu đúng, tài khoản bật xác minh 2 bước: hỏi thêm mã.
+                        boolean firstAsk = !totpBox.isVisible();
+                        totpBox.setVisible(true);
+                        totpBox.setManaged(true);
+                        totpField.clear();
+                        totpField.requestFocus();
+                        if (firstAsk) {
+                            hide(errorLabel);
+                            show(noticeLabel, Fx.message(error));
+                            return;
+                        }
+                    }
+                    showError(Fx.message(error));
+                    if (totpBox.isVisible()) {
+                        totpField.requestFocus();
+                    } else {
+                        passwordField.requestInputFocus();
+                    }
+                }));
     }
 
     @FXML
@@ -113,6 +152,7 @@ public class LoginController {
         spinner.setVisible(busy);
         emailField.setDisable(busy);
         passwordField.setDisable(busy);
+        totpField.setDisable(busy);
     }
 
     private void showError(String message) {

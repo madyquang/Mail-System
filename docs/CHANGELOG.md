@@ -1,5 +1,37 @@
 # Changelog
 
+## [3.0.0] - 2026-10-22
+
+**Mạng & hiệu năng**
+- Tự kết nối lại khi rớt mạng: exponential backoff (1 → 30 giây), `RESUME_SESSION` với token một-lần xoay vòng
+  (Server chỉ lưu SHA-256), request chỉ-đọc được gửi lại tự động sau khi nối lại; dải thông báo trạng thái.
+- Truyền tiếp tệp: phiên tải lên gắn với tài khoản (giữ 30 phút), `UPLOAD_STATUS`; tải xuống ghi `.mailpart` theo offset.
+- Virtual thread (Java 21+, gọi qua reflection, vẫn biên dịch Java 17) và HikariCP cho MySQL.
+- Bảng giám sát HTTP (`com.sun.net.httpserver`, chỉ 127.0.0.1, mã truy cập): kết nối, request/giây, độ trễ,
+  pool MySQL, thiết bị, nhật ký bảo mật; ngắt kết nối và duyệt thiết bị từ trình duyệt.
+- Kiểm thử tải `LoadTest` (100 client: ~2 760 request/giây, p99 15,6 ms, 0 lỗi).
+
+**Bảo mật**
+- Xác minh 2 bước TOTP (RFC 6238) có mã QR (ZXing), chống dùng lại mã.
+- Mutual TLS: chứng chỉ thiết bị EC P-256 tự tạo, Server ghi nhận / duyệt (`tls.clientAuth` off|want|need).
+- Khoá đăng nhập lưu bền trong bảng `login_attempt`.
+- Kết nối MySQL qua TLS (`sslMode=PREFERRED` mặc định), Server in bộ mã hoá đang dùng.
+- Mã lỗi máy đọc được trong RESPONSE (`code`: TOTP_REQUIRED, RESUME_REJECTED, DEVICE_NOT_APPROVED, RATE_LIMITED).
+
+**Tính năng**
+- Thư mục tự tạo (tạo / đổi tên / xoá), chuyển thư bằng kéo thả hoặc menu "Chuyển tới".
+- Hội thoại: `inReplyTo`/`threadId`, danh sách gộp theo hội thoại, khung đọc dạng chuỗi thư.
+- Hoàn tác gửi (8 giây) và hẹn giờ gửi qua hộp thư chờ `outbox`; giao thư trong cùng giao dịch với việc
+  lấy khỏi hàng chờ nên không gửi trùng; mục "Đã lên lịch".
+- Báo đã đọc (`READ_RECEIPT`, danh sách người đã xem), có tuỳ chọn tắt.
+- Giao diện tối (token màu trong `dark.css`), xem trước ảnh / PDF (PDFBox) / TXT, kéo thả tệp vào thư.
+
+**Hạ tầng**
+- Migration `20261023_v3_threads_receipts_2fa_outbox.sql`; `schema.sql` cập nhật tương ứng.
+- GitHub Actions: build + test JDK 17/21, e2e với MySQL 8.
+- `scripts/package.ps1` (jpackage, kèm runtime, giữ `keytool`), `scripts/loadtest.ps1`.
+- Test: 54 unit test (6 common, 41 server, 7 client), 109 kịch bản e2e.
+
 ## [2.1.0] - 2026-10-22
 
 - Gợi ý khi gõ (autocomplete) dùng chung một component `AutoComplete`: ô Tới/Cc/Bcc gợi ý người và nhóm (người đã trao đổi thư xếp trước), ô tìm thư gợi ý thư khớp, người gửi và tìm kiếm gần đây, ô Người gửi và ô thêm thành viên nhóm gợi ý người. Debounce 180 ms, bỏ phản hồi cũ về trễ, điều hướng bằng bàn phím.

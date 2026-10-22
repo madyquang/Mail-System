@@ -85,7 +85,7 @@ public class ServerConnection {
     }
 
     private ServerConnection() {
-        this(ProtocolConstants.HEARTBEAT_INTERVAL_SECONDS, new TlsConnector(KnownServers.inUserHome()));
+        this(ProtocolConstants.HEARTBEAT_INTERVAL_SECONDS, new TlsConnector(KnownServers.inUserHome(), DeviceIdentity::inUserHome));
     }
 
     /** Bộ kết nối TLS (để giao diện gắn hộp thoại xác nhận chứng chỉ). */

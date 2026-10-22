@@ -12,7 +12,8 @@ Mail-System/
 ├── database/
 │   ├── schema.sql               Tạo CSDL mới
 │   └── migrations/              Nâng cấp CSDL đã có (chạy lại nhiều lần vẫn an toàn)
-├── scripts/                     setup-db, build, run-server, run-client, test, e2e (PowerShell)
+├── scripts/                     setup-db, build, run-server, run-client, test, e2e, loadtest, package (PowerShell)
+├── .github/workflows/ci.yml     CI: build + unit test (JDK 17, 21) và e2e với MySQL 8 trên mỗi push
 ├── docs/                        Tài liệu (xem README)
 ├── data/                        Sinh ra khi chạy Server (bị .gitignore)
 │   ├── attachments/             Nội dung tệp đính kèm (tên UUID)
@@ -22,41 +23,48 @@ Mail-System/
 ├── mail-common/                 HỢP ĐỒNG chung Client ↔ Server
 │   └── com.mailsystem.common
 │       ├── protocol/            RequestMessage, ResponseMessage, EventMessage, Command, EventName,
-│       │                        FrameReader, ProtocolUtil, ProtocolConstants
-│       ├── model/               Account, Folder, MailSummary, MailDetail, Attachment, Draft, MailGroupDTO
+│       │                        FrameReader, ProtocolUtil, ProtocolConstants, ErrorCodes
+│       ├── model/               Account, Folder, MailSummary, MailDetail, Attachment, Draft, MailGroupDTO,
+│       │                        ReadReceipt, ScheduledMail, AccountSettings
 │       └── security/            CertificateFingerprints
 │
 ├── mail-server/
 │   └── com.mailsystem.server
-│       ├── MailServerApplication   Entry point: cấu hình → TLS → MySQL → service → mở cổng
+│       ├── MailServerApplication   Entry point: cấu hình → TLS → MySQL → service → tác vụ nền → giám sát → mở cổng
 │       ├── config/              ServerConfig (đọc cấu hình nhiều lớp)
-│       ├── net/                 MailServer (accept), ClientHandler (1 kết nối), CommandRouter, ConnectionContext
+│       ├── net/                 MailServer (accept), ClientHandler (1 kết nối), CommandRouter, ConnectionContext,
+│       │                        ServerThreads (virtual thread / thread pool)
+│       ├── monitor/             DashboardServer (HTTP, 127.0.0.1), ServerMetrics; resources/monitor/dashboard.html
 │       ├── service/             AuthService, AccountService, MailService, DraftService, FolderService,
 │       │                        GroupService, ContactService, ServerServices
 │       ├── dao/                 Interface truy cập dữ liệu
 │       │   └── jdbc/            Cài đặt JDBC (PreparedStatement)
-│       ├── db/                  DatabaseConnection
-│       ├── session/             SessionManager (accountId → các phiên), ClientSession
+│       ├── db/                  DatabaseConnection (HikariCP, kiểm tra TLS tới MySQL)
+│       ├── session/             SessionManager (accountId → các phiên), ClientSession, ResumeTokens
 │       ├── security/            TlsContextFactory, PasswordHasher, PasswordPolicy, LoginThrottle,
-│       │                        RateLimiter, SlidingWindowLimiter, FileSignatures, SecurityLog
+│       │                        RateLimiter, SlidingWindowLimiter, FileSignatures, SecurityLog,
+│       │                        Totp, ThrottleStore, DeviceRegistry
 │       ├── storage/             AttachmentStorage
-│       ├── transfer/            UploadManager (upload theo khối)
-│       └── tools/               ManualTestClient, EndToEndCheck
+│       ├── transfer/            UploadManager (upload theo khối), UploadRegistry (giữ qua các kết nối)
+│       └── tools/               ManualTestClient, EndToEndCheck, LoadTest
 │
 └── mail-client/
     └── com.mailsystem.client
-        ├── MailClientApp        Entry point JavaFX
-        ├── app/                 Session (trạng thái đăng nhập), Navigator (màn hình, cửa sổ)
-        ├── network/             ServerConnection, Connector, TlsConnector, TofuTrustManager, KnownServers
+        ├── MailClientApp        Entry point JavaFX; Launcher (entry point cho bản đóng gói)
+        ├── app/                 Session (trạng thái đăng nhập), Navigator (màn hình, cửa sổ, theme),
+        │                        Reconnector (tự kết nối lại)
+        ├── network/             ServerConnection, Connector, TlsConnector, TofuTrustManager, KnownServers,
+        │                        DeviceIdentity (chứng chỉ thiết bị)
         ├── api/                 MailApi (lớp bọc có kiểu quanh giao thức), ApiException
         ├── service/             AttachmentTransfer (upload/download theo khối), DesktopNotifier
         ├── controller/          Login, Register, Main, Compose, Groups, Account
         └── ui/                  Component dùng lại: Avatar, Toast, EmptyState, MailCell, DraftCell,
                                  MailReader, NavButton, PasswordField2, PasswordStrength, AutoComplete,
-                                 ContactSuggestions, Dialogs, Icons, Formats, Fx
+                                 ContactSuggestions, Dialogs, Icons, Formats, Fx, ScheduledCell,
+                                 AttachmentPreview
         resources/
         ├── fxml/                login, register, main, compose, groups, account
-        └── css/app.css          Design tokens + style mọi component
+        └── css/app.css          Design tokens + style mọi component; dark.css chỉ đổi giá trị token
 ```
 
 ## 2. Các tầng phía Server

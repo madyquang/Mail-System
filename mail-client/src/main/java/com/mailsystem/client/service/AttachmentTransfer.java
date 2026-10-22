@@ -2,6 +2,8 @@ package com.mailsystem.client.service;
 
 import com.mailsystem.client.api.ApiException;
 import com.mailsystem.client.api.MailApi;
+import com.mailsystem.client.app.Reconnector;
+import com.mailsystem.client.network.ConnectionLostException;
 import com.mailsystem.common.model.Attachment;
 import com.mailsystem.common.protocol.ProtocolConstants;
 
@@ -14,7 +16,6 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -28,8 +29,15 @@ import java.util.function.LongConsumer;
  * Truyền tệp đính kèm theo khối (≤ 512 KB/khối) theo kiểu stop-and-wait: gửi một
  * khối, chờ Server xác nhận số byte đã nhận rồi gửi tiếp. Đọc/ghi đĩa chạy
  * trên executor riêng để không chặn UI thread hay thread nghe mạng.
+ *
+ * TRUYỀN TIẾP (resume): vì mỗi khối mang offset, rớt mạng giữa chừng không phải
+ * gửi lại từ đầu. Tải lên: sau khi Reconnector nối lại, hỏi UPLOAD_STATUS xem
+ * Server đã nhận bao nhiêu byte rồi gửi tiếp từ đó. Tải xuống: tệp .mailpart giữ
+ * lại phần đã nhận, lần sau (kể cả sau khi mở lại ứng dụng) tải tiếp từ kích thước của nó.
  */
 public final class AttachmentTransfer {
+
+    private static final int MAX_RESUMES = 5;
 
     private static final ExecutorService FILE_IO = Executors.newCachedThreadPool(task -> {
         Thread thread = new Thread(task, "attachment-io");
@@ -47,7 +55,7 @@ public final class AttachmentTransfer {
         for (File file : files) {
             chain = chain.thenCompose(ids -> {
                 long base = uploadedBefore[0];
-                return uploadChunk(file, file.length(), null, 0, sent -> progress.accept(base + sent))
+                return uploadChunk(file, file.length(), null, 0, sent -> progress.accept(base + sent), 0)
                         .thenApply(uploadId -> {
                             uploadedBefore[0] += file.length();
                             ids.add(uploadId);
@@ -59,18 +67,44 @@ public final class AttachmentTransfer {
     }
 
     private static CompletableFuture<String> uploadChunk(File file, long size, String uploadId, long offset,
-            LongConsumer progress) {
+            LongConsumer progress, int resumes) {
         int length = (int) Math.min(ProtocolConstants.CHUNK_SIZE_BYTES, size - offset);
-        return CompletableFuture.supplyAsync(() -> readChunk(file, offset, length), FILE_IO)
+        CompletableFuture<MailApi.UploadProgress> sent = CompletableFuture
+                .supplyAsync(() -> readChunk(file, offset, length), FILE_IO)
                 .thenCompose(chunk -> MailApi.get().uploadChunk(uploadId, file.getName(), size, offset,
-                        Base64.getEncoder().encodeToString(chunk)))
-                .thenComposeAsync(result -> {
-                    progress.accept(result.receivedBytes());
-                    if (result.receivedBytes() >= size) {
-                        return CompletableFuture.completedFuture(result.uploadId());
-                    }
-                    return uploadChunk(file, size, result.uploadId(), result.receivedBytes(), progress);
-                }, FILE_IO);
+                        Base64.getEncoder().encodeToString(chunk)));
+        return sent.handle((result, error) -> {
+            if (error == null) {
+                progress.accept(result.receivedBytes());
+                if (result.receivedBytes() >= size) {
+                    return CompletableFuture.completedFuture(result.uploadId());
+                }
+                return uploadChunk(file, size, result.uploadId(), result.receivedBytes(), progress, resumes);
+            }
+            if (!connectionLost(error) || !Reconnector.get().isActive() || resumes >= MAX_RESUMES) {
+                return CompletableFuture.<String>failedFuture(unwrap(error));
+            }
+            // Rớt mạng: đợi kết nối lại, hỏi Server đã nhận tới đâu rồi gửi tiếp.
+            CompletableFuture<Void> back = Reconnector.get().awaitReconnected();
+            if (uploadId == null) {
+                return back.thenCompose(ignored -> uploadChunk(file, size, null, 0, progress, resumes + 1));
+            }
+            return back.thenCompose(ignored -> MailApi.get().uploadStatus(uploadId))
+                    .thenCompose(status -> uploadChunk(file, size, status.uploadId(), status.receivedBytes(),
+                            progress, resumes + 1));
+        }).thenComposeAsync(next -> next, FILE_IO);
+    }
+
+    private static boolean connectionLost(Throwable error) {
+        return unwrap(error) instanceof ConnectionLostException;
+    }
+
+    private static Throwable unwrap(Throwable error) {
+        Throwable cause = error;
+        while (cause instanceof CompletionException && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause;
     }
 
     private static byte[] readChunk(File file, long offset, int length) {
@@ -87,17 +121,33 @@ public final class AttachmentTransfer {
     }
 
     /**
-     * Tải tệp xuống theo khối vào tệp tạm .part, kiểm tra đủ kích thước rồi mới
-     * đổi tên thành tệp đích (người dùng không bao giờ thấy tệp tải dở).
+     * Tải tệp xuống theo khối vào tệp tạm .mailpart, kiểm tra đủ kích thước rồi mới
+     * đổi tên thành tệp đích (người dùng không bao giờ thấy tệp tải dở). Nếu đã có
+     * .mailpart của lần tải trước bị gián đoạn thì tải tiếp từ cuối tệp đó.
      */
     public static CompletableFuture<Path> download(Attachment metadata, Path destination, LongConsumer progress) {
-        Path temporary;
+        Path temporary = destination.toAbsolutePath().resolveSibling(
+                "." + destination.getFileName() + "." + metadata.getAttachmentId() + ".mailpart");
+        long resumeFrom;
         try {
-            temporary = Files.createTempFile(destination.toAbsolutePath().getParent(), ".mail-download-", ".part");
+            resumeFrom = Files.exists(temporary) ? Files.size(temporary) : 0;
+            if (resumeFrom > metadata.getSizeBytes()) {
+                Files.delete(temporary);
+                resumeFrom = 0;
+            }
+            if (resumeFrom == 0) {
+                Files.write(temporary, new byte[0]);
+            }
         } catch (IOException error) {
             return CompletableFuture.failedFuture(new IOException("Không tạo được tệp tạm: " + error.getMessage()));
         }
-        return downloadChunk(metadata, temporary, 0, progress)
+        if (resumeFrom > 0) {
+            progress.accept(resumeFrom);
+        }
+        CompletableFuture<Void> transfer = resumeFrom >= metadata.getSizeBytes()
+                ? CompletableFuture.completedFuture(null)
+                : downloadChunk(metadata, temporary, resumeFrom, progress);
+        return transfer
                 .thenApplyAsync(ignored -> {
                     try {
                         if (Files.size(temporary) != metadata.getSizeBytes()) {
@@ -115,7 +165,8 @@ public final class AttachmentTransfer {
                     }
                 }, FILE_IO)
                 .whenComplete((path, error) -> {
-                    if (error != null) {
+                    // Mất kết nối: GIỮ tệp .mailpart để lần sau tải tiếp; lỗi dữ liệu: xoá.
+                    if (error != null && !connectionLost(error)) {
                         try {
                             Files.deleteIfExists(temporary);
                         } catch (IOException ignored) {
@@ -137,9 +188,12 @@ public final class AttachmentTransfer {
                         throw new CompletionException(new ApiException("Dữ liệu tệp tải về không đầy đủ."));
                     }
                     try {
-                        Files.write(temporary, data, offset == 0
-                                ? new StandardOpenOption[] {StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE}
-                                : new StandardOpenOption[] {StandardOpenOption.APPEND});
+                        // Ghi đúng vị trí offset (không APPEND mù quáng): khối gửi lại không bị nhân đôi.
+                        try (RandomAccessFile output = new RandomAccessFile(temporary.toFile(), "rw")) {
+                            output.setLength(offset);
+                            output.seek(offset);
+                            output.write(data);
+                        }
                     } catch (IOException error) {
                         throw new UncheckedIOException(error);
                     }

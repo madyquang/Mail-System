@@ -1,0 +1,48 @@
+/* =====================================================================
+   Giao diện tối: nạp SAU app.css, chỉ đổi giá trị các design token.
+   Mọi component dùng token nên tự đổi màu, không cần viết lại từng rule.
+   ===================================================================== */
+.root, .suggest-popup {
+    -c-bg: #1b1c1f;
+    -c-surface: #232428;
+    -c-surface-2: #2b2d31;
+    -c-surface-3: #34363b;
+    -c-border: #3a3d42;
+    -c-border-strong: #4a4d53;
+    -c-text: #e6e6e6;
+    -c-text-2: #c4c7c5;
+    -c-text-3: #8e918f;
+    -c-primary: #8ab4f8;
+    -c-primary-hover: #aecbfa;
+    -c-primary-soft: #2d3f5c;
+    -c-primary-softer: #263247;
+    -c-danger: #f2b8b5;
+    -c-danger-soft: #4a2524;
+    -c-success: #81c995;
+    -c-success-soft: #1f3a29;
+    -c-warning: #fdd663;
+    -c-star: #fdd663;
+    -c-selected: #2f4a73;
+    -c-on-primary-soft: #d3e3fd;
+    -c-scrim: rgba(27, 28, 31, 0.7);
+    -c-thumb: #55585e;
+    -c-thumb-hover: #6b6e75;
+    -c-auth-bg: linear-gradient(to bottom right, #1e2633 0%, #1b1c1f 55%, #2a2619 100%);
+
+    /* Màu nền cho control mặc định của Modena (menu, combo, date picker...). */
+    -fx-base: #2b2d31;
+    -fx-control-inner-background: #232428;
+    -fx-background: #1b1c1f;
+    -fx-text-base-color: #e6e6e6;
+    -fx-text-background-color: #e6e6e6;
+    -fx-selection-bar: #2f4a73;
+    -fx-selection-bar-non-focused: #34363b;
+}
+
+.primary-button, .primary-button .label { -fx-text-fill: #0b1e3a; }
+.primary-button .icon, .brand-logo .icon { -fx-icon-color: #0b1e3a; }
+.check-box:selected .mark, .check-box:indeterminate .mark { -fx-background-color: #0b1e3a; }
+.tooltip { -fx-background-color: #e6e6e6; -fx-text-fill: #1f1f1f; }
+.context-menu, .menu-button .context-menu { -fx-background-color: -c-surface-2; }
+.menu-item .label { -fx-text-fill: -c-text; }
+.preview-page { -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.6), 12, 0.2, 0, 2); }

@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mail Server Monitor</title>
+<style>
+  :root {
+    --bg: #f6f8fc; --surface: #fff; --surface2: #f1f4f9; --border: #e1e5ea;
+    --text: #1f1f1f; --text2: #444746; --text3: #747775;
+    --primary: #0b57d0; --primary-soft: #d3e3fd; --ok: #146c2e; --ok-soft: #e6f4ea;
+    --danger: #b3261e; --danger-soft: #fce8e6; --warn: #8a5300; --warn-soft: #fef7e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1b1c1e; --surface: #24262a; --surface2: #2d3035; --border: #3a3d42;
+      --text: #e8eaed; --text2: #c4c7c5; --text3: #9aa0a6;
+      --primary: #a8c7fa; --primary-soft: #0842a0; --ok: #6dd58c; --ok-soft: #0f3d1f;
+      --danger: #ffb4ab; --danger-soft: #5c1a14; --warn: #fdd663; --warn-soft: #4a3800;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
+  header h1 { font-size: 20px; margin: 0; }
+  .chip { padding: 4px 10px; border-radius: 14px; background: var(--ok-soft); color: var(--ok); font-weight: 600; font-size: 12px; }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); }
+  .muted { color: var(--text3); }
+  main { padding: 0 24px 24px; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .card { background: var(--surface); border-radius: 14px; padding: 16px 18px; min-width: 0; }
+  .card.wide { grid-column: 1 / -1; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--text3); margin: 0 0 12px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .kpi { background: var(--surface2); border-radius: 10px; padding: 12px; }
+  .kpi .v { font-size: 24px; font-weight: 700; }
+  .kpi .l { color: var(--text3); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text3); font-weight: 600; font-size: 12px; }
+  td.mono, .mono { font-family: Consolas, monospace; font-size: 12px; word-break: break-all; }
+  .table-wrap { overflow-x: auto; }
+  button { border: 1px solid var(--border); background: var(--surface); color: var(--primary); border-radius: 14px;
+           padding: 4px 12px; cursor: pointer; font-weight: 600; }
+  button.danger { color: var(--danger); }
+  button:hover { background: var(--surface2); }
+  canvas { width: 100%; height: 140px; display: block; }
+  .bar { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--primary); }
+  .events { max-height: 260px; overflow: auto; font-family: Consolas, monospace; font-size: 12px; }
+  .events div { padding: 3px 0; border-bottom: 1px solid var(--border); }
+  #login { max-width: 420px; margin: 80px auto; }
+  input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+  .error { color: var(--danger); }
+</style>
+</head>
+<body>
+<div id="login" class="card" hidden>
+  <h2>Mail Server Monitor</h2>
+  <p>Nhập mã truy cập in trên console của Server (dòng <span class="mono">[Monitor]</span>).</p>
+  <input id="tokenInput" placeholder="Mã truy cập" autocomplete="off">
+  <p id="loginError" class="error"></p>
+  <button onclick="saveToken()">Mở bảng giám sát</button>
+</div>
+
+<div id="app" hidden>
+<header>
+  <h1>Mail Server Monitor</h1>
+  <span class="chip" id="status">Đang tải…</span>
+  <span class="muted" id="subtitle"></span>
+</header>
+<main>
+  <section class="card wide">
+    <h2>Tổng quan</h2>
+    <div class="kpis" id="kpis"></div>
+  </section>
+  <section class="card wide">
+    <h2>Request mỗi giây (60 giây gần nhất)</h2>
+    <canvas id="chart" width="1200" height="140"></canvas>
+  </section>
+  <section class="card wide">
+    <h2>Kết nối đang mở</h2>
+    <div class="table-wrap"><table id="connections"></table></div>
+  </section>
+  <section class="card">
+    <h2>Lệnh được gọi nhiều nhất</h2>
+    <div id="commands"></div>
+  </section>
+  <section class="card">
+    <h2>Hạ tầng</h2>
+    <table id="infra"></table>
+  </section>
+  <section class="card wide">
+    <h2>Thiết bị (chứng chỉ client — mutual TLS)</h2>
+    <p class="muted" id="deviceHint"></p>
+    <div class="table-wrap"><table id="devices"></table></div>
+  </section>
+  <section class="card wide">
+    <h2>Sự kiện bảo mật gần đây</h2>
+    <div class="events" id="events"></div>
+  </section>
+</main>
+</div>
+
+<script>
+  // Mã truy cập lấy từ ?token=... rồi xoá khỏi thanh địa chỉ (không lưu lịch sử trình duyệt).
+  let token = new URLSearchParams(location.search).get('token') || sessionStorage.getItem('monitorToken') || '';
+  if (location.search) history.replaceState(null, '', location.pathname);
+  function saveToken() {
+    token = document.getElementById('tokenInput').value.trim();
+    refresh();
+  }
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const bytes = n => n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(1) + ' KB' : (n/1048576).toFixed(1) + ' MB';
+  const uptime = s => `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m ${s%60}s`;
+
+  async function api(path, method = 'GET') {
+    const res = await fetch(path, { method, headers: { 'X-Admin-Token': token } });
+    if (res.status === 401) throw new Error('unauthorized');
+    return res.json();
+  }
+
+  async function act(path) {
+    try { await api(path, 'POST'); refresh(); } catch (e) { alert('Không thực hiện được: ' + e.message); }
+  }
+
+  function drawChart(series) {
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height, max = Math.max(5, ...series);
+    const styles = getComputedStyle(document.documentElement);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = styles.getPropertyValue('--text3');
+    ctx.font = '20px Segoe UI';
+    ctx.fillText(max + ' req/s', 6, 22);
+    const barW = w / series.length;
+    ctx.fillStyle = styles.getPropertyValue('--primary');
+    series.forEach((v, i) => {
+      const bh = (v / max) * (h - 30);
+      ctx.fillRect(i * barW + 2, h - bh, barW - 4, bh);
+    });
+  }
+
+  async function refresh() {
+    let data;
+    try {
+      data = await api('/api/stats');
+    } catch (e) {
+      document.getElementById('app').hidden = true;
+      document.getElementById('login').hidden = false;
+      document.getElementById('loginError').textContent = token ? 'Mã truy cập không đúng.' : '';
+      return;
+    }
+    sessionStorage.setItem('monitorToken', token);
+    document.getElementById('login').hidden = true;
+    document.getElementById('app').hidden = false;
+    const m = data.metrics;
+    document.getElementById('status').textContent = 'Đang chạy · ' + uptime(m.uptimeSeconds);
+    document.getElementById('subtitle').textContent =
+      `Cổng ${data.port} · TLS 1.3 · ${data.threadMode} thread · Java ${data.javaVersion}`;
+    const kpis = [
+      [data.connections.length + ' / ' + data.maxClients, 'Kết nối đang mở'],
+      [new Set(data.connections.filter(c => c.accountId).map(c => c.accountId)).size, 'Tài khoản online'],
+      [m.requests, 'Tổng request'],
+      [m.requestsPerSecond[m.requestsPerSecond.length - 1], 'Request giây vừa qua'],
+      [m.avgLatencyMs + ' ms', 'Độ trễ xử lý TB'],
+      [m.errors, 'Request lỗi'],
+      [m.rateLimited, 'Bị giới hạn tốc độ'],
+      [m.eventsPushed, 'EVENT đã đẩy'],
+      [bytes(m.bytesIn) + ' / ' + bytes(m.bytesOut), 'Dữ liệu vào / ra'],
+      [m.connectionsAccepted + ' / ' + m.connectionsRejected, 'Kết nối nhận / từ chối'],
+    ];
+    document.getElementById('kpis').innerHTML = kpis.map(([v, l]) =>
+      `<div class="kpi"><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join('');
+    drawChart(m.requestsPerSecond);
+
+    document.getElementById('connections').innerHTML =
+      '<tr><th>#</th><th>Địa chỉ</th><th>Tài khoản</th><th>Từ lúc</th><th>Request</th><th>Vào / Ra</th><th>Bộ mã hoá</th><th>Thiết bị</th><th></th></tr>' +
+      (data.connections.length ? data.connections.map(c => `<tr>
+        <td>${c.id}</td><td class="mono">${esc(c.remote)}</td><td>${c.accountId ?? '<span class="muted">chưa đăng nhập</span>'}</td>
+        <td>${esc(c.connectedAt.replace('T', ' '))}</td><td>${c.requests}</td><td>${bytes(c.bytesIn)} / ${bytes(c.bytesOut)}</td>
+        <td class="mono">${esc(c.cipher)}</td>
+        <td>${c.device ? (c.deviceApproved ? '<span class="chip">đã duyệt</span>' : '<span class="chip warn">chưa duyệt</span>') : '<span class="muted">không có</span>'}</td>
+        <td><button class="danger" onclick="act('/api/connections/kick?id=${c.id}')">Ngắt</button></td></tr>`).join('')
+        : '<tr><td colspan="9" class="muted">Chưa có kết nối nào.</td></tr>');
+
+    const commands = Object.entries(m.commands).slice(0, 10);
+    const top = commands.length ? commands[0][1] : 1;
+    document.getElementById('commands').innerHTML = commands.length ? commands.map(([name, count]) =>
+      `<div style="margin:6px 0"><div style="display:flex;justify-content:space-between"><span class="mono">${esc(name)}</span><b>${count}</b></div>
+       <div class="bar"><div style="width:${(count / top * 100).toFixed(1)}%"></div></div></div>`).join('')
+      : '<p class="muted">Chưa có request.</p>';
+
+    const p = data.dbPool;
+    document.getElementById('infra').innerHTML = [
+      ['Mô hình thread', data.threadMode === 'virtual' ? 'Virtual thread (Java 21+)' : 'Platform thread'],
+      ['MySQL pool (HikariCP)', `${p.active} đang dùng · ${p.idle} rảnh · ${p.total}/${p.max} kết nối · ${p.waiting} đang chờ`],
+      ['Kết nối MySQL', data.dbTls],
+      ['Chế độ chứng chỉ thiết bị', data.clientAuth],
+      ['Token tiếp tục phiên', data.resumeTokens],
+      ['Tệp đang tải lên dở', data.pendingUploads],
+      ['Dấu vân tay TLS', `<span class="mono">${esc(data.tlsFingerprint)}</span>`],
+    ].map(([k, v]) => `<tr><th>${esc(k)}</th><td>${typeof v === 'string' && v.startsWith('<span') ? v : esc(v)}</td></tr>`).join('');
+
+    document.getElementById('deviceHint').textContent = data.clientAuth === 'need'
+      ? 'Chế độ "need": chỉ thiết bị đã duyệt mới kết nối được.'
+      : 'Chế độ "' + data.clientAuth + '": thiết bị được ghi nhận nhưng chưa bắt buộc phê duyệt (đặt tls.clientAuth=need để bắt buộc).';
+    document.getElementById('devices').innerHTML =
+      '<tr><th>Trạng thái</th><th>Dấu vân tay</th><th>Chủ thể</th><th>Tài khoản gần nhất</th><th>IP</th><th>Lần cuối</th><th></th></tr>' +
+      (data.devices.length ? data.devices.map(d => `<tr>
+        <td>${d.approved ? '<span class="chip">đã duyệt</span>' : '<span class="chip warn">chờ duyệt</span>'}</td>
+        <td class="mono">${esc(d.fingerprint)}</td><td>${esc(d.subject)}</td><td>${esc(d.lastAccount ?? '')}</td>
+        <td class="mono">${esc(d.lastIp)}</td><td>${esc(d.lastSeen.replace('T', ' '))}</td>
+        <td>${d.approved
+          ? `<button class="danger" onclick="act('/api/devices/revoke?fp=${encodeURIComponent(d.fingerprint)}')">Thu hồi</button>`
+          : `<button onclick="act('/api/devices/approve?fp=${encodeURIComponent(d.fingerprint)}')">Duyệt</button>`}</td></tr>`).join('')
+        : '<tr><td colspan="7" class="muted">Chưa có thiết bị nào gửi chứng chỉ.</td></tr>');
+
+    document.getElementById('events').innerHTML = data.securityEvents.length
+      ? data.securityEvents.map(e => `<div>${esc(e)}</div>`).join('') : '<p class="muted">Chưa có sự kiện.</p>';
+  }
+  refresh();
+  setInterval(refresh, 2000);
+</script>
+</body>
+</html>

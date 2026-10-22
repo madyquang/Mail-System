@@ -36,3 +36,6 @@ config/*.properties
 
 # Du lieu khi chay Server: tep dinh kem, keystore TLS, log
 data/
+
+# Ban dong goi (scripts/package.ps1)
+dist/

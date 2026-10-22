@@ -8,6 +8,7 @@ import com.mailsystem.common.model.Account;
 import com.mailsystem.common.protocol.EventMessage;
 import com.mailsystem.common.protocol.EventName;
 import com.mailsystem.common.model.MailDetail;
+import com.mailsystem.common.model.MailSummary;
 import com.mailsystem.common.protocol.ProtocolConstants;
 import com.mailsystem.common.protocol.ProtocolUtil;
 import com.mailsystem.common.protocol.ResponseMessage;
@@ -16,6 +17,8 @@ import com.mailsystem.server.dao.DraftDAO;
 import com.mailsystem.server.dao.FolderDAO;
 import com.mailsystem.server.dao.GroupDAO;
 import com.mailsystem.server.dao.MailDAO;
+import com.mailsystem.server.dao.OutboxDAO;
+import com.mailsystem.server.dao.jdbc.JdbcOutboxDAO;
 import com.mailsystem.server.dao.jdbc.JdbcAccountDAO;
 import com.mailsystem.server.dao.jdbc.JdbcDraftDAO;
 import com.mailsystem.server.dao.jdbc.JdbcFolderDAO;
@@ -32,6 +35,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -65,11 +69,12 @@ public class MailService {
     private final FolderDAO folderDAO;
     private final GroupDAO groupDAO;
     private final DraftDAO draftDAO;
+    private final OutboxDAO outboxDAO;
     private final Path attachmentDirectory;
 
     public MailService() {
         this(new JdbcMailDAO(), new JdbcAccountDAO(), new JdbcFolderDAO(), new JdbcGroupDAO(), new JdbcDraftDAO(),
-                AttachmentStorage.directory());
+                new JdbcOutboxDAO(), AttachmentStorage.directory());
     }
 
     MailService(MailDAO mailDAO, AccountDAO accountDAO, FolderDAO folderDAO, GroupDAO groupDAO,
@@ -79,6 +84,12 @@ public class MailService {
 
     MailService(MailDAO mailDAO, AccountDAO accountDAO, FolderDAO folderDAO, GroupDAO groupDAO, DraftDAO draftDAO,
             Path attachmentDirectory) {
+        this(mailDAO, accountDAO, folderDAO, groupDAO, draftDAO, null, attachmentDirectory);
+    }
+
+    MailService(MailDAO mailDAO, AccountDAO accountDAO, FolderDAO folderDAO, GroupDAO groupDAO, DraftDAO draftDAO,
+            OutboxDAO outboxDAO, Path attachmentDirectory) {
+        this.outboxDAO = outboxDAO;
         this.mailDAO = mailDAO;
         this.accountDAO = accountDAO;
         this.folderDAO = folderDAO;
@@ -98,10 +109,10 @@ public class MailService {
         if (!starredView && folderId == null) {
             return ResponseMessage.error(requestId, "Thư mục không hợp lệ.");
         }
+        boolean threaded = readBoolean(payload, "threaded", false);
         try {
-            return ResponseMessage.ok(requestId, ProtocolUtil.getGson().toJsonTree(starredView
-                    ? mailDAO.getStarredList(accountId)
-                    : mailDAO.getMailList(accountId, folderId)));
+            List<MailSummary> mails = starredView ? mailDAO.getStarredList(accountId) : mailDAO.getMailList(accountId, folderId);
+            return ResponseMessage.ok(requestId, ProtocolUtil.getGson().toJsonTree(threaded ? groupByThread(mails) : mails));
         } catch (SQLException error) {
             return ResponseMessage.error(requestId, "Không thể tải danh sách thư.");
         }
@@ -124,6 +135,7 @@ public class MailService {
         }
         try {
             Optional<MailDetail> detail = mailDAO.getMailDetail(mailId, accountId, entryId);
+            detail.ifPresent(mail -> notifyReadReceipt(mail, accountId));
             return detail.<ResponseMessage>map(mail -> ResponseMessage.ok(requestId,
                     ProtocolUtil.getGson().toJsonTree(mail)))
                     .orElseGet(() -> ResponseMessage.error(requestId, "Không tìm thấy thư."));
@@ -254,9 +266,22 @@ public class MailService {
                     + ProtocolConstants.MAX_BODY_CHARS + " ký tự.");
         }
         Integer draftId = values.has("draftId") ? readPositiveInt(payload, "draftId") : null;
+        Integer inReplyTo = values.has("inReplyTo") ? readPositiveInt(payload, "inReplyTo") : null;
+
+        // Thời điểm gửi: ngay, sau vài giây (hoàn tác được) hoặc hẹn giờ.
+        LocalDateTime sendAt;
+        try {
+            sendAt = parseSendAt(values);
+        } catch (IllegalArgumentException error) {
+            return ResponseMessage.error(requestId, error.getMessage());
+        }
+        if (sendAt != null && outboxDAO == null) {
+            return ResponseMessage.error(requestId, "Máy chủ chưa hỗ trợ gửi hẹn giờ.");
+        }
 
         Map<Integer, Recipient> recipients;
         List<PreparedAttachment> attachments;
+        Integer threadId = null;
         try {
             recipients = resolveRecipients(values, accountId);
             if (recipients.isEmpty()) {
@@ -265,6 +290,13 @@ public class MailService {
             attachments = parseAttachments(values, uploads, claimedUploads);
             attachments.addAll(parseForwardedAttachments(values, accountId,
                     attachments.stream().mapToLong(PreparedAttachment::sizeBytes).sum(), attachments.size()));
+            if (inReplyTo != null) {
+                // Chỉ nối vào hội thoại của thư mà người gửi có quyền xem.
+                threadId = mailDAO.findThreadRoot(inReplyTo, accountId).orElse(null);
+                if (threadId == null) {
+                    inReplyTo = null;
+                }
+            }
         } catch (InvalidRecipientException error) {
             return ResponseMessage.error(requestId, error.getMessage());
         } catch (IllegalArgumentException error) {
@@ -273,84 +305,171 @@ public class MailService {
             return ResponseMessage.error(requestId, "Không thể kiểm tra người nhận trong cơ sở dữ liệu.");
         }
 
-        Optional<Integer> sentFolder;
-        Map<Integer, Integer> inboxFolders = new LinkedHashMap<>();
+        List<Path> storedFiles = new ArrayList<>();
+        List<OutboxDAO.StoredFile> files;
         try {
-            sentFolder = folderDAO.findFolderIdByType(accountId, "SENT");
-            for (int recipientId : recipients.keySet()) {
-                Optional<Integer> inbox = folderDAO.findFolderIdByType(recipientId, "INBOX");
-                if (inbox.isEmpty()) {
-                    return ResponseMessage.error(requestId, "Không tìm thấy hộp thư của một người nhận.");
-                }
-                inboxFolders.put(recipientId, inbox.get());
-            }
-        } catch (SQLException error) {
-            return ResponseMessage.error(requestId, "Không thể truy cập thư mục người dùng.");
-        }
-        if (sentFolder.isEmpty()) {
-            return ResponseMessage.error(requestId, "Tài khoản gửi chưa có thư mục Đã gửi.");
+            files = materialize(attachments, storedFiles);
+        } catch (IOException error) {
+            deleteStoredFiles(storedFiles);
+            return ResponseMessage.error(requestId, "Máy chủ không lưu được tệp đính kèm.");
         }
 
-        List<Path> storedFiles = new ArrayList<>();
+        if (sendAt != null) {
+            JsonObject stored = new JsonObject();
+            for (String field : new String[] {"to", "cc", "bcc"}) {
+                stored.add(field, values.has(field) && values.get(field).isJsonArray()
+                        ? values.get(field) : new JsonArray());
+            }
+            stored.addProperty("subject", subject);
+            stored.addProperty("body", body);
+            if (inReplyTo != null) {
+                stored.addProperty("inReplyTo", inReplyTo);
+            }
+            if (draftId != null) {
+                stored.addProperty("draftId", draftId);
+            }
+            try {
+                int outboxId = outboxDAO.insert(accountId, ProtocolUtil.toJson(stored), sendAt, files);
+                SessionManager.getInstance().pushEvent(accountId,
+                        new EventMessage(EventName.SCHEDULED_UPDATED, new JsonObject()));
+                JsonObject data = new JsonObject();
+                data.addProperty("outboxId", outboxId);
+                data.addProperty("sendAt", sendAt.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+                data.addProperty("scheduled", true);
+                return ResponseMessage.ok(requestId, data);
+            } catch (SQLException error) {
+                deleteStoredFiles(storedFiles);
+                return ResponseMessage.error(requestId, "Không thể lên lịch gửi thư.");
+            }
+        }
+
         int mailId;
         try (Connection connection = DatabaseConnection.getConnection()) {
             connection.setAutoCommit(false);
             try {
-                mailId = mailDAO.insertMail(connection, accountId, subject, body);
-                mailDAO.insertMailRecipient(connection, mailId, accountId, sentFolder.get(), "SENDER", true);
-                for (Recipient recipient : recipients.values()) {
-                    mailDAO.insertMailRecipient(connection, mailId, recipient.accountId,
-                            inboxFolders.get(recipient.accountId), recipient.type, false);
-                }
-
-                if (!attachments.isEmpty()) {
-                    Files.createDirectories(attachmentDirectory);
-                    for (PreparedAttachment attachment : attachments) {
-                        String storageName = AttachmentStorage.newStorageName(attachment.extension);
-                        Path storedFile = attachmentDirectory.resolve(storageName);
-                        if (attachment.uploadedFile != null) {
-                            Files.move(attachment.uploadedFile, storedFile, StandardCopyOption.REPLACE_EXISTING);
-                        } else if (attachment.forwardedFile != null) {
-                            // Mỗi thư giữ bản sao riêng: xoá thư gốc không làm mất tệp của thư chuyển tiếp.
-                            Files.copy(attachment.forwardedFile, storedFile);
-                        } else {
-                            Files.write(storedFile, attachment.content);
-                        }
-                        storedFiles.add(storedFile);
-                        mailDAO.insertAttachment(connection, mailId, attachment.filename, attachment.mimeType,
-                                attachment.sizeBytes, storageName);
-                    }
-                }
-
+                mailId = deliver(connection, accountId, recipients, subject, body, files, threadId, inReplyTo);
                 connection.commit();
-            } catch (SQLException | IOException error) {
-                rollback(connection, error);
+            } catch (SQLException | IllegalStateException error) {
+                rollback(connection, error instanceof Exception ? (Exception) error : new Exception(error));
                 deleteStoredFiles(storedFiles);
                 System.err.println("[MailService] sendMail failed: " + error.getMessage());
-                return ResponseMessage.error(requestId, "Không thể lưu thư; chưa có dữ liệu nào được ghi.");
+                return ResponseMessage.error(requestId, error instanceof IllegalStateException
+                        ? error.getMessage() : "Không thể lưu thư; chưa có dữ liệu nào được ghi.");
             }
         } catch (SQLException error) {
             deleteStoredFiles(storedFiles);
             return ResponseMessage.error(requestId, "Không thể kết nối cơ sở dữ liệu.");
         }
+        afterDelivery(accountId, recipients.keySet(), mailId, subject, draftId);
+        JsonObject data = new JsonObject();
+        data.addProperty("mailId", mailId);
+        return ResponseMessage.ok(requestId, data);
+    }
 
+    /** null = gửi ngay; delaySeconds (1..30) = hoàn tác được; sendAt ISO = hẹn giờ. */
+    private LocalDateTime parseSendAt(JsonObject values) {
+        if (values.has("sendAt") && !values.get("sendAt").isJsonNull()) {
+            LocalDateTime at;
+            try {
+                at = LocalDateTime.parse(values.get("sendAt").getAsString());
+            } catch (RuntimeException error) {
+                throw new IllegalArgumentException("Thời gian hẹn gửi không hợp lệ.");
+            }
+            LocalDateTime now = LocalDateTime.now();
+            if (at.isBefore(now.plusSeconds(10))) {
+                throw new IllegalArgumentException("Thời gian hẹn gửi phải ở tương lai.");
+            }
+            if (at.isAfter(now.plusDays(ProtocolConstants.MAX_SCHEDULE_DAYS))) {
+                throw new IllegalArgumentException("Chỉ hẹn gửi tối đa " + ProtocolConstants.MAX_SCHEDULE_DAYS + " ngày.");
+            }
+            return at;
+        }
+        if (values.has("delaySeconds")) {
+            int delay;
+            try {
+                delay = values.get("delaySeconds").getAsInt();
+            } catch (RuntimeException error) {
+                throw new IllegalArgumentException("Thời gian chờ gửi không hợp lệ.");
+            }
+            if (delay <= 0) {
+                return null;
+            }
+            return LocalDateTime.now().plusSeconds(Math.min(delay, ProtocolConstants.MAX_UNDO_SECONDS));
+        }
+        return null;
+    }
+
+    /** Ghi nội dung tệp vào kho (di chuyển tệp đã tải lên, sao chép tệp chuyển tiếp). */
+    private List<OutboxDAO.StoredFile> materialize(List<PreparedAttachment> attachments, List<Path> storedFiles)
+            throws IOException {
+        List<OutboxDAO.StoredFile> files = new ArrayList<>();
+        if (attachments.isEmpty()) {
+            return files;
+        }
+        Files.createDirectories(attachmentDirectory);
+        for (PreparedAttachment attachment : attachments) {
+            String storageName = AttachmentStorage.newStorageName(attachment.extension);
+            Path storedFile = attachmentDirectory.resolve(storageName);
+            if (attachment.uploadedFile != null) {
+                Files.move(attachment.uploadedFile, storedFile, StandardCopyOption.REPLACE_EXISTING);
+            } else if (attachment.forwardedFile != null) {
+                // Mỗi thư giữ bản sao riêng: xoá thư gốc không làm mất tệp của thư chuyển tiếp.
+                Files.copy(attachment.forwardedFile, storedFile);
+            } else {
+                Files.write(storedFile, attachment.content);
+            }
+            storedFiles.add(storedFile);
+            files.add(new OutboxDAO.StoredFile(attachment.filename, attachment.mimeType, attachment.sizeBytes,
+                    storageName));
+        }
+        return files;
+    }
+
+    /**
+     * Ghi thư vào CSDL trong transaction của caller: một dòng mail, một bản cho
+     * người gửi (SENT), một bản cho mỗi người nhận (INBOX), các tệp đính kèm.
+     * Dùng chung cho gửi ngay và cho bộ gửi thư hẹn giờ.
+     */
+    private int deliver(Connection connection, int senderId, Map<Integer, Recipient> recipients, String subject,
+            String body, List<OutboxDAO.StoredFile> files, Integer threadId, Integer inReplyTo) throws SQLException {
+        int sentFolder = folderDAO.findFolderIdByType(connection, senderId, "SENT")
+                .orElseThrow(() -> new IllegalStateException("Tài khoản gửi chưa có thư mục Đã gửi."));
+        Map<Integer, Integer> inboxFolders = new LinkedHashMap<>();
+        for (int recipientId : recipients.keySet()) {
+            inboxFolders.put(recipientId, folderDAO.findFolderIdByType(connection, recipientId, "INBOX")
+                    .orElseThrow(() -> new IllegalStateException("Không tìm thấy hộp thư của một người nhận.")));
+        }
+        int mailId = mailDAO.insertMail(connection, senderId, subject, body, threadId, inReplyTo);
+        mailDAO.insertMailRecipient(connection, mailId, senderId, sentFolder, "SENDER", true);
+        for (Recipient recipient : recipients.values()) {
+            mailDAO.insertMailRecipient(connection, mailId, recipient.accountId,
+                    inboxFolders.get(recipient.accountId), recipient.type, false);
+        }
+        for (OutboxDAO.StoredFile file : files) {
+            mailDAO.insertAttachment(connection, mailId, file.filename(), file.mimeType(), file.sizeBytes(),
+                    file.storagePath());
+        }
+        return mailId;
+    }
+
+    /** Sau khi commit: xoá nháp đã gửi và đẩy NEW_MAIL tới người nhận + các phiên của người gửi. */
+    private void afterDelivery(int senderId, Set<Integer> recipientIds, int mailId, String subject, Integer draftId) {
         if (draftId != null && draftDAO != null) {
             try {
-                if (draftDAO.delete(accountId, List.of(draftId)) > 0) {
-                    SessionManager.getInstance().pushEvent(accountId,
+                if (draftDAO.delete(senderId, List.of(draftId)) > 0) {
+                    SessionManager.getInstance().pushEvent(senderId,
                             new EventMessage(EventName.DRAFTS_UPDATED, new JsonObject()));
                 }
             } catch (SQLException error) {
                 System.err.println("[MailService] Khong xoa duoc thu nhap " + draftId + ": " + error.getMessage());
             }
         }
-
         // EVENT kèm người gửi + tiêu đề để Client hiện thông báo desktop mà không cần hỏi lại.
         JsonObject eventData = new JsonObject();
         eventData.addProperty("mailId", mailId);
         eventData.addProperty("subject", subject);
         try {
-            accountDAO.findById(accountId).ifPresent(sender -> {
+            accountDAO.findById(senderId).ifPresent(sender -> {
                 eventData.addProperty("senderEmail", sender.getEmail());
                 eventData.addProperty("senderName", sender.getDisplayName());
             });
@@ -358,18 +477,259 @@ public class MailService {
             System.err.println("[MailService] Khong doc duoc thong tin nguoi gui: " + error.getMessage());
         }
         EventMessage event = new EventMessage(EventName.NEW_MAIL, eventData);
-        Set<Integer> notifyAccounts = new LinkedHashSet<>(recipients.keySet());
-        notifyAccounts.add(accountId);
+        Set<Integer> notifyAccounts = new LinkedHashSet<>(recipientIds);
+        notifyAccounts.add(senderId);
         for (int notifyAccount : notifyAccounts) {
             SessionManager.getInstance().pushEvent(notifyAccount, event);
         }
+    }
 
-        JsonObject data = new JsonObject();
-        data.addProperty("mailId", mailId);
+    // ------------------------------------------------------------------ hộp thư chờ gửi
+
+    public ResponseMessage getScheduled(String requestId, Integer accountId) {
+        try {
+            return ResponseMessage.ok(requestId, ProtocolUtil.getGson().toJsonTree(outboxDAO.listByAccount(accountId)));
+        } catch (SQLException error) {
+            return ResponseMessage.error(requestId, "Không tải được thư chờ gửi.");
+        }
+    }
+
+    /** Huỷ thư chờ gửi; trả lại nội dung để Client mở lại khung soạn thư. */
+    public ResponseMessage cancelScheduled(String requestId, Integer accountId, JsonElement payload) {
+        Integer outboxId = readPositiveInt(payload, "outboxId");
+        if (outboxId == null) {
+            return ResponseMessage.error(requestId, "Thư chờ gửi không hợp lệ.");
+        }
+        Optional<OutboxDAO.Entry> entry;
+        try (Connection connection = DatabaseConnection.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                entry = outboxDAO.claim(connection, outboxId, accountId);
+                connection.commit();
+            } catch (SQLException error) {
+                connection.rollback();
+                throw error;
+            }
+        } catch (SQLException error) {
+            return ResponseMessage.error(requestId, "Không huỷ được thư chờ gửi.");
+        }
+        if (entry.isEmpty()) {
+            return ResponseMessage.error(requestId, "Thư đã được gửi hoặc không còn trong hàng chờ.");
+        }
+        deleteStoredNames(entry.get().files());
+        SessionManager.getInstance().pushEvent(accountId, new EventMessage(EventName.SCHEDULED_UPDATED, new JsonObject()));
+        JsonObject data = ProtocolUtil.fromJson(entry.get().payload(), JsonObject.class);
+        data.addProperty("attachmentCount", entry.get().files().size());
         return ResponseMessage.ok(requestId, data);
     }
 
-    // ---- Thao tác trên một hoặc nhiều thư (payload: {entryId} hoặc {entryIds: [...]}) ----
+    /** Gọi định kỳ bởi OutboxDispatcher: gửi các thư đã tới giờ. @return số thư đã xử lý */
+    public int dispatchDue() {
+        if (outboxDAO == null) {
+            return 0;
+        }
+        List<Integer> due;
+        try {
+            due = outboxDAO.findDueIds(50);
+        } catch (SQLException error) {
+            System.err.println("[Outbox] Khong doc duoc hang cho: " + error.getMessage());
+            return 0;
+        }
+        for (int outboxId : due) {
+            dispatchOne(outboxId);
+        }
+        return due.size();
+    }
+
+    private void dispatchOne(int outboxId) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
+            connection.setAutoCommit(false);
+            OutboxDAO.Entry entry;
+            try {
+                // Khoá + xoá dòng outbox trong CÙNG transaction với việc ghi thư: nếu người dùng
+                // huỷ cùng lúc thì chỉ một bên thắng, không bao giờ vừa huỷ vừa gửi.
+                Optional<OutboxDAO.Entry> claimed = outboxDAO.claim(connection, outboxId, null);
+                if (claimed.isEmpty()) {
+                    connection.commit();
+                    return;
+                }
+                entry = claimed.get();
+                JsonObject values = ProtocolUtil.fromJson(entry.payload(), JsonObject.class);
+                Map<Integer, Recipient> recipients;
+                try {
+                    recipients = resolveRecipients(values, entry.accountId());
+                    if (recipients.isEmpty()) {
+                        throw new InvalidRecipientException("Không còn người nhận hợp lệ.");
+                    }
+                } catch (InvalidRecipientException error) {
+                    connection.commit(); // bỏ khỏi hàng chờ, chuyển thành nháp bên dưới
+                    failScheduled(entry, values, error.getMessage());
+                    return;
+                }
+                Integer inReplyTo = values.has("inReplyTo") ? values.get("inReplyTo").getAsInt() : null;
+                Integer threadId = inReplyTo == null ? null
+                        : mailDAO.findThreadRoot(inReplyTo, entry.accountId()).orElse(null);
+                int mailId = deliver(connection, entry.accountId(), recipients, values.get("subject").getAsString(),
+                        values.get("body").getAsString(), entry.files(), threadId, threadId == null ? null : inReplyTo);
+                connection.commit();
+                afterDelivery(entry.accountId(), recipients.keySet(), mailId, values.get("subject").getAsString(),
+                        values.has("draftId") ? values.get("draftId").getAsInt() : null);
+                SessionManager.getInstance().pushEvent(entry.accountId(),
+                        new EventMessage(EventName.SCHEDULED_UPDATED, new JsonObject()));
+            } catch (SQLException | RuntimeException error) {
+                connection.rollback();
+                System.err.println("[Outbox] Gui thu cho " + outboxId + " that bai, se thu lai: " + error.getMessage());
+            }
+        } catch (SQLException error) {
+            System.err.println("[Outbox] Khong ket noi duoc CSDL: " + error.getMessage());
+        }
+    }
+
+    /** Thư hẹn giờ không gửi được (VD: người nhận đã bị xoá): chuyển thành nháp và báo người gửi. */
+    private void failScheduled(OutboxDAO.Entry entry, JsonObject values, String reason) {
+        deleteStoredNames(entry.files());
+        if (draftDAO != null) {
+            try {
+                com.mailsystem.common.model.Draft draft = new com.mailsystem.common.model.Draft();
+                draft.setTo(joinAddresses(values, "to"));
+                draft.setCc(joinAddresses(values, "cc"));
+                draft.setBcc(joinAddresses(values, "bcc"));
+                draft.setSubject(values.get("subject").getAsString());
+                draft.setBody(values.get("body").getAsString());
+                draftDAO.insert(entry.accountId(), draft);
+            } catch (SQLException error) {
+                System.err.println("[Outbox] Khong luu duoc nhap: " + error.getMessage());
+            }
+        }
+        JsonObject data = new JsonObject();
+        data.addProperty("outboxId", entry.outboxId());
+        data.addProperty("subject", values.get("subject").getAsString());
+        data.addProperty("reason", reason);
+        SessionManager.getInstance().pushEvent(entry.accountId(), new EventMessage(EventName.SCHEDULED_FAILED, data));
+        SessionManager.getInstance().pushEvent(entry.accountId(), new EventMessage(EventName.DRAFTS_UPDATED, new JsonObject()));
+        SessionManager.getInstance().pushEvent(entry.accountId(), new EventMessage(EventName.SCHEDULED_UPDATED, new JsonObject()));
+    }
+
+    private static String joinAddresses(JsonObject values, String field) {
+        if (!values.has(field) || !values.get(field).isJsonArray()) {
+            return "";
+        }
+        List<String> list = new ArrayList<>();
+        values.getAsJsonArray(field).forEach(element -> list.add(element.getAsString()));
+        return String.join(", ", list);
+    }
+
+    private void deleteStoredNames(List<OutboxDAO.StoredFile> files) {
+        for (OutboxDAO.StoredFile file : files) {
+            try {
+                Files.deleteIfExists(AttachmentStorage.resolve(file.storagePath()));
+            } catch (IOException | IllegalArgumentException ignored) {
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ hội thoại, chuyển thư mục, báo đã đọc
+
+    /** Gộp danh sách phẳng thành mỗi hội thoại một dòng (thư mới nhất đại diện). */
+    static List<MailSummary> groupByThread(List<MailSummary> mails) {
+        Map<Integer, MailSummary> threads = new LinkedHashMap<>();
+        Map<Integer, List<Integer>> entryIds = new LinkedHashMap<>();
+        for (MailSummary mail : mails) { // đã sắp mới nhất trước
+            int threadId = mail.getThreadId();
+            MailSummary head = threads.get(threadId);
+            entryIds.computeIfAbsent(threadId, id -> new ArrayList<>()).add(mail.getEntryId());
+            if (head == null) {
+                threads.put(threadId, mail);
+            } else {
+                head.setThreadCount(head.getThreadCount() + 1);
+                head.setRead(head.isRead() && mail.isRead());
+                head.setStarred(head.isStarred() || mail.isStarred());
+                head.setHasAttachments(head.isHasAttachments() || mail.isHasAttachments());
+            }
+        }
+        for (Map.Entry<Integer, MailSummary> thread : threads.entrySet()) {
+            thread.getValue().setThreadEntryIds(entryIds.get(thread.getKey()));
+        }
+        return new ArrayList<>(threads.values());
+    }
+
+    /** Mọi thư của một hội thoại (cũ trước mới sau); mở hội thoại = đọc mọi thư trong đó. */
+    public ResponseMessage getThread(String requestId, Integer accountId, JsonElement payload) {
+        Integer threadId = readPositiveInt(payload, "threadId");
+        if (threadId == null) {
+            return ResponseMessage.error(requestId, "Hội thoại không hợp lệ.");
+        }
+        try {
+            List<int[]> entries = mailDAO.findThreadEntries(accountId, threadId);
+            if (entries.isEmpty()) {
+                return ResponseMessage.error(requestId, "Không tìm thấy hội thoại.");
+            }
+            List<MailDetail> details = new ArrayList<>();
+            for (int[] entry : entries) {
+                Optional<MailDetail> detail = mailDAO.getMailDetail(entry[0], accountId, entry[1]);
+                if (detail.isPresent()) {
+                    notifyReadReceipt(detail.get(), accountId);
+                    details.add(detail.get());
+                }
+            }
+            return ResponseMessage.ok(requestId, ProtocolUtil.getGson().toJsonTree(details));
+        } catch (SQLException error) {
+            return ResponseMessage.error(requestId, "Không tải được hội thoại.");
+        }
+    }
+
+    /** Báo cho người gửi biết thư vừa được mở lần đầu (nếu người đọc cho phép). */
+    private void notifyReadReceipt(MailDetail mail, int readerId) {
+        if (!mail.isNewlyRead() || mail.getSenderAccountId() == readerId || mail.getSenderAccountId() == 0) {
+            return;
+        }
+        try {
+            boolean share = accountDAO.findSecuritySettings(readerId)
+                    .map(AccountDAO.SecuritySettings::shareReadReceipts).orElse(false);
+            if (!share) {
+                return;
+            }
+            Optional<com.mailsystem.common.model.Account> reader = accountDAO.findById(readerId);
+            JsonObject data = new JsonObject();
+            data.addProperty("mailId", mail.getMailId());
+            data.addProperty("subject", mail.getSubject());
+            data.addProperty("readerEmail", reader.map(com.mailsystem.common.model.Account::getEmail).orElse(""));
+            data.addProperty("readerName", reader.map(com.mailsystem.common.model.Account::getDisplayName).orElse(""));
+            data.addProperty("readAt", LocalDateTime.now().withNano(0).toString());
+            SessionManager.getInstance().pushEvent(mail.getSenderAccountId(), new EventMessage(EventName.READ_RECEIPT, data));
+        } catch (SQLException error) {
+            System.err.println("[MailService] Khong gui duoc bao da doc: " + error.getMessage());
+        }
+    }
+
+    /** Payload {entryIds, folderId}: chuyển thư sang thư mục khác của chính mình. */
+    public ResponseMessage moveMail(String requestId, Integer accountId, JsonElement payload) {
+        Integer folderId = readPositiveInt(payload, "folderId");
+        if (folderId == null) {
+            return ResponseMessage.error(requestId, "Thư mục đích không hợp lệ.");
+        }
+        JsonObject extra = new JsonObject();
+        extra.addProperty("folderId", folderId);
+        return applyToEntries(requestId, accountId, payload,
+                (entryId, owner) -> mailDAO.moveToFolder(entryId, owner, folderId), EventName.MAIL_MOVED, extra,
+                "Thư cần chuyển không hợp lệ.", "Không chuyển được thư (thư mục đích không hợp lệ hoặc thư không còn).",
+                "Không thể chuyển thư.");
+    }
+
+    /** Tiến độ tải lên, để Client tải tiếp sau khi rớt mạng. */
+    public ResponseMessage uploadStatus(String requestId, Integer accountId, JsonElement payload, UploadManager uploads) {
+        String uploadId = payload != null && payload.isJsonObject() ? readString(payload.getAsJsonObject(), "uploadId") : "";
+        try {
+            UploadManager.ChunkResult status = uploads.status(uploadId);
+            JsonObject data = new JsonObject();
+            data.addProperty("uploadId", status.uploadId());
+            data.addProperty("receivedBytes", status.receivedBytes());
+            data.addProperty("complete", status.complete());
+            return ResponseMessage.ok(requestId, data);
+        } catch (UploadManager.UploadException error) {
+            return ResponseMessage.error(requestId, error.getMessage());
+        }
+    }
 
     /** Payload {entryIds, read?}: read = false để đánh dấu CHƯA đọc. */
     public ResponseMessage markRead(String requestId, Integer accountId, JsonElement payload) {

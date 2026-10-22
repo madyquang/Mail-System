@@ -35,6 +35,15 @@ public final class ProtocolConstants {
     /** Chỉ dùng TLS 1.3: bỏ hẳn các bộ mã hoá cũ, bắt tay nhanh hơn (1-RTT). */
     public static final String[] TLS_PROTOCOLS = {"TLSv1.3"};
 
+    /** Thời gian chờ để hoàn tác gửi thư (giây) và giới hạn hẹn giờ. */
+    public static final int UNDO_SEND_SECONDS = 8;
+    public static final int MAX_UNDO_SECONDS = 30;
+    public static final int MAX_SCHEDULE_DAYS = 365;
+
+    /** Số thư mục tự tạo tối đa mỗi tài khoản, độ dài tên. */
+    public static final int MAX_CUSTOM_FOLDERS = 50;
+    public static final int MAX_FOLDER_NAME_CHARS = 100;
+
     /** Số thư tối đa trong một thao tác hàng loạt ({entryIds: [...]}). */
     public static final int MAX_ENTRIES_PER_REQUEST = 500;
 

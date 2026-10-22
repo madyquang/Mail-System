@@ -24,6 +24,11 @@
     -c-warning: #8a5300;
     -c-star: #f4b400;
     -c-selected: #c2dbff;
+    -c-on-primary-soft: #001d35;
+    -c-scrim: rgba(255, 255, 255, 0.7);
+    -c-thumb: #c4c7c5;
+    -c-thumb-hover: #a8aaa9;
+    -c-auth-bg: linear-gradient(to bottom right, #e8f0fe 0%, #f6f8fc 55%, #fef7e0 100%);
 
     -fx-font-family: "Segoe UI", "Roboto", "Helvetica Neue", sans-serif;
     -fx-font-size: 13px;
@@ -154,7 +159,7 @@
 
 /* ------------------------------------------------------------- màn hình đăng nhập */
 .auth-screen {
-    -fx-background-color: linear-gradient(to bottom right, #e8f0fe 0%, #f6f8fc 55%, #fef7e0 100%);
+    -fx-background-color: -c-auth-bg;
 }
 .auth-card {
     -fx-background-color: -c-surface;
@@ -231,13 +236,13 @@
 .compose-button {
     -fx-background-color: -c-primary-soft;
     -fx-background-radius: 16px;
-    -fx-text-fill: #001d35;
+    -fx-text-fill: -c-on-primary-soft;
     -fx-font-size: 14px;
     -fx-font-weight: 600;
     -fx-padding: 16px 22px 16px 18px;
     -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.1), 4, 0.1, 0, 1);
 }
-.compose-button .icon { -fx-icon-color: #001d35; }
+.compose-button .icon { -fx-icon-color: -c-on-primary-soft; }
 .compose-button:hover {
     -fx-background-color: derive(-c-primary-soft, -6%);
     -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.22), 8, 0.12, 0, 2);
@@ -254,11 +259,11 @@
     -fx-cursor: hand;
 }
 .nav-item:hover { -fx-background-color: -c-surface-3; }
-.nav-item:selected { -fx-background-color: -c-primary-soft; -fx-text-fill: #001d35; -fx-font-weight: bold; }
-.nav-item:selected .icon { -fx-icon-color: #001d35; }
+.nav-item:selected { -fx-background-color: -c-primary-soft; -fx-text-fill: -c-on-primary-soft; -fx-font-weight: bold; }
+.nav-item:selected .icon { -fx-icon-color: -c-on-primary-soft; }
 .nav-item:focused { -fx-border-color: transparent; }
 .nav-badge { -fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: -c-text-2; }
-.nav-item:selected .nav-badge { -fx-text-fill: #001d35; }
+.nav-item:selected .nav-badge { -fx-text-fill: -c-on-primary-soft; }
 .sidebar-section { -fx-font-size: 11.5px; -fx-font-weight: bold; -fx-text-fill: -c-text-3; -fx-padding: 14px 0 4px 18px; }
 
 /* ------------------------------------------------------------- bảng nội dung */
@@ -342,7 +347,7 @@
 .empty-icon .icon { -fx-icon-color: -c-text-3; }
 .empty-title { -fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: -c-text-2; }
 .empty-subtitle { -fx-text-fill: -c-text-3; }
-.loading-pane { -fx-background-color: rgba(255, 255, 255, 0.7); -fx-background-radius: 16px; }
+.loading-pane { -fx-background-color: -c-scrim; -fx-background-radius: 16px; }
 .progress-indicator { -fx-progress-color: -c-primary; }
 .progress-bar .bar { -fx-background-color: -c-primary; -fx-background-radius: 3px; -fx-background-insets: 0; }
 .progress-bar .track { -fx-background-color: -c-surface-3; -fx-background-radius: 3px; }
@@ -408,7 +413,7 @@
 .list-view { -fx-background-color: transparent; -fx-background-insets: 0; }
 .panel .list-view .list-cell { -fx-background-color: transparent; -fx-padding: 9px 10px; -fx-background-radius: 8px; }
 .panel .list-view .list-cell:hover { -fx-background-color: -c-surface-2; }
-.panel .list-view .list-cell:selected { -fx-background-color: -c-primary-soft; -fx-text-fill: #001d35; }
+.panel .list-view .list-cell:selected { -fx-background-color: -c-primary-soft; -fx-text-fill: -c-on-primary-soft; }
 .tab-pane .tab-header-area .tab-header-background { -fx-background-color: transparent; }
 .tab-pane .tab { -fx-background-color: transparent; -fx-padding: 8px 14px; }
 .tab-pane .tab:selected { -fx-border-color: transparent transparent -c-primary transparent; -fx-border-width: 0 0 3px 0; }
@@ -430,8 +435,8 @@
 
 /* ------------------------------------------------------------- thanh cuộn mảnh */
 .scroll-bar:vertical, .scroll-bar:horizontal { -fx-background-color: transparent; -fx-padding: 2px; }
-.scroll-bar .thumb { -fx-background-color: #c4c7c5; -fx-background-radius: 6px; }
-.scroll-bar .thumb:hover { -fx-background-color: #a8aaa9; }
+.scroll-bar .thumb { -fx-background-color: -c-thumb; -fx-background-radius: 6px; }
+.scroll-bar .thumb:hover { -fx-background-color: -c-thumb-hover; }
 .scroll-bar .increment-button, .scroll-bar .decrement-button { -fx-padding: 0; -fx-pref-height: 0; -fx-pref-width: 0; }
 .scroll-bar .increment-arrow, .scroll-bar .decrement-arrow { -fx-shape: none; -fx-padding: 0; }
 .scroll-pane { -fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0; }
@@ -467,3 +472,57 @@
 .suggest-subtitle { -fx-font-size: 11.5px; -fx-text-fill: -c-text-3; }
 .suggest-section { -fx-font-size: 10.5px; -fx-font-weight: bold; -fx-text-fill: -c-text-3; -fx-padding: 4px 0 2px 0; }
 .suggest-row .icon { -fx-icon-color: -c-text-2; }
+
+/* ---- v3: kết nối lại, thư mục, hội thoại, xem trước, báo đã đọc ---- */
+.banner-reconnect {
+    -fx-background-color: -c-primary-softer;
+    -fx-border-color: transparent transparent -c-primary-soft transparent;
+    -fx-padding: 8px 16px;
+}
+.banner-reconnect .label { -fx-text-fill: -c-on-primary-soft; }
+.banner-reconnect .icon { -fx-icon-color: -c-primary; }
+.sidebar-section-row { -fx-padding: 14px 4px 4px 18px; }
+.sidebar-section-row .sidebar-section { -fx-padding: 0; }
+.nav-item.drop-target { -fx-background-color: -c-primary-soft; -fx-border-color: -c-primary; -fx-border-width: 0 0 0 3px; }
+.thread-badge {
+    -fx-background-color: -c-surface-3;
+    -fx-background-radius: 8px;
+    -fx-padding: 0 6px;
+    -fx-font-size: 11px;
+    -fx-text-fill: -c-text-2;
+}
+.thread-message {
+    -fx-background-color: -c-surface;
+    -fx-border-color: -c-border;
+    -fx-border-radius: 12px;
+    -fx-background-radius: 12px;
+    -fx-padding: 14px 18px;
+}
+.thread-message.collapsed { -fx-cursor: hand; }
+.thread-message.collapsed:hover { -fx-background-color: -c-surface-2; }
+.message-body { -fx-text-fill: -c-text; -fx-font-size: 13.5px; -fx-line-spacing: 2px; }
+.receipt-box {
+    -fx-background-color: -c-success-soft;
+    -fx-background-radius: 10px;
+    -fx-padding: 8px 12px;
+}
+.receipt-box .label { -fx-text-fill: -c-success; -fx-font-size: 12px; }
+.receipt-box .icon { -fx-icon-color: -c-success; }
+.preview-header { -fx-background-color: -c-surface; -fx-border-color: transparent transparent -c-border transparent; }
+.preview-body { -fx-background-color: -c-bg; }
+.preview-page { -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.25), 10, 0.15, 0, 2); }
+.drop-zone {
+    -fx-border-color: -c-primary;
+    -fx-border-style: segments(6, 4);
+    -fx-border-width: 2px;
+    -fx-border-radius: 12px;
+    -fx-background-color: -c-primary-softer;
+    -fx-background-radius: 12px;
+}
+.drop-zone .label { -fx-text-fill: -c-primary; -fx-font-size: 15px; -fx-font-weight: bold; }
+.drop-zone .icon { -fx-icon-color: -c-primary; }
+.schedule-tag { -fx-text-fill: -c-warning; -fx-font-weight: bold; -fx-font-size: 12px; }
+.totp-field { -fx-font-size: 18px; -fx-font-family: "Consolas", monospace; }
+.qr-frame { -fx-background-color: white; -fx-background-radius: 12px; -fx-padding: 10px; }
+.mono { -fx-font-family: "Consolas", "Cascadia Mono", monospace; -fx-font-size: 12px; }
+.toast-action { -fx-background-color: transparent; -fx-text-fill: #a8c7fa; -fx-font-weight: bold; -fx-cursor: hand; -fx-padding: 2px 6px; }

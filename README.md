@@ -5,8 +5,11 @@ Hệ thống mail nội bộ theo mô hình Client–Server, đồ án môn **L�
 - Nhiều Client JavaFX kết nối **đồng thời** tới một Server qua **TCP socket được mã hoá TLS 1.3**.
 - Giao thức **JSON theo dòng** tự thiết kế (REQUEST / RESPONSE / EVENT), không dùng SMTP/IMAP hay REST.
 - Server **chủ động đẩy** thay đổi tới mọi thiết bị đang đăng nhập (thư mới, đã đọc, gắn sao, xoá...).
-- Tệp đính kèm truyền **theo khối 512 KB** hai chiều, có tiến độ.
-- Giao diện desktop 3 cột kiểu Gmail: thư mục | danh sách thư | khung đọc thư.
+- Tệp đính kèm truyền **theo khối 512 KB** hai chiều, có tiến độ, **tải tiếp** sau khi rớt mạng.
+- Giao diện desktop 3 cột kiểu Gmail (sáng / tối): thư mục | danh sách thư | khung đọc thư.
+- v3: tự kết nối lại, hội thoại, thư mục tự tạo + kéo thả, hoàn tác / hẹn giờ gửi, báo đã đọc,
+  xem trước tệp, xác minh 2 bước (TOTP), chứng chỉ thiết bị (mutual TLS), bảng giám sát HTTP,
+  virtual thread + HikariCP, MySQL qua TLS, CI, kiểm thử tải, đóng gói jpackage.
 
 | Tài liệu | Nội dung |
 | --- | --- |
@@ -42,8 +45,14 @@ Lần đầu Server chạy sẽ tự tạo chứng chỉ TLS và in dấu vân t
 [TLS] Dau van tay chung chi (SHA-256), dung de doi chieu khi client hoi:
       15:6B:61:2B:C1:0D:66:7B:...
 [MailServer] Ket noi MySQL thanh cong: jdbc:mysql://localhost:3306/mail_system
-[MailServer] Dang lang nghe tai cong 5000 (TLS 1.3), toi da 100 ket noi
+[MailServer] Ket noi MySQL ma hoa TLS: TLS_AES_256_GCM_SHA384
+[MailServer] Dang lang nghe tai cong 5000 (TLS 1.3), toi da 100 ket noi, virtual thread, chung chi thiet bi: want
+[Monitor] Bang giam sat (chi mo duoc tren may nay): http://127.0.0.1:8090/?token=...
 ```
+
+Mở đường dẫn `[Monitor]` trên chính máy Server để xem bảng giám sát: kết nối
+đang mở (có nút ngắt), request/giây, độ trễ, pool MySQL, thiết bị chờ duyệt,
+nhật ký bảo mật.
 
 Lần đầu Client kết nối sẽ hỏi có tin chứng chỉ này không: đối chiếu dấu vân tay
 rồi bấm **Tin và kết nối**. Sau đó bấm **Tạo tài khoản** để đăng ký.
@@ -67,7 +76,8 @@ máy, bị `.gitignore`) > `server-defaults.properties` (mặc định, được
 
 | Khoá | Biến môi trường | Mặc định | Ý nghĩa |
 | --- | --- | --- | --- |
-| `db.url` | `MAIL_DB_URL` | `jdbc:mysql://localhost:3306/mail_system?...` | Chuỗi kết nối MySQL |
+| `db.url` | `MAIL_DB_URL` | `jdbc:mysql://localhost:3306/mail_system?sslMode=PREFERRED...` | Chuỗi kết nối MySQL (`sslMode=REQUIRED` khi MySQL ở máy khác) |
+| `db.poolSize` | `MAIL_DB_POOL_SIZE` | `10` | Số kết nối MySQL tối đa (HikariCP) |
 | `db.username` / `db.password` | `MAIL_DB_USERNAME` / `MAIL_DB_PASSWORD` | `root` / trống | Tài khoản MySQL |
 | `server.port` | `MAIL_SERVER_PORT` | `5000` | Cổng TLS |
 | `server.maxClients` | `MAIL_SERVER_MAX_CLIENTS` | `100` | Kết nối đồng thời tối đa |
@@ -78,6 +88,11 @@ máy, bị `.gitignore`) > `server-defaults.properties` (mặc định, được
 | `security.loginLockMinutes` | `MAIL_LOGIN_LOCK_MINUTES` | `15` | Thời gian khoá |
 | `security.requestsPerSecond` / `security.requestBurst` | `MAIL_REQUESTS_PER_SECOND` / `MAIL_REQUEST_BURST` | `30` / `120` | Giới hạn tốc độ mỗi kết nối |
 | `security.registrationsPerHourPerIp` | `MAIL_REGISTRATIONS_PER_HOUR` | `10` | Giới hạn đăng ký |
+| `security.resumeTokenMinutes` | `MAIL_RESUME_TOKEN_MINUTES` | `720` | Hạn token tự kết nối lại |
+| `tls.clientAuth` | `MAIL_TLS_CLIENT_AUTH` | `want` | Chứng chỉ thiết bị: `off` / `want` / `need` |
+| `server.threads` | `MAIL_SERVER_THREADS` | `auto` | `virtual` (Java 21+) / `platform` |
+| `monitor.enabled` / `monitor.port` / `monitor.token` | `MAIL_MONITOR_*` | `true` / `8090` / ngẫu nhiên | Bảng giám sát HTTP (chỉ 127.0.0.1) |
+| `upload.expiryMinutes` | `MAIL_UPLOAD_EXPIRY_MINUTES` | `30` | Giữ tệp tải lên dở để tải tiếp |
 
 ## 4. Chạy qua mạng LAN
 
@@ -88,9 +103,22 @@ máy, bị `.gitignore`) > `server-defaults.properties` (mặc định, được
 ## 5. Kiểm thử
 
 ```powershell
-.\scripts\test.ps1   # 44 unit/integration test qua TLS thật, không cần MySQL
-.\scripts\e2e.ps1    # ~50 kịch bản end-to-end với MySQL thật (Server riêng ở cổng 5098, tự dọn dữ liệu)
+.\scripts\test.ps1       # 54 unit/integration test (TLS thật, không cần MySQL)
+.\scripts\e2e.ps1        # 109 kịch bản end-to-end với MySQL thật (Server riêng ở cổng 5098, tự dọn dữ liệu)
+.\scripts\loadtest.ps1 -Clients 100 -Seconds 20   # kiểm thử tải: request/giây, độ trễ p50/p95/p99
 ```
+
+GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) chạy build + test trên JDK 17 và 21,
+rồi chạy e2e với MySQL 8 trong container, ở mỗi lần push / pull request.
+
+## 5b. Đóng gói
+
+```powershell
+.\scripts\package.ps1              # dist\MailSystem\MailSystem.exe và dist\MailServer\MailServer.exe
+.\scripts\package.ps1 -Installer   # thêm bộ cài .msi (cần WiX Toolset)
+```
+
+Bản đóng gói kèm sẵn Java runtime thu gọn: máy người dùng **không cần cài Java**.
 
 Thử giao thức bằng tay (kết nối TLS, hỏi xác nhận dấu vân tay, in cả EVENT):
 
@@ -108,7 +136,7 @@ mail-common/   Hợp đồng giao thức + model dùng chung (đổi ở đây p
 mail-server/   net/ (socket, TLS, định tuyến) · service/ · dao/ · security/ · session/ · storage/ · transfer/
 mail-client/   network/ (TLS, TOFU) · api/ · controller/ · ui/ (component dùng lại) · service/
 database/      schema.sql + migrations/
-scripts/       setup-db, build, run-server, run-client, test, e2e
+scripts/       setup-db, build, run-server, run-client, test, e2e, loadtest, package
 config/        server.properties.example (mẫu), server.properties (bí mật, không commit)
 docs/          tài liệu
 ```

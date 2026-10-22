@@ -27,6 +27,10 @@
         <javafx.version>21.0.2</javafx.version>
         <junit.version>5.10.2</junit.version>
         <ikonli.version>12.3.1</ikonli.version>
+        <hikari.version>5.1.0</hikari.version>
+        <slf4j.version>2.0.13</slf4j.version>
+        <zxing.version>3.5.3</zxing.version>
+        <pdfbox.version>3.0.3</pdfbox.version>
     </properties>
 
     <!-- Dùng cho test ở mọi module (kiểm thử framing, phiên, upload, kết nối TCP thật). -->

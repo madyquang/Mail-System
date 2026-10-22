@@ -19,6 +19,8 @@ public final class Session {
 
     private static String serverHost = initialHost();
     private static int serverPort = initialPort();
+    /** Token tiếp tục phiên: chỉ giữ trong RAM, mất khi thoát ứng dụng (không ghi ra đĩa). */
+    private static volatile String resumeToken;
 
     private Session() {
     }
@@ -38,6 +40,33 @@ public final class Session {
 
     public static void signOut() {
         ACCOUNT.set(null);
+        resumeToken = null;
+    }
+
+    public static String resumeToken() {
+        return resumeToken;
+    }
+
+    public static void setResumeToken(String token) {
+        resumeToken = token;
+    }
+
+    /** Giao diện tối (lưu trên máy này). */
+    public static boolean darkMode() {
+        return PREFS.getBoolean("darkMode", false);
+    }
+
+    public static void setDarkMode(boolean dark) {
+        PREFS.putBoolean("darkMode", dark);
+    }
+
+    /** Gộp thư theo hội thoại trong danh sách thư. */
+    public static boolean threadedView() {
+        return PREFS.getBoolean("threadedView", true);
+    }
+
+    public static void setThreadedView(boolean threaded) {
+        PREFS.putBoolean("threadedView", threaded);
     }
 
     public static void updateDisplayName(String displayName) {
