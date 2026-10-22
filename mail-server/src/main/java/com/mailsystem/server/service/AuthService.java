@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mailsystem.common.model.Account;
 import com.mailsystem.common.model.Folder;
+import com.mailsystem.common.protocol.ErrorCodes;
 import com.mailsystem.common.protocol.ProtocolConstants;
 import com.mailsystem.common.protocol.ProtocolUtil;
 import com.mailsystem.common.protocol.ResponseMessage;
@@ -18,6 +19,8 @@ import com.mailsystem.server.security.PasswordHasher;
 import com.mailsystem.server.security.PasswordPolicy;
 import com.mailsystem.server.security.SecurityLog;
 import com.mailsystem.server.security.SlidingWindowLimiter;
+import com.mailsystem.server.security.Totp;
+import com.mailsystem.server.session.ResumeTokens;
 
 import java.security.GeneralSecurityException;
 import java.sql.Connection;
@@ -148,22 +151,68 @@ public class AuthService {
             if (account.isEmpty()) {
                 return ResponseMessage.error(requestId, INVALID_CREDENTIALS);
             }
-            loginThrottle.recordSuccess(email, ip);
-            SecurityLog.event("LOGIN", ip, "accountId=" + account.get().getAccountId());
+            int accountId = account.get().getAccountId();
 
-            List<Folder> folders = folderDAO.findFoldersByAccount(account.get().getAccountId());
-            JsonObject data = new JsonObject();
-            data.addProperty("accountId", account.get().getAccountId());
-            data.addProperty("email", account.get().getEmail());
-            data.addProperty("displayName", account.get().getDisplayName());
-            JsonArray folderData = ProtocolUtil.getGson().toJsonTree(folders).getAsJsonArray();
-            data.add("folders", folderData);
-            return ResponseMessage.ok(requestId, data);
+            // Bước 2 (nếu bật): mã TOTP 6 chữ số từ ứng dụng xác thực trên điện thoại.
+            Optional<AccountDAO.SecuritySettings> settings = accountDAO.findSecuritySettings(accountId);
+            if (settings.isPresent() && settings.get().totpEnabled()) {
+                String code = getString(values, "totpCode").trim();
+                if (code.isEmpty()) {
+                    return ResponseMessage.error(requestId, ErrorCodes.TOTP_REQUIRED,
+                            "Nhập mã xác thực 2 lớp từ ứng dụng trên điện thoại.");
+                }
+                long step = Totp.verify(settings.get().totpSecret(), code, System.currentTimeMillis() / 1000);
+                if (step < 0 || !accountDAO.claimTotpStep(accountId, step)) {
+                    boolean nowLocked = loginThrottle.recordFailure(email, ip);
+                    SecurityLog.event("LOGIN_TOTP_FAILED", ip, "accountId=" + accountId);
+                    return nowLocked
+                            ? ResponseMessage.error(requestId, lockMessage(loginThrottle.lockRemaining(email, ip)))
+                            : ResponseMessage.error(requestId, ErrorCodes.TOTP_REQUIRED,
+                                    "Mã xác thực không đúng hoặc đã được dùng. Hãy nhập mã mới.");
+                }
+            }
+
+            loginThrottle.recordSuccess(email, ip);
+            SecurityLog.event("LOGIN", ip, "accountId=" + accountId);
+            return ResponseMessage.ok(requestId, sessionData(account.get()));
         } catch (SQLException error) {
             return ResponseMessage.error(requestId, "Không thể truy cập cơ sở dữ liệu.");
         } catch (GeneralSecurityException | IllegalArgumentException error) {
             return ResponseMessage.error(requestId, INVALID_CREDENTIALS);
         }
+    }
+
+    /** RESUME_SESSION {resumeToken}: đăng nhập lại sau khi rớt mạng mà không cần mật khẩu. */
+    public ResponseMessage resume(String requestId, JsonElement payload, String ip) {
+        String token = payload != null && payload.isJsonObject() ? getString(payload.getAsJsonObject(), "resumeToken") : "";
+        int accountId = ResumeTokens.get().redeem(token);
+        if (accountId < 0) {
+            SecurityLog.event("RESUME_REJECTED", ip, "");
+            return ResponseMessage.error(requestId, ErrorCodes.RESUME_REJECTED,
+                    "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.");
+        }
+        try {
+            Optional<Account> account = accountDAO.findById(accountId);
+            if (account.isEmpty()) {
+                return ResponseMessage.error(requestId, ErrorCodes.RESUME_REJECTED, "Tài khoản không còn tồn tại.");
+            }
+            SecurityLog.event("RESUME", ip, "accountId=" + accountId);
+            return ResponseMessage.ok(requestId, sessionData(account.get()));
+        } catch (SQLException error) {
+            return ResponseMessage.error(requestId, "Không thể truy cập cơ sở dữ liệu.");
+        }
+    }
+
+    /** Dữ liệu trả về khi đăng nhập / tiếp tục phiên (router thêm resumeToken). */
+    private JsonObject sessionData(Account account) throws SQLException {
+        List<Folder> folders = folderDAO.findFoldersByAccount(account.getAccountId());
+        JsonObject data = new JsonObject();
+        data.addProperty("accountId", account.getAccountId());
+        data.addProperty("email", account.getEmail());
+        data.addProperty("displayName", account.getDisplayName());
+        JsonArray folderData = ProtocolUtil.getGson().toJsonTree(folders).getAsJsonArray();
+        data.add("folders", folderData);
+        return data;
     }
 
     static String lockMessage(Duration remaining) {

@@ -25,10 +25,32 @@ public class TlsConnector implements Connector {
     private static final int HANDSHAKE_TIMEOUT_MILLIS = 120_000; // gồm thời gian người dùng đọc hộp thoại xác nhận
 
     private final KnownServers knownServers;
+    private final java.util.function.Supplier<DeviceIdentity> device;
+    private volatile DeviceIdentity loadedDevice;
     private volatile Predicate<ServerIdentity> decider;
 
     public TlsConnector(KnownServers knownServers) {
+        this(knownServers, DeviceIdentity::none);
+    }
+
+    /** device: chứng chỉ thiết bị cho mutual TLS (tạo lần đầu khi cần, có thể mất ~1 giây). */
+    public TlsConnector(KnownServers knownServers, java.util.function.Supplier<DeviceIdentity> device) {
         this.knownServers = knownServers;
+        this.device = device;
+    }
+
+    /** Chứng chỉ thiết bị (tải/tạo lần đầu gọi). */
+    public DeviceIdentity device() {
+        DeviceIdentity current = loadedDevice;
+        if (current == null) {
+            synchronized (this) {
+                if (loadedDevice == null) {
+                    loadedDevice = device.get();
+                }
+                current = loadedDevice;
+            }
+        }
+        return current;
     }
 
     /** Hàm hỏi người dùng khi gặp chứng chỉ lạ/đã đổi (được gọi trên thread nền, được phép chặn). */
@@ -46,7 +68,9 @@ public class TlsConnector implements Connector {
         SSLSocket socket;
         try {
             SSLContext context = SSLContext.getInstance("TLSv1.3");
-            context.init(null, new TrustManager[] {trustManager}, new SecureRandom());
+            // KeyManager: chứng chỉ thiết bị gửi khi Server yêu cầu (mutual TLS);
+            // TrustManager: kiểm tra chứng chỉ Server theo TOFU.
+            context.init(device().keyManagers(), new TrustManager[] {trustManager}, new SecureRandom());
             socket = (SSLSocket) context.getSocketFactory().createSocket();
         } catch (GeneralSecurityException error) {
             throw new IOException("Không khởi tạo được TLS: " + error.getMessage(), error);

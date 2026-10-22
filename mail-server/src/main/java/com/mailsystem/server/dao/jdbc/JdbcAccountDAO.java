@@ -115,6 +115,60 @@ public class JdbcAccountDAO implements AccountDAO {
         return update("UPDATE account SET password_hash = ? WHERE account_id = ?", passwordHash, accountId);
     }
 
+    @Override
+    public Optional<SecuritySettings> findSecuritySettings(int accountId) throws SQLException {
+        String sql = "SELECT share_read_receipts, totp_enabled, totp_secret, totp_last_step FROM account WHERE account_id = ?";
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, accountId);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    return Optional.empty();
+                }
+                long step = result.getLong("totp_last_step");
+                boolean noStep = result.wasNull();
+                return Optional.of(new SecuritySettings(result.getBoolean("share_read_receipts"),
+                        result.getBoolean("totp_enabled"), result.getString("totp_secret"), noStep ? null : step));
+            }
+        }
+    }
+
+    @Override
+    public boolean updateShareReadReceipts(int accountId, boolean share) throws SQLException {
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE account SET share_read_receipts = ? WHERE account_id = ?")) {
+            statement.setBoolean(1, share);
+            statement.setInt(2, accountId);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    @Override
+    public boolean updateTotp(int accountId, String secret, boolean enabled) throws SQLException {
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE account SET totp_secret = ?, totp_enabled = ?, totp_last_step = NULL WHERE account_id = ?")) {
+            statement.setString(1, secret);
+            statement.setBoolean(2, enabled);
+            statement.setInt(3, accountId);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    @Override
+    public boolean claimTotpStep(int accountId, long step) throws SQLException {
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE account SET totp_last_step = ? WHERE account_id = ? "
+                                + "AND (totp_last_step IS NULL OR totp_last_step < ?)")) {
+            statement.setLong(1, step);
+            statement.setInt(2, accountId);
+            statement.setLong(3, step);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
     private boolean update(String sql, String value, int accountId) throws SQLException {
         try (Connection connection = DatabaseConnection.getConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)) {

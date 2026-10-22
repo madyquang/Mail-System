@@ -14,6 +14,7 @@ import com.mailsystem.common.model.Attachment;
 import com.mailsystem.common.model.Draft;
 import com.mailsystem.common.model.MailDetail;
 import com.mailsystem.common.protocol.ProtocolConstants;
+import com.google.gson.JsonObject;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
@@ -28,6 +29,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
+import javafx.scene.input.TransferMode;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
@@ -36,6 +38,7 @@ import javafx.stage.Stage;
 import javafx.util.Duration;
 
 import java.io.File;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -54,17 +57,41 @@ public class ComposeController {
 
     private static final Duration AUTOSAVE_INTERVAL = Duration.seconds(20);
 
-    /** Dữ liệu khởi tạo cửa sổ soạn thư. */
+    /**
+     * Dữ liệu khởi tạo cửa sổ soạn thư. inReplyTo: mailId của thư đang trả lời
+     * (để Server nối vào cùng hội thoại); files: tệp trên máy (khi hoàn tác gửi).
+     */
     public record Request(String title, String to, String cc, String bcc, String subject, String body,
-            Integer draftId, List<Attachment> forwardAttachments) {
+            Integer draftId, List<Attachment> forwardAttachments, Integer inReplyTo, List<File> files) {
 
         public static Request blank() {
-            return new Request("Thư mới", "", "", "", "", "", null, List.of());
+            return new Request("Thư mới", "", "", "", "", "", null, List.of(), null, List.of());
         }
 
         public static Request draft(Draft draft) {
             return new Request("Thư nháp", draft.getTo(), draft.getCc(), draft.getBcc(), draft.getSubject(),
-                    draft.getBody(), draft.getDraftId(), List.of());
+                    draft.getBody(), draft.getDraftId(), List.of(), null, List.of());
+        }
+
+        /** Mở lại thư vừa huỷ gửi (hoàn tác hoặc huỷ hẹn giờ) từ nội dung Server trả lại. */
+        public static Request reopened(JsonObject data, List<Attachment> forwarded, List<File> files) {
+            return new Request("Thư chưa gửi", joined(data, "to"), joined(data, "cc"), joined(data, "bcc"),
+                    text(data, "subject"), text(data, "body"),
+                    data.has("draftId") ? data.get("draftId").getAsInt() : null, forwarded,
+                    data.has("inReplyTo") ? data.get("inReplyTo").getAsInt() : null, files);
+        }
+
+        private static String joined(JsonObject data, String field) {
+            if (!data.has(field) || !data.get(field).isJsonArray()) {
+                return "";
+            }
+            List<String> values = new ArrayList<>();
+            data.getAsJsonArray(field).forEach(value -> values.add(value.getAsString()));
+            return String.join(", ", values);
+        }
+
+        private static String text(JsonObject data, String field) {
+            return data.has(field) && !data.get(field).isJsonNull() ? data.get(field).getAsString() : "";
         }
 
         public static Request reply(MailDetail mail, boolean all) {
@@ -90,7 +117,7 @@ public class ComposeController {
             String quote = "\n\nVào " + Formats.longDate(mail.getSentAt()) + ", " + sender + " <" + mail.getSenderEmail()
                     + "> đã viết:\n" + quoted(mail.getBody());
             return new Request(all ? "Trả lời tất cả" : "Trả lời", String.join(", ", to), String.join(", ", cc), "",
-                    prefixed("Re: ", mail.getSubject()), quote, null, List.of());
+                    prefixed("Re: ", mail.getSubject()), quote, null, List.of(), mail.getMailId(), List.of());
         }
 
         public static Request forward(MailDetail mail) {
@@ -101,7 +128,7 @@ public class ComposeController {
                     + "Tới: " + (mail.getTo() == null ? "" : String.join(", ", mail.getTo())) + "\n\n"
                     + nullToEmpty(mail.getBody());
             return new Request("Chuyển tiếp", "", "", "", prefixed("Fwd: ", mail.getSubject()), header, null,
-                    mail.getAttachments() == null ? List.of() : mail.getAttachments());
+                    mail.getAttachments() == null ? List.of() : mail.getAttachments(), null, List.of());
         }
 
         private static String prefixed(String prefix, String subject) {
@@ -153,6 +180,10 @@ public class ComposeController {
     @FXML
     private Button attachButton;
     @FXML
+    private Button scheduleButton;
+    @FXML
+    private StackPane dropZone;
+    @FXML
     private Button saveDraftButton;
     @FXML
     private Button discardButton;
@@ -168,6 +199,7 @@ public class ComposeController {
     private final List<File> files = new ArrayList<>();
     private final List<Attachment> forwarded = new ArrayList<>();
     private Integer draftId;
+    private Integer inReplyTo;
     private boolean draftCreatedHere;
     private boolean dirty;
     private boolean sending;
@@ -181,7 +213,10 @@ public class ComposeController {
         subjectField.setText(request.subject());
         bodyArea.setText(request.body());
         draftId = request.draftId();
+        inReplyTo = request.inReplyTo();
         forwarded.addAll(request.forwardAttachments());
+        files.addAll(request.files());
+        installFileDrop();
         if (!request.cc().isBlank() || !request.bcc().isBlank()) {
             handleToggleCc();
         }
@@ -227,6 +262,19 @@ public class ComposeController {
 
     @FXML
     public void handleSend() {
+        send(null);
+    }
+
+    /** Hẹn giờ gửi: chọn thời điểm rồi gửi với sendAt (Server giữ thư trong hộp chờ gửi). */
+    @FXML
+    public void handleSchedule() {
+        if (!sending) {
+            Dialogs.pickSendTime(window()).ifPresent(this::send);
+        }
+    }
+
+    /** sendAt null: gửi sau UNDO_SEND_SECONDS giây (hoàn tác được); khác null: hẹn giờ. */
+    private void send(LocalDateTime sendAt) {
         if (sending) {
             return;
         }
@@ -267,12 +315,20 @@ public class ComposeController {
                     Platform.runLater(() -> progressLabel.setText("Đang gửi thư..."));
                     return MailApi.get().send(new MailApi.OutgoingMail(to, cc, bcc, subjectField.getText(),
                             bodyArea.getText(), uploadIds,
-                            forwarded.stream().map(Attachment::getAttachmentId).collect(Collectors.toList()), draftId));
-                }), mailId -> {
+                            forwarded.stream().map(Attachment::getAttachmentId).collect(Collectors.toList()), draftId,
+                            inReplyTo, sendAt == null ? ProtocolConstants.UNDO_SEND_SECONDS : null, sendAt));
+                }), result -> {
                     close();
                     StackPane mainRoot = Navigator.primaryStage().getScene().getRoot() instanceof StackPane pane
                             ? pane : null;
-                    Toast.success(mainRoot, "Đã gửi thư.");
+                    if (!result.queued()) {
+                        Toast.success(mainRoot, "Đã gửi thư.");
+                    } else if (sendAt != null) {
+                        Toast.success(mainRoot, "Đã hẹn gửi lúc " + Formats.longDate(result.sendAt())
+                                + ". Xem trong mục Đã lên lịch.");
+                    } else {
+                        offerUndo(mainRoot, result.outboxId());
+                    }
                 }, error -> {
                     setSending(false);
                     progressBox.setVisible(false);
@@ -281,12 +337,26 @@ public class ComposeController {
                 });
     }
 
+    /**
+     * HOÀN TÁC GỬI: thư nằm ở hộp chờ gửi của Server vài giây. Bấm Hoàn tác thì
+     * CANCEL_SCHEDULED lấy thư ra (nếu Server chưa kịp gửi) và mở lại khung soạn
+     * với cùng nội dung và các tệp trên máy.
+     */
+    private void offerUndo(StackPane mainRoot, int outboxId) {
+        List<File> localFiles = new ArrayList<>(files);
+        List<Attachment> forwardedCopy = new ArrayList<>(forwarded);
+        Toast.withAction(mainRoot, "Đang gửi thư...", "Hoàn tác", ProtocolConstants.UNDO_SEND_SECONDS,
+                () -> Fx.then(MailApi.get().cancelScheduled(outboxId),
+                        data -> open(Request.reopened(data, forwardedCopy, localFiles)),
+                        error -> Toast.error(mainRoot, "Không hoàn tác được: " + error)));
+    }
+
     private void setSending(boolean value) {
         sending = value;
         sendButton.setDisable(value);
         sendButton.setText(value ? "Đang gửi..." : "Gửi");
         for (javafx.scene.Node node : new javafx.scene.Node[] {toField, ccField, bccField, subjectField, bodyArea,
-                attachButton, saveDraftButton, discardButton, attachmentPane}) {
+                attachButton, scheduleButton, saveDraftButton, discardButton, attachmentPane}) {
             node.setDisable(value);
         }
         errorLabel.setText("");
@@ -301,9 +371,34 @@ public class ComposeController {
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Tệp được hỗ trợ (PDF, DOCX, PPTX, TXT, JPG, PNG, ZIP)",
                 "*.pdf", "*.docx", "*.pptx", "*.txt", "*.jpg", "*.png", "*.zip"));
         List<File> selected = chooser.showOpenMultipleDialog(window());
-        if (selected == null) {
-            return;
+        if (selected != null) {
+            addFiles(selected);
         }
+    }
+
+    /** Kéo tệp từ Explorer/Finder thả vào cửa sổ soạn thư. */
+    private void installFileDrop() {
+        root.setOnDragOver(event -> {
+            if (!sending && event.getDragboard().hasFiles()) {
+                event.acceptTransferModes(TransferMode.COPY);
+                dropZone.setVisible(true);
+            }
+            event.consume();
+        });
+        root.setOnDragExited(event -> dropZone.setVisible(false));
+        root.setOnDragDropped(event -> {
+            boolean done = false;
+            if (!sending && event.getDragboard().hasFiles()) {
+                addFiles(event.getDragboard().getFiles().stream().filter(File::isFile).toList());
+                done = true;
+            }
+            dropZone.setVisible(false);
+            event.setDropCompleted(done);
+            event.consume();
+        });
+    }
+
+    private void addFiles(List<File> selected) {
         List<File> candidate = new ArrayList<>(files);
         for (File file : selected) {
             String name = file.getName();

@@ -26,6 +26,7 @@ public class MailCell extends ListCell<MailSummary> {
     private final Region unreadDot = new Region();
     private final Label sender = new Label();
     private final Label folderTag = new Label();
+    private final Label threadCount = new Label();
     private final Label date = new Label();
     private final Label subject = new Label();
     private final Label snippet = new Label();
@@ -63,7 +64,9 @@ public class MailCell extends ListCell<MailSummary> {
             label.setPrefWidth(1);
             label.setMaxWidth(Double.MAX_VALUE);
         }
-        HBox top = new HBox(6, sender, folderTag, attachmentIcon, date);
+        threadCount.getStyleClass().add("thread-badge");
+        threadCount.setMinWidth(Region.USE_PREF_SIZE);
+        HBox top = new HBox(6, sender, threadCount, folderTag, attachmentIcon, date);
         top.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(sender, Priority.ALWAYS);
         VBox text = new VBox(3, top, subject, snippet);
@@ -92,6 +95,11 @@ public class MailCell extends ListCell<MailSummary> {
                 ? mail.getSenderEmail() : mail.getSenderName();
         avatar.set(name, mail.getSenderEmail());
         sender.setText(name);
+        // Hội thoại nhiều thư: hiện số thư như Gmail ("Lan, tôi  3").
+        boolean thread = mail.getThreadCount() > 1;
+        threadCount.setText(thread ? Integer.toString(mail.getThreadCount()) : "");
+        threadCount.setVisible(thread);
+        threadCount.setManaged(thread);
         date.setText(Formats.shortDate(mail.getSentAt()));
         subject.setText(mail.getSubject() == null || mail.getSubject().isBlank() ? "(Không có tiêu đề)" : mail.getSubject());
         snippet.setText(mail.getSnippet() == null || mail.getSnippet().isBlank() ? " " : mail.getSnippet());
@@ -120,7 +128,7 @@ public class MailCell extends ListCell<MailSummary> {
             case "INBOX" -> "Hộp thư đến";
             case "SENT" -> "Đã gửi";
             case "TRASH" -> "Thùng rác";
-            default -> "Thư mục";
+            default -> "Thư mục riêng";
         };
     }
 }

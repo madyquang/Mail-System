@@ -69,7 +69,7 @@ public final class AutoComplete {
         });
         StackPane container = new StackPane(list);
         container.getStyleClass().add("suggest-popup");
-        container.getStylesheets().add(com.mailsystem.client.app.Navigator.stylesheet());
+        com.mailsystem.client.app.Navigator.styleParent(container);
         popup.getContent().add(container);
         popup.setAutoHide(true);
         popup.setHideOnEscape(true);

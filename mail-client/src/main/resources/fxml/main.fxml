@@ -59,6 +59,7 @@
                     <VBox.margin><Insets left="8" bottom="12" top="4" /></VBox.margin>
                 </Button>
                 <VBox fx:id="navBox" spacing="1" />
+                <!-- Mục "Thư mục" (thư mục tự tạo) được thêm bằng code ngay sau navBox. -->
                 <Region VBox.vgrow="ALWAYS" />
                 <Label fx:id="footerLabel" styleClass="hint" wrapText="true">
                     <VBox.margin><Insets left="18" /></VBox.margin>

@@ -17,6 +17,9 @@ public class MailSummary {
     private boolean starred;
     private boolean hasAttachments;
     private String folderType;    // INBOX | SENT | TRASH | CUSTOM — hữu ích ở view "Có gắn sao"
+    private int threadId;         // = mailId của thư đầu hội thoại
+    private int threadCount = 1;  // số thư của hội thoại trong thư mục này (khi xem theo hội thoại)
+    private java.util.List<Integer> threadEntryIds; // mọi entryId của hội thoại trong thư mục này
 
     public MailSummary() {
     }
@@ -50,6 +53,18 @@ public class MailSummary {
 
     public boolean isHasAttachments() { return hasAttachments; }
     public void setHasAttachments(boolean hasAttachments) { this.hasAttachments = hasAttachments; }
+
+    public int getThreadId() { return threadId == 0 ? mailId : threadId; }
+    public void setThreadId(int threadId) { this.threadId = threadId; }
+
+    public int getThreadCount() { return threadCount; }
+    public void setThreadCount(int threadCount) { this.threadCount = threadCount; }
+
+    /** entryId của mọi thư trong hội thoại (khi gộp); nếu không gộp thì chỉ có entryId của dòng này. */
+    public java.util.List<Integer> getThreadEntryIds() {
+        return threadEntryIds == null || threadEntryIds.isEmpty() ? java.util.List.of(entryId) : threadEntryIds;
+    }
+    public void setThreadEntryIds(java.util.List<Integer> threadEntryIds) { this.threadEntryIds = threadEntryIds; }
 
     public String getFolderType() { return folderType; }
     public void setFolderType(String folderType) { this.folderType = folderType; }

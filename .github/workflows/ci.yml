@@ -1,0 +1,71 @@
+# Tích hợp liên tục: mỗi lần push / pull request, GitHub dựng máy Ubuntu sạch,
+# biên dịch cả 3 module và chạy toàn bộ unit test (không cần MySQL: các test
+# dùng DAO giả hoặc Server chạy trong bộ nhớ). Kiểm thử end-to-end với MySQL
+# thật chạy ở job thứ hai với MySQL dạng service container.
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+
+jobs:
+  build:
+    name: Build + unit test (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: ["17", "21"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+      - name: Build và test
+        run: ./mvnw -B -ntp verify
+      - name: Lưu báo cáo test khi lỗi
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-jdk${{ matrix.java }}
+          path: "**/target/surefire-reports/"
+
+  e2e:
+    name: End-to-end (MySQL 8 thật)
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+          MYSQL_DATABASE: mail_system
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-root-password"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Tạo bảng
+        run: mysql -h 127.0.0.1 -uroot -pci-root-password mail_system < database/schema.sql
+      - name: Build
+        run: ./mvnw -B -ntp -q install -DskipTests
+      - name: Chạy Server + EndToEndCheck
+        env:
+          MAIL_DB_URL: jdbc:mysql://127.0.0.1:3306/mail_system?sslMode=PREFERRED&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8
+          MAIL_DB_USERNAME: root
+          MAIL_DB_PASSWORD: ci-root-password
+        run: |
+          ./mvnw -B -ntp -q -f mail-server/pom.xml dependency:build-classpath -Dmdep.outputFile=cp.txt
+          CP="$(cat mail-server/cp.txt):mail-server/target/classes"
+          java -Dserver.port=5098 -Ddata.dir=/tmp/mail-e2e -Dmonitor.port=5099 -Dmonitor.token=ci-token \
+               -cp "$CP" com.mailsystem.server.MailServerApplication &
+          for i in $(seq 1 60); do (echo > /dev/tcp/127.0.0.1/5098) 2>/dev/null && break; sleep 1; done
+          java -cp "$CP" com.mailsystem.server.tools.EndToEndCheck 5098 5099 ci-token

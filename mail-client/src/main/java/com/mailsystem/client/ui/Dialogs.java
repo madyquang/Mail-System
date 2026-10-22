@@ -17,13 +17,92 @@ import java.util.concurrent.CompletableFuture;
 /** Hộp thoại dùng chung, cùng phong cách với ứng dụng. */
 public final class Dialogs {
 
-    private static String stylesheet;
-
     private Dialogs() {
     }
 
-    public static void setStylesheet(String css) {
-        stylesheet = css;
+    /** Hỏi một dòng chữ (VD tên thư mục). @return chuỗi đã trim, rỗng nếu huỷ */
+    public static Optional<String> prompt(Window owner, String title, String label, String initial, String okText) {
+        javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog(initial);
+        if (owner != null) {
+            dialog.initOwner(owner);
+        }
+        dialog.setTitle("Mail System");
+        dialog.setHeaderText(title);
+        dialog.setContentText(label);
+        com.mailsystem.client.app.Navigator.styleParent(dialog.getDialogPane());
+        dialog.getDialogPane().getStyleClass().add("app-dialog");
+        ((javafx.scene.control.Button) dialog.getDialogPane().lookupButton(ButtonType.OK)).setText(okText);
+        dialog.getDialogPane().lookupButton(ButtonType.OK).getStyleClass().add("primary-button");
+        ((javafx.scene.control.Button) dialog.getDialogPane().lookupButton(ButtonType.CANCEL)).setText("Huỷ");
+        return dialog.showAndWait().map(String::trim).filter(value -> !value.isEmpty());
+    }
+
+    /**
+     * Chọn thời điểm hẹn gửi: vài lựa chọn nhanh (kiểu Gmail) hoặc tự chọn ngày giờ.
+     * Thời gian là giờ máy này; Server chạy cùng múi giờ trong mạng nội bộ.
+     */
+    public static Optional<java.time.LocalDateTime> pickSendTime(Window owner) {
+        java.time.LocalDateTime now = java.time.LocalDateTime.now().withSecond(0).withNano(0);
+        java.time.LocalDate tomorrow = now.toLocalDate().plusDays(1);
+        java.time.LocalDate nextMonday = now.toLocalDate().with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
+        javafx.scene.control.ToggleGroup group = new javafx.scene.control.ToggleGroup();
+        java.util.Map<javafx.scene.control.RadioButton, java.time.LocalDateTime> presets = new java.util.LinkedHashMap<>();
+        presets.put(new javafx.scene.control.RadioButton("Sau 1 giờ"), now.plusHours(1));
+        presets.put(new javafx.scene.control.RadioButton("Sáng mai, 08:00"), tomorrow.atTime(8, 0));
+        presets.put(new javafx.scene.control.RadioButton("Chiều mai, 13:00"), tomorrow.atTime(13, 0));
+        presets.put(new javafx.scene.control.RadioButton("Sáng thứ Hai, 08:00"), nextMonday.atTime(8, 0));
+        javafx.scene.control.RadioButton custom = new javafx.scene.control.RadioButton("Chọn ngày giờ:");
+        VBox options = new VBox(8);
+        presets.keySet().forEach(radio -> {
+            radio.setToggleGroup(group);
+            options.getChildren().add(radio);
+        });
+        custom.setToggleGroup(group);
+        presets.keySet().iterator().next().setSelected(true);
+
+        javafx.scene.control.DatePicker date = new javafx.scene.control.DatePicker(tomorrow);
+        date.setDayCellFactory(picker -> new javafx.scene.control.DateCell() {
+            @Override
+            public void updateItem(java.time.LocalDate item, boolean empty) {
+                super.updateItem(item, empty);
+                setDisable(empty || item.isBefore(now.toLocalDate()) || item.isAfter(now.toLocalDate().plusDays(365)));
+            }
+        });
+        javafx.scene.control.Spinner<Integer> hour = new javafx.scene.control.Spinner<>(0, 23, 8);
+        javafx.scene.control.Spinner<Integer> minute = new javafx.scene.control.Spinner<>(0, 59, 0, 5);
+        hour.setPrefWidth(76);
+        minute.setPrefWidth(76);
+        hour.setEditable(true);
+        minute.setEditable(true);
+        javafx.scene.layout.HBox customRow = new javafx.scene.layout.HBox(8, custom, date, hour, new Label(":"), minute);
+        customRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        for (javafx.scene.Node node : new javafx.scene.Node[] {date, hour, minute}) {
+            node.setOnMouseClicked(event -> custom.setSelected(true));
+        }
+        options.getChildren().add(customRow);
+        Label error = new Label();
+        error.getStyleClass().add("error-text");
+        options.getChildren().add(error);
+
+        ButtonType ok = new ButtonType("Hẹn giờ gửi", ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType("Huỷ", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert alert = alert(owner, Alert.AlertType.NONE, "Hẹn giờ gửi thư", null, ok, cancel);
+        alert.getDialogPane().setContent(options);
+        alert.getDialogPane().lookupButton(ok).getStyleClass().add("primary-button");
+        java.util.function.Supplier<java.time.LocalDateTime> chosen = () -> {
+            if (custom.isSelected()) {
+                return date.getValue() == null ? null : date.getValue().atTime(hour.getValue(), minute.getValue());
+            }
+            return presets.get((javafx.scene.control.RadioButton) group.getSelectedToggle());
+        };
+        alert.getDialogPane().lookupButton(ok).addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            java.time.LocalDateTime at = chosen.get();
+            if (at == null || at.isBefore(java.time.LocalDateTime.now().plusMinutes(1))) {
+                error.setText("Chọn một thời điểm ở tương lai (ít nhất 1 phút nữa).");
+                event.consume();
+            }
+        });
+        return alert.showAndWait().filter(ok::equals).map(button -> chosen.get());
     }
 
     /** Hỏi xác nhận; danger = true tô đỏ nút đồng ý (thao tác không hoàn tác). */
@@ -113,9 +192,7 @@ public final class Dialogs {
         alert.setTitle("Mail System");
         alert.setHeaderText(title);
         DialogPane pane = alert.getDialogPane();
-        if (stylesheet != null) {
-            pane.getStylesheets().add(stylesheet);
-        }
+        com.mailsystem.client.app.Navigator.styleParent(pane);
         pane.getStyleClass().add("app-dialog");
         pane.setMinWidth(420);
         return alert;

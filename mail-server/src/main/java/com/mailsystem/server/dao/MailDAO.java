@@ -22,6 +22,19 @@ public interface MailDAO {
 
     int insertMail(Connection connection, int senderId, String subject, String body) throws SQLException;
 
+    /** threadId = thread của thư gốc khi trả lời (null = thư mở đầu hội thoại mới). */
+    int insertMail(Connection connection, int senderId, String subject, String body, Integer threadId,
+            Integer inReplyTo) throws SQLException;
+
+    /** Chuyển bản thư sang thư mục khác (không phải Thùng rác) của chính tài khoản. */
+    boolean moveToFolder(int entryId, int accountId, int folderId) throws SQLException;
+
+    /** [mailId, entryId] của mọi thư trong hội thoại mà tài khoản xem được, cũ trước mới sau. */
+    List<int[]> findThreadEntries(int accountId, int threadId) throws SQLException;
+
+    /** threadId của thư nếu tài khoản có quyền xem thư đó. */
+    Optional<Integer> findThreadRoot(int mailId, int accountId) throws SQLException;
+
     /**
      * Insert 1 dong vao `mail_recipient`.
      * recipientType: "TO" | "CC" | "BCC" | "SENDER".

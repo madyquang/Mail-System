@@ -64,6 +64,7 @@ public class UploadManager {
         }
         Files.write(upload.file, data, StandardOpenOption.APPEND);
         upload.receivedBytes += data.length;
+        upload.lastActivity = System.currentTimeMillis();
         return new ChunkResult(upload.id, upload.receivedBytes, upload.isComplete());
     }
 
@@ -83,7 +84,27 @@ public class UploadManager {
         return upload;
     }
 
-    /** Xoá mọi tệp dở dang (gọi khi đăng xuất, đổi tài khoản hoặc mất kết nối). */
+    /** Tiến độ của một phiên tải lên (để Client tải tiếp sau khi rớt mạng). */
+    public synchronized ChunkResult status(String uploadId) throws UploadException {
+        PendingUpload upload = uploadId == null ? null : uploads.get(uploadId);
+        if (upload == null) {
+            throw new UploadException("Phiên tải lên không tồn tại hoặc đã hết hạn.");
+        }
+        return new ChunkResult(upload.id, upload.receivedBytes, upload.isComplete());
+    }
+
+    /** Xoá các tệp không có khối mới trong maxIdleMillis. @return còn tệp nào không */
+    public synchronized boolean discardIdle(long maxIdleMillis) {
+        long cutoff = System.currentTimeMillis() - maxIdleMillis;
+        for (String id : new ArrayList<>(uploads.keySet())) {
+            if (uploads.get(id).lastActivity < cutoff) {
+                discard(id);
+            }
+        }
+        return !uploads.isEmpty();
+    }
+
+    /** Xoá mọi tệp dở dang (gọi khi đăng xuất hoặc đổi tài khoản). */
     public synchronized void discardAll() {
         for (String id : new ArrayList<>(uploads.keySet())) {
             discard(id);
@@ -171,6 +192,7 @@ public class UploadManager {
         private final long declaredSize;
         private final Path file;
         private long receivedBytes;
+        private long lastActivity = System.currentTimeMillis();
 
         PendingUpload(String id, String filename, String extension, long declaredSize, Path file) {
             this.id = id;

@@ -30,6 +30,15 @@ public final class Fx {
         }));
     }
 
+    /** Mã lỗi Server (ErrorCodes) nếu lỗi là ApiException có mã, ngược lại null. */
+    public static String code(Throwable error) {
+        Throwable cause = error;
+        while ((cause instanceof CompletionException || cause instanceof ExecutionException) && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause instanceof ApiException api ? api.code() : null;
+    }
+
     /** Thông báo dễ hiểu từ lỗi của một chuỗi CompletableFuture. */
     public static String message(Throwable error) {
         Throwable cause = error;

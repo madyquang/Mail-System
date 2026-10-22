@@ -41,7 +41,7 @@ public final class Navigator {
     public static void init(Stage stage) {
         primaryStage = stage;
         stage.getIcons().add(appIcon());
-        Dialogs.setStylesheet(stylesheet());
+
     }
 
     public static Stage primaryStage() {
@@ -58,7 +58,7 @@ public final class Navigator {
         Loaded<C> loaded = load(fxml);
         if (primaryStage.getScene() == null) {
             Scene scene = new Scene(loaded.root());
-            scene.getStylesheets().add(stylesheet());
+            styleScene(scene);
             primaryStage.setScene(scene);
         } else {
             primaryStage.getScene().setRoot(loaded.root());
@@ -94,7 +94,7 @@ public final class Navigator {
         stage.setTitle(title);
         stage.getIcons().add(appIcon());
         Scene scene = new Scene(loaded.root(), width, height);
-        scene.getStylesheets().add(stylesheet());
+        styleScene(scene);
         stage.setScene(scene);
         stage.setMinWidth(Math.min(width, 520));
         stage.setMinHeight(Math.min(height, 420));
@@ -111,6 +111,39 @@ public final class Navigator {
 
     public static String stylesheet() {
         return resource("/css/app.css").toExternalForm();
+    }
+
+    /** Popup / hộp thoại có stylesheet riêng: ghi nhớ (yếu) để đổi theme cho cả chúng. */
+    private static final java.util.Set<javafx.scene.Parent> STYLED_PARENTS =
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+
+    /** app.css, cộng dark.css khi bật giao diện tối (dark.css chỉ đổi giá trị token). */
+    public static java.util.List<String> stylesheets() {
+        return Session.darkMode()
+                ? java.util.List.of(stylesheet(), resource("/css/dark.css").toExternalForm())
+                : java.util.List.of(stylesheet());
+    }
+
+    public static void styleScene(Scene scene) {
+        scene.getStylesheets().setAll(stylesheets());
+    }
+
+    public static void styleParent(javafx.scene.Parent parent) {
+        parent.getStylesheets().setAll(stylesheets());
+        STYLED_PARENTS.add(parent);
+    }
+
+    /** Đổi theme cho MỌI cửa sổ đang mở ngay lập tức (không cần khởi động lại). */
+    public static void setDarkMode(boolean dark) {
+        Session.setDarkMode(dark);
+        for (Window window : Window.getWindows()) {
+            if (window.getScene() != null && !(window instanceof javafx.stage.PopupWindow)) {
+                styleScene(window.getScene());
+            }
+        }
+        for (javafx.scene.Parent parent : new java.util.ArrayList<>(STYLED_PARENTS)) {
+            parent.getStylesheets().setAll(stylesheets());
+        }
     }
 
     private record Loaded<C>(Parent root, C controller) {

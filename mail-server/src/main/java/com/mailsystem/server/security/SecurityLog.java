@@ -17,6 +17,9 @@ public final class SecurityLog {
 
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static volatile Path logFile;
+    /** 100 sự kiện gần nhất cho bảng giám sát (cũ nhất bị bỏ khi đầy). */
+    private static final java.util.Deque<String> RECENT = new java.util.ArrayDeque<>();
+    private static final int RECENT_LIMIT = 100;
 
     private SecurityLog() {
     }
@@ -33,6 +36,12 @@ public final class SecurityLog {
     public static void event(String type, String ip, String detail) {
         String line = TIME.format(LocalDateTime.now()) + " " + type + " ip=" + ip + " " + sanitize(detail);
         System.out.println("[SECURITY] " + line);
+        synchronized (RECENT) {
+            RECENT.addFirst(line);
+            while (RECENT.size() > RECENT_LIMIT) {
+                RECENT.removeLast();
+            }
+        }
         Path file = logFile;
         if (file == null) {
             return;
@@ -44,6 +53,13 @@ public final class SecurityLog {
             } catch (IOException error) {
                 System.err.println("[SecurityLog] Khong ghi duoc log: " + error.getMessage());
             }
+        }
+    }
+
+    /** Sự kiện gần nhất trước (cho bảng giám sát). */
+    public static java.util.List<String> recent() {
+        synchronized (RECENT) {
+            return new java.util.ArrayList<>(RECENT);
         }
     }
 

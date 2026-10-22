@@ -46,4 +46,21 @@ public interface AccountDAO {
     boolean updateDisplayName(int accountId, String displayName) throws SQLException;
 
     boolean updatePasswordHash(int accountId, String passwordHash) throws SQLException;
+
+    /** Cài đặt bảo mật/riêng tư của tài khoản. */
+    record SecuritySettings(boolean shareReadReceipts, boolean totpEnabled, String totpSecret, Long totpLastStep) {
+    }
+
+    Optional<SecuritySettings> findSecuritySettings(int accountId) throws SQLException;
+
+    boolean updateShareReadReceipts(int accountId, boolean share) throws SQLException;
+
+    /** Lưu khoá TOTP (secret null = xoá) và trạng thái bật. */
+    boolean updateTotp(int accountId, String secret, boolean enabled) throws SQLException;
+
+    /**
+     * Ghi nhận bước TOTP vừa dùng, chỉ thành công nếu lớn hơn bước dùng gần nhất
+     * (nguyên tử trong một câu UPDATE): cùng một mã không dùng được hai lần.
+     */
+    boolean claimTotpStep(int accountId, long step) throws SQLException;
 }

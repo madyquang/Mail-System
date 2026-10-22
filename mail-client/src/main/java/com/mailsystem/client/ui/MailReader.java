@@ -153,24 +153,167 @@ public class MailReader extends StackPane {
         body.getStyleClass().add("reader-body");
         VBox.setVgrow(body, Priority.ALWAYS);
 
-        VBox content = new VBox(16, subject, senderRow, body);
+        VBox content = new VBox(16, subject, senderRow);
+        Node receipts = receiptBox(mail);
+        if (receipts != null) {
+            content.getChildren().add(receipts);
+        }
+        content.getChildren().add(body);
         content.setPadding(new Insets(18, 24, 12, 24));
         VBox.setVgrow(content, Priority.ALWAYS);
 
         VBox layout = new VBox(toolbar, content);
-        List<Attachment> attachments = mail.getAttachments();
-        if (attachments != null && !attachments.isEmpty()) {
-            Label title = new Label(attachments.size() + " tệp đính kèm");
-            title.getStyleClass().add("field-label");
-            FlowPane chips = new FlowPane(10, 10);
-            for (Attachment attachment : attachments) {
-                chips.getChildren().add(attachmentChip(attachment));
-            }
-            VBox attachmentBox = new VBox(8, new Separator(), title, chips);
-            attachmentBox.setPadding(new Insets(0, 24, 18, 24));
+        Node attachmentBox = attachmentBox(mail.getAttachments());
+        if (attachmentBox != null) {
+            ((VBox) attachmentBox).setPadding(new Insets(0, 24, 18, 24));
             layout.getChildren().add(attachmentBox);
         }
         getChildren().setAll(layout);
+    }
+
+    /**
+     * HỘI THOẠI: các thư cùng thread_id xếp từ cũ tới mới. Thư mới nhất mở sẵn,
+     * thư cũ thu gọn (bấm để mở). Thanh công cụ thao tác trên thư mới nhất.
+     */
+    public void showThread(List<MailDetail> mails, String myEmail) {
+        if (mails.size() == 1) {
+            showMail(mails.get(0), myEmail);
+            return;
+        }
+        MailDetail latest = mails.get(mails.size() - 1);
+        showMail(latest, myEmail);
+        VBox layout = (VBox) getChildren().get(0);
+        HBox toolbar = (HBox) layout.getChildren().get(0);
+
+        Label subject = new Label(latest.getSubject() == null || latest.getSubject().isBlank()
+                ? "(Không có tiêu đề)" : latest.getSubject());
+        subject.getStyleClass().add("reader-subject");
+        subject.setWrapText(true);
+        Label count = new Label(mails.size() + " thư");
+        count.getStyleClass().add("thread-badge");
+        HBox title = new HBox(10, subject, count);
+        title.setAlignment(Pos.CENTER_LEFT);
+
+        VBox messages = new VBox(10, title);
+        messages.setPadding(new Insets(18, 20, 20, 20));
+        for (int i = 0; i < mails.size(); i++) {
+            messages.getChildren().add(threadMessage(mails.get(i), myEmail, i == mails.size() - 1));
+        }
+        javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(messages);
+        scroll.setFitToWidth(true);
+        VBox.setVgrow(scroll, Priority.ALWAYS);
+        getChildren().setAll(new VBox(toolbar, scroll));
+        // Cuộn tới thư mới nhất sau khi bố cục xong.
+        javafx.application.Platform.runLater(() -> scroll.setVvalue(1.0));
+    }
+
+    private Node threadMessage(MailDetail mail, String myEmail, boolean expanded) {
+        String senderName = mail.getSenderName() == null || mail.getSenderName().isBlank()
+                ? mail.getSenderEmail() : mail.getSenderName();
+        Avatar avatar = new Avatar(34);
+        avatar.set(senderName, mail.getSenderEmail());
+        Label sender = new Label(senderName.equalsIgnoreCase(myEmail) || mail.getSenderEmail().equalsIgnoreCase(myEmail)
+                ? senderName + " (tôi)" : senderName);
+        sender.getStyleClass().add("reader-sender");
+        Label date = new Label(Formats.longDate(mail.getSentAt()));
+        date.getStyleClass().add("reader-meta");
+        date.setMinWidth(Region.USE_PREF_SIZE);
+        Label preview = new Label(oneLine(mail.getBody()));
+        preview.getStyleClass().add("reader-meta");
+        preview.setMinWidth(0);
+        preview.setPrefWidth(1);
+        preview.setMaxWidth(Double.MAX_VALUE);
+        Label recipients = new Label(recipientsText(mail, myEmail));
+        recipients.getStyleClass().add("reader-meta");
+        recipients.setWrapText(true);
+        VBox who = new VBox(2, sender, expanded ? recipients : preview);
+        HBox.setHgrow(who, Priority.ALWAYS);
+        who.setMinWidth(0);
+        HBox header = new HBox(10, avatar, who, date);
+        header.setAlignment(Pos.TOP_LEFT);
+
+        VBox card = new VBox(10, header);
+        card.getStyleClass().add("thread-message");
+        if (!expanded) {
+            card.getStyleClass().add("collapsed");
+            card.setOnMouseClicked(event -> {
+                VBox parent = (VBox) card.getParent();
+                int index = parent.getChildren().indexOf(card);
+                parent.getChildren().set(index, threadMessage(mail, myEmail, true));
+            });
+            return card;
+        }
+        Label body = new Label(mail.getBody() == null ? "" : mail.getBody());
+        body.setWrapText(true);
+        body.getStyleClass().add("message-body");
+        body.setMaxWidth(Double.MAX_VALUE);
+        card.getChildren().add(body);
+        Node receipts = receiptBox(mail);
+        if (receipts != null) {
+            card.getChildren().add(receipts);
+        }
+        Node attachments = attachmentBox(mail.getAttachments());
+        if (attachments != null) {
+            card.getChildren().add(attachments);
+        }
+        HBox actionsRow = new HBox(6,
+                textButton(Icons.REPLY, "Trả lời", () -> actions.reply(mail)),
+                textButton(Icons.REPLY_ALL, "Trả lời tất cả", () -> actions.replyAll(mail)),
+                textButton(Icons.FORWARD, "Chuyển tiếp", () -> actions.forward(mail)));
+        card.getChildren().add(actionsRow);
+        return card;
+    }
+
+    private static String oneLine(String body) {
+        String text = body == null ? "" : body.replaceAll("\\s+", " ").trim();
+        return text.length() > 140 ? text.substring(0, 140) + "…" : text;
+    }
+
+    /**
+     * BÁO ĐÃ ĐỌC (chỉ người gửi thấy): ai đã mở thư và lúc nào. Người nhận tắt
+     * "Gửi xác nhận đã đọc" trong cài đặt thì không xuất hiện ở đây.
+     */
+    private static Node receiptBox(MailDetail mail) {
+        List<com.mailsystem.common.model.ReadReceipt> receipts = mail.getReadReceipts();
+        if (receipts == null) {
+            return null;
+        }
+        String text;
+        if (receipts.isEmpty()) {
+            text = "Chưa có người nhận nào mở thư (hoặc họ đã tắt xác nhận đã đọc).";
+        } else {
+            text = "Đã xem: " + String.join(", ", receipts.stream().map(receipt -> {
+                String name = receipt.getDisplayName() == null || receipt.getDisplayName().isBlank()
+                        ? receipt.getEmail() : receipt.getDisplayName();
+                return name + " (" + Formats.shortDate(receipt.getReadAt()) + ")";
+            }).toList());
+        }
+        Label label = new Label(text);
+        label.setWrapText(true);
+        HBox box = new HBox(8, Icons.of(Icons.READ_RECEIPT, 16), label);
+        box.setAlignment(Pos.CENTER_LEFT);
+        box.getStyleClass().add("receipt-box");
+        return box;
+    }
+
+    private Node attachmentBox(List<Attachment> attachments) {
+        if (attachments == null || attachments.isEmpty()) {
+            return null;
+        }
+        Label title = new Label(attachments.size() + " tệp đính kèm");
+        title.getStyleClass().add("field-label");
+        FlowPane chips = new FlowPane(10, 10);
+        for (Attachment attachment : attachments) {
+            chips.getChildren().add(attachmentChip(attachment));
+        }
+        return new VBox(8, new Separator(), title, chips);
+    }
+
+    private static Button textButton(String icon, String text, Runnable action) {
+        Button button = new Button(text, Icons.of(icon, 16));
+        button.getStyleClass().add("text-button");
+        button.setOnAction(event -> action.run());
+        return button;
     }
 
     /** "tới: tôi, b@x · cc: c@x · bcc: tôi" (BCC chỉ có khi Server cho phép xem). */
@@ -205,14 +348,63 @@ public class MailReader extends StackPane {
         progress.setManaged(false);
         VBox text = new VBox(2, name, size, progress);
         Button download = iconButton(Icons.DOWNLOAD, "Tải xuống và mở", null);
-        HBox chip = new HBox(10, Icons.of(Icons.forFile(attachment.getFilename()), 28), text, download);
+        HBox chip = new HBox(10, Icons.of(Icons.forFile(attachment.getFilename()), 28), text);
         chip.setAlignment(Pos.CENTER_LEFT);
         chip.getStyleClass().add("attachment-chip");
         chip.setMinWidth(220);
-        Runnable start = () -> download(attachment, chip, progress, size);
-        download.setOnAction(event -> start.run());
-        chip.setOnMouseClicked(event -> start.run());
+        Runnable save = () -> download(attachment, chip, progress, size);
+        download.setOnAction(event -> save.run());
+        boolean previewable = AttachmentPreview.supports(attachment.getFilename());
+        if (previewable) {
+            Button preview = iconButton(Icons.PREVIEW, "Xem trước", null);
+            Runnable open = () -> preview(attachment, chip, progress, size, save);
+            preview.setOnAction(event -> open.run());
+            chip.getChildren().add(preview);
+            chip.setOnMouseClicked(event -> open.run());
+        } else {
+            chip.setOnMouseClicked(event -> save.run());
+        }
+        chip.getChildren().add(download);
         return chip;
+    }
+
+    /** Tải tệp vào thư mục tạm (qua giao thức chia khối) rồi mở cửa sổ xem trước. */
+    private void preview(Attachment attachment, HBox chip, ProgressBar progress, Label size, Runnable save) {
+        if (chip.isDisabled()) {
+            return;
+        }
+        Path target;
+        try {
+            target = AttachmentPreview.cacheFile(attachment.getAttachmentId(), attachment.getFilename());
+        } catch (java.io.IOException error) {
+            Toast.error(toastRoot, "Không tạo được tệp tạm: " + error.getMessage());
+            return;
+        }
+        Runnable openExternal = () -> openWithSystem(target);
+        try {
+            if (Files.exists(target) && Files.size(target) == attachment.getSizeBytes()) {
+                AttachmentPreview.show(attachment.getFilename(), target, save, openExternal);
+                return;
+            }
+        } catch (java.io.IOException ignored) {
+        }
+        chip.setDisable(true);
+        progress.setVisible(true);
+        progress.setManaged(true);
+        long total = Math.max(1, attachment.getSizeBytes());
+        Fx.then(AttachmentTransfer.download(attachment, target, received -> javafx.application.Platform.runLater(() ->
+                progress.setProgress(received / (double) total))), path -> {
+                    chip.setDisable(false);
+                    progress.setVisible(false);
+                    progress.setManaged(false);
+                    AttachmentPreview.show(attachment.getFilename(), path, save, openExternal);
+                }, error -> {
+                    chip.setDisable(false);
+                    progress.setVisible(false);
+                    progress.setManaged(false);
+                    size.setText(Formats.size(attachment.getSizeBytes()));
+                    Toast.error(toastRoot, "Không tải được tệp: " + error);
+                });
     }
 
     private void download(Attachment attachment, HBox chip, ProgressBar progress, Label size) {

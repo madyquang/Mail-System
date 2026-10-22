@@ -35,6 +35,12 @@
                     <Label text="Mật khẩu" styleClass="field-label" />
                     <PasswordField2 fx:id="passwordField" promptText="Mật khẩu" />
                 </VBox>
+                <VBox fx:id="totpBox" spacing="6" visible="false" managed="false">
+                    <Label text="Mã xác minh 2 bước" styleClass="field-label" />
+                    <TextField fx:id="totpField" promptText="6 chữ số" onAction="#handleLogin" styleClass="totp-field" />
+                    <Label text="Mở Google Authenticator / Microsoft Authenticator để xem mã (đổi mỗi 30 giây)."
+                           styleClass="hint" wrapText="true" />
+                </VBox>
 
                 <Label fx:id="errorLabel" styleClass="form-error" wrapText="true" maxWidth="Infinity"
                        visible="false" managed="false" />

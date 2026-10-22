@@ -15,8 +15,9 @@ public record ServerServices(AuthService auth, AccountService account, FolderSer
         DraftService draft, GroupService group, ContactService contact) {
 
     public static ServerServices createDefault() {
+        // Bộ đếm đăng nhập sai lưu trong bảng login_attempt: khởi động lại Server không xoá khoá.
         LoginThrottle loginThrottle = new LoginThrottle(ServerConfig.loginMaxFailures(),
-                Duration.ofMinutes(ServerConfig.loginLockMinutes()));
+                Duration.ofMinutes(ServerConfig.loginLockMinutes()), new com.mailsystem.server.dao.jdbc.JdbcThrottleStore());
         SlidingWindowLimiter registrations = new SlidingWindowLimiter(ServerConfig.registrationsPerHourPerIp(),
                 Duration.ofHours(1));
         return new ServerServices(new AuthService(loginThrottle, registrations), new AccountService(loginThrottle),

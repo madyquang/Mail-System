@@ -20,6 +20,7 @@ Mã nguồn tham chiếu: [mail-common/.../protocol](../mail-common/src/main/jav
 | Độ dài frame tối đa | Client → Server: `1 048 576` ký tự (`ProtocolConstants.MAX_FRAME_CHARS`) |
 | Chiều truyền | Song công (full-duplex): Server có thể gửi EVENT bất cứ lúc nào |
 | Mã hoá đường truyền | **Bắt buộc TLS 1.3** (`SSLSocket`). Server dùng chứng chỉ tự ký; Client ghim dấu vân tay SHA-256 theo mô hình TOFU (xem [SECURITY.md](SECURITY.md)) |
+| Chứng chỉ client (mutual TLS) | Server **xin** chứng chỉ thiết bị khi bắt tay (`tls.clientAuth`: `off` / `want` mặc định / `need`). Ở `need`, thiết bị chưa được duyệt nhận một RESPONSE `requestId = null`, `code = DEVICE_NOT_APPROVED` rồi bị đóng kết nối |
 | Giới hạn tốc độ | Mỗi kết nối 30 request/giây, dồn tối đa 120; vượt mức nhận `ERROR "Bạn gửi yêu cầu quá nhanh..."` |
 
 Một frame JSON không bao giờ chứa ký tự `\n` thô: xuống dòng trong chuỗi được
@@ -98,15 +99,36 @@ RESPONSE khi `status = OK`.
 | --- | --- | --- |
 | `PING` 🔓 | không có | `{"serverTime": <epoch millis>}` |
 | `REGISTER` 🔓 | `{email, password, displayName}` | `{accountId, email, displayName}` |
-| `LOGIN` 🔓 | `{email, password}` | `{accountId, email, displayName, folders: [Folder]}` |
+| `LOGIN` 🔓 | `{email, password, totpCode?}` | `{accountId, email, displayName, folders: [Folder], resumeToken}` |
+| `RESUME_SESSION` 🔓 | `{resumeToken}` | như `LOGIN` (kèm `resumeToken` **mới**); token cũ hết hiệu lực |
 | `LOGOUT` | không có | `null` |
 | `LOGOUT_ALL` | không có | `{revokedSessions}`: thu hồi mọi phiên khác rồi đăng xuất phiên này |
 | `UPDATE_PROFILE` | `{displayName}` | `{displayName}` |
-| `CHANGE_PASSWORD` | `{currentPassword, newPassword}` | `{revokedSessions}`: mọi phiên KHÁC bị thu hồi |
+| `CHANGE_PASSWORD` | `{currentPassword, newPassword}` | `{revokedSessions, resumeToken}`: mọi phiên KHÁC bị thu hồi, mọi token cũ bị huỷ |
+| `GET_SETTINGS` | không có | `{shareReadReceipts, totpEnabled}` |
+| `UPDATE_SETTINGS` | `{shareReadReceipts}` | `null` |
+| `TOTP_SETUP` | không có | `{secret, otpauthUri}`: khoá mới, **chưa** bật |
+| `TOTP_ENABLE` | `{code}` | `null`: bật khi mã khớp khoá vừa tạo |
+| `TOTP_DISABLE` | `{password, code}` | `null` |
 
 `LOGIN` sai email hoặc mật khẩu đều trả cùng một thông báo
 `"Email hoặc mật khẩu không đúng"`. Sai 5 lần (theo email, hoặc nhiều lần theo
 IP) thì bị khoá 15 phút: `"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau N phút."`.
+Khoá đăng nhập được lưu trong bảng `login_attempt` nên khởi động lại Server
+không xoá khoá.
+
+**Xác minh 2 bước**: tài khoản đã bật TOTP mà `LOGIN` thiếu `totpCode` thì nhận
+`ERROR` với `code = "TOTP_REQUIRED"` (mật khẩu đã đúng); Client hỏi mã 6 số rồi
+gửi lại `LOGIN` kèm `totpCode`. Mã được chấp nhận lệch ±30 giây và **mỗi mã chỉ
+dùng một lần** (Server nhớ bước thời gian đã dùng). Nhập sai mã cũng tính là
+một lần đăng nhập sai.
+
+**Tiếp tục phiên**: `resumeToken` là chuỗi ngẫu nhiên 256 bit, dùng **một lần**,
+hết hạn sau `security.resumeTokenMinutes` (mặc định 720 phút). Server chỉ lưu
+SHA-256 của token, trong RAM. Token bị huỷ khi `LOGOUT`, `LOGOUT_ALL`,
+`CHANGE_PASSWORD` hoặc khi Server khởi động lại; khi đó `RESUME_SESSION` trả
+`code = "RESUME_REJECTED"` và Client phải đăng nhập bằng mật khẩu.
+
 `REGISTER`/`CHANGE_PASSWORD` yêu cầu mật khẩu ≥ 8 ký tự, có cả chữ và số,
 không quá phổ biến, không chứa tên email. Mỗi IP đăng ký tối đa 10 tài khoản/giờ.
 
@@ -115,7 +137,12 @@ không quá phổ biến, không chứa tên email. Mỗi IP đăng ký tối đ
 | Command | Payload | `data` khi OK |
 | --- | --- | --- |
 | `GET_FOLDERS` | không có | `[Folder]` (kèm `unreadCount`) |
-| `GET_MAIL_LIST` | `{folderId}` hoặc `{view: "STARRED"}` | `[MailSummary]`, mới nhất trước (STARRED: thư gắn sao ở mọi thư mục trừ TRASH) |
+| `CREATE_FOLDER` | `{name}` (1–100 ký tự, không trùng, tối đa 50 thư mục) | `{folderId}` |
+| `RENAME_FOLDER` | `{folderId, name}` (chỉ thư mục `CUSTOM`) | `null` |
+| `DELETE_FOLDER` | `{folderId}` (chỉ thư mục `CUSTOM`) | `{movedToTrash}`: thư bên trong chuyển vào TRASH |
+| `MOVE_MAIL` | `{entryIds: [..], folderId}` (thư mục của mình, không phải TRASH) | `{processed, requested}` |
+| `GET_MAIL_LIST` | `{folderId, threaded?: false}` hoặc `{view: "STARRED"}` | `[MailSummary]`, mới nhất trước (STARRED: thư gắn sao ở mọi thư mục trừ TRASH). `threaded: true` gộp các thư cùng hội thoại thành một dòng (thư mới nhất đại diện) |
+| `GET_THREAD` | `{threadId}` | `[MailDetail]`: mọi thư của hội thoại mà mình xem được (trừ TRASH), cũ trước mới sau; đánh dấu đã đọc từng thư |
 | `GET_MAIL_DETAIL` | `{mailId, entryId?}` | `MailDetail`; tự đánh dấu **đúng bản `entryId`** là đã đọc (trừ thư trong TRASH) |
 | `SEARCH_MAIL` | `{keyword?, fromFilter?, folderId?}`, cần ít nhất 1 điều kiện; bỏ `folderId` = mọi thư mục | `[MailSummary]` |
 | `SUGGEST_CONTACTS` | `{query, limit?: 1..10, includeGroups?: true}` | `[Contact]`: nhóm mình là thành viên (tối đa 3) rồi tới người khớp email/tên, người đã trao đổi nhiều thư xếp trước; không gồm chính mình |
@@ -136,6 +163,14 @@ bản nhận.
 bản thư được kiểm tra quyền riêng; bản không thuộc tài khoản bị bỏ qua và không
 tính vào `processed`. Nếu không bản nào được xử lý, Server trả `ERROR`. Toàn bộ
 lô chỉ sinh **một** EVENT.
+
+**Hội thoại**: thư gửi kèm `inReplyTo = mailId` (thư mình xem được) nhận
+`threadId` của thư đó; thư không trả lời ai có `threadId = mailId`.
+
+**Báo đã đọc**: lần ĐẦU người nhận mở thư (`GET_MAIL_DETAIL` / `GET_THREAD`),
+Server ghi `read_at` và, nếu người nhận để `shareReadReceipts = true`, đẩy
+EVENT `READ_RECEIPT` tới người gửi. `MailDetail.readReceipts` (chỉ có khi người
+xem là người gửi) liệt kê ai đã đọc và lúc nào.
 
 ### 4.3 Gửi thư và tệp đính kèm
 
@@ -201,6 +236,33 @@ chung giới hạn 5 tệp / 25 MiB với tệp tải lên.
 | `LEAVE_GROUP` | `{groupId}` (không áp dụng cho chủ nhóm) | `null` |
 | `DELETE_GROUP` | `{groupId}` (chỉ chủ nhóm) | `null` |
 
+### 4.5 Hoàn tác gửi và hẹn giờ gửi (v3)
+
+`SEND_MAIL` nhận thêm một trong hai trường:
+
+| Trường | Ý nghĩa | `data` khi OK |
+| --- | --- | --- |
+| (không có) | gửi ngay như cũ | `{mailId}` |
+| `delaySeconds: 1..30` | thư nằm ở hộp chờ gửi vài giây để người gửi **hoàn tác** | `{outboxId, sendAt, scheduled: true}` |
+| `sendAt: "2026-10-23T08:00:00"` | hẹn giờ (ít nhất 10 giây tới tối đa 365 ngày sau, giờ máy chủ) | `{outboxId, sendAt, scheduled: true}` |
+
+Người nhận, tệp đính kèm và quyền chuyển tiếp được kiểm tra **ngay lúc gọi**;
+tệp được lưu luôn để không phụ thuộc phiên tải lên. Bộ điều phối của Server
+mỗi giây lấy thư tới hạn bằng `SELECT ... FOR UPDATE` và giao thư trong **cùng
+một giao dịch** nên dù chạy song song cũng không gửi trùng. Nếu tới giờ gửi mà
+người nhận không còn hợp lệ (VD tài khoản bị xoá), thư được chuyển thành thư
+nháp và người gửi nhận EVENT `SCHEDULED_FAILED`.
+
+| Command | Payload | `data` khi OK |
+| --- | --- | --- |
+| `GET_SCHEDULED` | không có | `[ScheduledMail]`, sớm nhất trước |
+| `CANCEL_SCHEDULED` | `{outboxId}` | `{to, cc, bcc, subject, body, inReplyTo?, draftId?, attachmentCount}`: nội dung để mở lại khung soạn thư. Lỗi nếu thư đã được gửi |
+| `UPLOAD_STATUS` | `{uploadId}` | `{uploadId, receivedBytes, complete}`: để tải lên **tiếp** sau khi rớt mạng |
+
+Phiên tải lên dở thuộc về **tài khoản** (không phải kết nối) và được giữ
+`upload.expiryMinutes` phút (mặc định 30) kể từ khối cuối: Client kết nối lại,
+hỏi `UPLOAD_STATUS` rồi gửi tiếp từ `receivedBytes`.
+
 ## 5. Danh sách EVENT
 
 | `eventName` | `data` | Gửi tới | Khi nào |
@@ -213,6 +275,11 @@ chung giới hạn 5 tệp / 25 MiB với tệp tải lên.
 | `DRAFTS_UPDATED` | `{}` | mọi phiên của tài khoản | `SAVE_DRAFT`, `DELETE_DRAFTS`, gửi từ nháp |
 | `PROFILE_UPDATED` | `{displayName}` | mọi phiên của tài khoản | `UPDATE_PROFILE` |
 | `SESSION_REVOKED` | `{reason}` | các phiên bị thu hồi (sau đó Server đóng kết nối) | `CHANGE_PASSWORD`, `LOGOUT_ALL` |
+| `MAIL_MOVED` | `{entryId, entryIds, folderId}` | mọi phiên của tài khoản thao tác | `MOVE_MAIL` |
+| `FOLDERS_UPDATED` | `{}` | mọi phiên của tài khoản | `CREATE_FOLDER`, `RENAME_FOLDER`, `DELETE_FOLDER` |
+| `READ_RECEIPT` | `{mailId, subject, readerEmail, readerName, readAt}` | mọi phiên của **người gửi** | người nhận mở thư lần đầu (và cho phép báo đã đọc) |
+| `SCHEDULED_UPDATED` | `{}` | mọi phiên của người gửi | thư chờ gửi được thêm / huỷ / đã gửi |
+| `SCHEDULED_FAILED` | `{outboxId, subject, reason}` | mọi phiên của người gửi | thư hẹn giờ không gửi được (đã chuyển thành nháp) |
 
 EVENT chỉ là **tín hiệu**: Client nhận EVENT thì tải lại dữ liệu bằng
 `GET_MAIL_LIST`/`SEARCH_MAIL`. Phiên đang offline không nhận EVENT, nhưng lần
@@ -223,9 +290,14 @@ EVENT chỉ là **tín hiệu**: Client nhận EVENT thì tải lại dữ liệ
 ```text
 Folder       {folderId, folderName, folderType: INBOX|SENT|TRASH|CUSTOM, unreadCount}
 MailSummary  {mailId, entryId, senderEmail, senderName, subject, snippet, sentAt,
-              read, starred, hasAttachments, folderType}
-MailDetail   {mailId, entryId, starred, folderType, senderEmail, senderName, subject, body, sentAt,
-              to: [email], cc: [email], bcc: [email], attachments: [Attachment]}
+              read, starred, hasAttachments, folderType,
+              threadId, threadCount, threadEntryIds: [entryId]}     // 3 trường cuối: v3
+MailDetail   {mailId, entryId, threadId, starred, folderType, senderEmail, senderName, subject, body, sentAt,
+              to: [email], cc: [email], bcc: [email], attachments: [Attachment],
+              readReceipts?: [ReadReceipt]}                         // chỉ khi người xem là người gửi
+ReadReceipt  {email, displayName, readAt}
+ScheduledMail {outboxId, to, subject, sendAt, attachmentCount}
+AccountSettings {shareReadReceipts, totpEnabled}
 Draft        {draftId, to, cc, bcc, subject, body, updatedAt}
 Contact      {kind: PERSON|GROUP, email, displayName, interactions}  hoặc  {kind: GROUP, groupName, memberCount}
 Attachment   {attachmentId, filename, mimeType, sizeBytes, dataBase64?}
@@ -233,6 +305,20 @@ MailGroupDTO {groupId, groupName, ownerEmail, owner: bool, memberEmails: [email]
 ```
 
 `sentAt` theo định dạng ISO-8601 không múi giờ (`2026-10-08T09:15:00`).
+Với danh sách gộp hội thoại, thao tác hàng loạt trên một dòng nên gửi **mọi**
+`threadEntryIds` của dòng đó.
+
+### Mã lỗi máy đọc được (`ResponseMessage.code`, v3)
+
+RESPONSE lỗi có thể kèm trường `code` để Client phản ứng mà không phải so sánh
+câu chữ (câu chữ có thể đổi, mã thì không):
+
+| `code` | Ý nghĩa | Client nên |
+| --- | --- | --- |
+| `TOTP_REQUIRED` | mật khẩu đúng, cần thêm mã xác minh 2 bước | hiện ô nhập mã rồi gửi lại `LOGIN` |
+| `RESUME_REJECTED` | token tiếp tục phiên không còn hợp lệ | về màn hình đăng nhập |
+| `DEVICE_NOT_APPROVED` | Server ở chế độ `need`, thiết bị chưa được duyệt | hiện dấu vân tay thiết bị để gửi quản trị viên |
+| `RATE_LIMITED` | gửi yêu cầu quá nhanh | chờ rồi thử lại |
 `bcc` chỉ có dữ liệu khi người xem là người gửi, hoặc là chính người nhận BCC đó.
 
 ## 7. Ví dụ phiên làm việc hoàn chỉnh

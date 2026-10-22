@@ -61,6 +61,18 @@ public final class Icons {
     public static final String FILE_SLIDES = "mdi2f-file-powerpoint-box";
     public static final String FILE_IMAGE = "mdi2f-file-image-outline";
     public static final String FILE_ZIP = "mdi2f-folder-zip-outline";
+    public static final String CLOCK = "mdi2c-clock-outline";
+    public static final String SCHEDULE = "mdi2c-calendar-clock";
+    public static final String FOLDER = "mdi2f-folder-outline";
+    public static final String FOLDER_PLUS = "mdi2f-folder-plus-outline";
+    public static final String FOLDER_MOVE = "mdi2f-folder-move-outline";
+    public static final String RENAME = "mdi2r-rename-box";
+    public static final String DARK = "mdi2w-weather-night";
+    public static final String THREAD = "mdi2f-forum-outline";
+    public static final String READ_RECEIPT = "mdi2c-check-all";
+    public static final String QR = "mdi2q-qrcode";
+    public static final String WIFI_OFF = "mdi2w-wifi-off";
+    public static final String PREVIEW = "mdi2e-eye-outline";
 
     private Icons() {
     }
