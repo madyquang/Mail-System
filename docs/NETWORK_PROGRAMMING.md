@@ -17,7 +17,7 @@ Mục lục
 9. [Timeout, keep-alive, heartbeat](#9-timeout-keep-alive-heartbeat)
 10. [Truyền tệp lớn theo khối](#10-truyền-tệp-lớn-theo-khối)
 11. [Xử lý lỗi và độ bền](#11-xử-lý-lỗi-và-độ-bền)
-12. [Bảo mật mạng](#12-bảo-mật-mạng)
+12. [Bảo mật: TLS 1.3 và các lớp phòng thủ](#12-bảo-mật-tls-13-và-các-lớp-phòng-thủ)
 13. [Quan sát và kiểm thử](#13-quan-sát-và-kiểm-thử)
 14. [Câu hỏi ôn tập](#14-câu-hỏi-ôn-tập)
 15. [Hướng phát triển](#15-hướng-phát-triển)
@@ -27,7 +27,7 @@ Mục lục
 ## 1. Bức tranh tổng thể
 
 ```text
- ┌──────────── Client (JavaFX) ────────────┐            ┌──────────────── Server ────────────────┐
+ ┌──────────── Client (JavaFX) ────────────┐   TLS 1.3  ┌──────────────── Server ────────────────┐
  │ Controller ──sendRequest()──┐           │            │  MailServer: accept() ──▶ thread pool  │
  │      ▲                      ▼           │   TCP      │                    │                   │
  │ Platform.runLater   ServerConnection ───┼── 5000 ───▶│  ClientHandler (1 kết nối)             │
@@ -40,14 +40,17 @@ Mục lục
 
 | Khái niệm | Code |
 | --- | --- |
-| ServerSocket, `accept()`, giới hạn kết nối | [MailServer.java](../mail-server/src/main/java/com/mailsystem/server/MailServer.java) |
-| Một kết nối = thread đọc + thread ghi | [ClientHandler.java](../mail-server/src/main/java/com/mailsystem/server/ClientHandler.java) |
+| ServerSocket, `accept()`, giới hạn kết nối | [MailServer.java](../mail-server/src/main/java/com/mailsystem/server/net/MailServer.java) |
+| Một kết nối = thread đọc + thread ghi | [ClientHandler.java](../mail-server/src/main/java/com/mailsystem/server/net/ClientHandler.java) |
 | Framing có giới hạn kích thước | [FrameReader.java](../mail-common/src/main/java/com/mailsystem/common/protocol/FrameReader.java) |
 | Định dạng gói tin | [RequestMessage](../mail-common/src/main/java/com/mailsystem/common/protocol/RequestMessage.java), [ResponseMessage](../mail-common/src/main/java/com/mailsystem/common/protocol/ResponseMessage.java), [EventMessage](../mail-common/src/main/java/com/mailsystem/common/protocol/EventMessage.java) |
 | Server push nhiều thiết bị | [SessionManager.java](../mail-server/src/main/java/com/mailsystem/server/session/SessionManager.java) |
 | Client bất đồng bộ, timeout, heartbeat | [ServerConnection.java](../mail-client/src/main/java/com/mailsystem/client/network/ServerConnection.java) |
-| Upload theo khối | [UploadManager.java](../mail-server/src/main/java/com/mailsystem/server/transfer/UploadManager.java), [ComposeController.java](../mail-client/src/main/java/com/mailsystem/client/controller/ComposeController.java) |
-| Download theo khối | [MailDetailController.java](../mail-client/src/main/java/com/mailsystem/client/controller/MailDetailController.java), `JdbcMailDAO.getAttachmentChunk` |
+| Upload/download theo khối | [UploadManager.java](../mail-server/src/main/java/com/mailsystem/server/transfer/UploadManager.java), [AttachmentTransfer.java](../mail-client/src/main/java/com/mailsystem/client/service/AttachmentTransfer.java), `JdbcMailDAO.getAttachmentChunk` |
+| Định tuyến lệnh | [CommandRouter.java](../mail-server/src/main/java/com/mailsystem/server/net/CommandRouter.java) |
+| TLS 1.3 phía Server (tự sinh chứng chỉ) | [TlsContextFactory.java](../mail-server/src/main/java/com/mailsystem/server/security/TlsContextFactory.java) |
+| TLS phía Client + ghim chứng chỉ (TOFU) | [TlsConnector.java](../mail-client/src/main/java/com/mailsystem/client/network/TlsConnector.java), [TofuTrustManager.java](../mail-client/src/main/java/com/mailsystem/client/network/TofuTrustManager.java) |
+| Chống dò mật khẩu, giới hạn tốc độ | [LoginThrottle.java](../mail-server/src/main/java/com/mailsystem/server/security/LoginThrottle.java), [RateLimiter.java](../mail-server/src/main/java/com/mailsystem/server/security/RateLimiter.java) |
 | Hằng số dùng chung hai phía | [ProtocolConstants.java](../mail-common/src/main/java/com/mailsystem/common/protocol/ProtocolConstants.java) |
 
 Ba module tách biệt có chủ đích: `mail-common` là **hợp đồng giao thức**. Cả
@@ -91,8 +94,12 @@ Client                                         Server
   │ ─── SYN ───────────────────────────────────▶ │
   │ ◀── SYN-ACK ──────────────────────────────── │   bắt tay 3 bước (do HĐH làm)
   │ ─── ACK ───────────────────────────────────▶ │   kết nối vào hàng đợi backlog
-  │                                              │ accept() trả về Socket mới
+  │                                              │ accept() trả về SSLSocket mới
   │                                              │ setTcpNoDelay, setKeepAlive, setSoTimeout
+  │ ─── ClientHello (khoá ECDHE) ──────────────▶ │
+  │ ◀── ServerHello + chứng chỉ + Finished ───── │   bắt tay TLS 1.3 (1 vòng gửi/nhận)
+  │ kiểm tra chứng chỉ (TOFU, mục 12)            │
+  │ ─── Finished ──────────────────────────────▶ │   từ đây mọi byte đều được mã hoá
   │ ── REQUEST LOGIN ──────────────────────────▶ │
   │ ◀───────────────────────────── RESPONSE OK ─ │   SessionManager.register()
   │ ── REQUEST … / PING mỗi 30s ───────────────▶ │
@@ -244,14 +251,30 @@ Phân quyền tập trung: `ClientHandler.PUBLIC_COMMANDS` liệt kê các comma
 không cần đăng nhập (`REGISTER`, `LOGIN`, `PING`), còn lại bị chặn ngay ở tầng
 mạng trước khi tới Service.
 
-### 5.5 So sánh với giao thức mail thật
+### 5.5 Định tuyến lệnh (CommandRouter)
+
+Server nhận ~30 loại command. Thay vì một khối `switch` khổng lồ trong
+`ClientHandler`, [CommandRouter](../mail-server/src/main/java/com/mailsystem/server/net/CommandRouter.java)
+giữ một bảng `Command → handler`, đánh dấu sẵn route nào cần đăng nhập:
+
+```java
+open(Command.LOGIN, (id, payload, ctx) -> ...);                    // không cần đăng nhập
+secured(Command.SET_STARRED, (id, payload, ctx) -> services.mail().setStarred(id, ctx.accountId(), payload));
+```
+
+`ClientHandler` chỉ lo phần mạng (đọc/ghi frame, giới hạn tốc độ, phiên); thêm
+command mới chỉ cần thêm một dòng route. Hàm khởi tạo kiểm tra mọi giá trị của
+enum `Command` đều có route, nên quên đăng ký sẽ lỗi ngay khi Server khởi động
+(và `CommandRouterTest` bắt được).
+
+### 5.6 So sánh với giao thức mail thật
 
 | | Mail System | SMTP / IMAP |
 | --- | --- | --- |
 | Định dạng | JSON, mỗi dòng 1 gói | Lệnh văn bản (`MAIL FROM:`, `A1 FETCH`) kết thúc `\r\n` |
 | Ghép cặp | `requestId` | IMAP dùng *tag* (`A1`, `A2`) đúng như `requestId` |
 | Push | EVENT | IMAP `IDLE` (server báo thư mới) |
-| Cổng | 5000 | SMTP 25/587, IMAP 143/993 |
+| Cổng | 5000 (luôn TLS) | SMTP 25/587, IMAP 143/993 (993 = IMAP qua TLS) |
 
 Thiết kế của dự án đi theo cùng ý tưởng với IMAP, chỉ đổi cú pháp sang JSON.
 
@@ -292,7 +315,7 @@ EVENT được gửi **từ thread của client khác**: A gửi thư thì threa
   bị treo theo. Một client tồi kéo chậm người khác.
 - Hai thread cùng ghi một socket: hai frame có thể **trộn byte** vào nhau.
 
-Giải pháp trong [ClientHandler](../mail-server/src/main/java/com/mailsystem/server/ClientHandler.java):
+Giải pháp trong [ClientHandler](../mail-server/src/main/java/com/mailsystem/server/net/ClientHandler.java):
 
 ```text
 thread đọc (RESPONSE) ─┐
@@ -504,33 +527,77 @@ còn chờ rồi mới đóng. Đóng socket ngay có thể làm mất RESPONSE 
 
 ---
 
-## 12. Bảo mật mạng
+## 12. Bảo mật: TLS 1.3 và các lớp phòng thủ
 
-Những gì dự án **đã làm**:
+Chi tiết đầy đủ (mô hình mối đe doạ, từng biện pháp, cấu hình) nằm ở
+[SECURITY.md](SECURITY.md). Phần này giải thích các khái niệm mạng liên quan.
 
-- Mật khẩu lưu bằng **PBKDF2-HMAC-SHA256** (210 000 vòng, salt ngẫu nhiên 16
-  byte), so sánh bằng `MessageDigest.isEqual` (thời gian hằng, chống
-  *timing attack*).
-- Đăng nhập sai luôn trả **cùng một thông báo**. Khi email không tồn tại,
-  Server vẫn băm mật khẩu để thời gian phản hồi giống trường hợp sai mật khẩu.
-  Kẻ tấn công không dò được email nào đã đăng ký (*user enumeration*).
-- Kiểm tra quyền ở Server cho mọi thao tác (thư thuộc tài khoản, chủ nhóm,
-  BCC chỉ hiện cho đúng người), không tin dữ liệu từ Client.
-- Giới hạn tài nguyên chống DoS: kích thước frame, số kết nối, hàng đợi gửi,
-  số tệp tạm mỗi kết nối, idle timeout.
-- Câu lệnh SQL dùng `PreparedStatement`, chống SQL injection.
-- Tên tệp từ Client bị cắt bỏ phần đường dẫn; tệp lưu trên Server dùng tên
-  UUID, chống *path traversal*.
+### 12.1 TLS nằm ở đâu
 
-Những gì **chưa có** và cần biết khi bảo vệ đồ án:
+```text
+┌──────────────────────────────┐
+│ Giao thức JSON theo dòng     │  ← không đổi một byte nào khi thêm TLS
+├──────────────────────────────┤
+│ TLS 1.3 (SSLSocket)          │  ← mã hoá + chống sửa + xác thực Server
+├──────────────────────────────┤
+│ TCP                          │
+├──────────────────────────────┤
+│ IP                           │
+└──────────────────────────────┘
+```
 
-- **Kênh truyền chưa mã hoá**: mật khẩu và nội dung thư đi qua mạng dưới dạng
-  văn bản rõ. Ai bắt gói được trong cùng mạng LAN (Wireshark, ARP spoofing)
-  đều đọc được. Cách khắc phục là **TLS**: thay `ServerSocket`/`Socket` bằng
-  `SSLServerSocketFactory`/`SSLSocketFactory` của JSSE. Phần framing và giao
-  thức JSON giữ nguyên vì TLS nằm giữa TCP và tầng ứng dụng.
-- Chưa giới hạn số lần đăng nhập sai (*brute force*). Có thể đếm số lần sai
-  theo IP hoặc tài khoản.
+TLS là một lớp nằm giữa TCP và tầng ứng dụng. Vì `SSLSocket` cũng là một
+`Socket` với `getInputStream()`/`getOutputStream()`, framing, `FrameReader`,
+`ClientHandler` và giao thức JSON **không phải sửa gì**. Chỉ đổi chỗ tạo socket:
+`SSLServerSocketFactory` ở Server, `SSLSocketFactory` ở Client.
+
+TLS cung cấp ba thứ:
+
+| Thuộc tính | Ý nghĩa | Nếu không có |
+| --- | --- | --- |
+| Bí mật (confidentiality) | Dữ liệu được mã hoá bằng AES-GCM/ChaCha20 | Ai bắt gói trong LAN cũng đọc được mật khẩu, nội dung thư |
+| Toàn vẹn (integrity) | Mỗi bản ghi TLS có mã xác thực (AEAD) | Kẻ ở giữa sửa được nội dung thư mà không ai biết |
+| Xác thực Server | Server chứng minh sở hữu khoá riêng của chứng chỉ | Client có thể vô tình gửi mật khẩu cho máy chủ giả |
+
+Dự án chỉ bật **TLS 1.3** (`ProtocolConstants.TLS_PROTOCOLS`): bỏ hẳn các bộ mã
+hoá cũ yếu, trao đổi khoá ECDHE nên có *forward secrecy* (lộ khoá riêng của
+Server sau này cũng không giải mã được phiên cũ đã bắt), bắt tay chỉ 1 vòng
+gửi/nhận.
+
+### 12.2 Chứng chỉ tự ký và TOFU
+
+Website dùng chứng chỉ do CA (Let's Encrypt...) ký vì trình duyệt tin sẵn các
+CA đó. Server nội bộ trong LAN không có tên miền công khai nên không xin được
+chứng chỉ CA. Giải pháp của dự án, giống SSH:
+
+1. Lần chạy đầu, Server **tự sinh** cặp khoá EC P-256 và chứng chỉ tự ký
+   ([TlsContextFactory](../mail-server/src/main/java/com/mailsystem/server/security/TlsContextFactory.java),
+   gọi `keytool` của JDK), lưu ở `data/tls/server.p12`, rồi in **dấu vân tay
+   SHA-256** của chứng chỉ ra console.
+2. Lần đầu Client kết nối tới `host:port` đó, [TofuTrustManager](../mail-client/src/main/java/com/mailsystem/client/network/TofuTrustManager.java)
+   hiện hộp thoại với dấu vân tay. Người dùng đối chiếu với dòng Server in ra
+   rồi bấm tin. Dấu vân tay được ghi vào `~/.mailsystem/known_servers.properties`.
+3. Các lần sau Client tự so khớp. Nếu chứng chỉ **khác** (Server bị thay, hoặc
+   có kẻ đứng giữa), Client hiện cảnh báo đỏ và mặc định huỷ kết nối **trước
+   khi** gửi mật khẩu.
+
+Đây là mô hình *Trust On First Use*: an toàn với mọi tấn công xảy ra sau lần
+kết nối đầu tiên, đổi lại người dùng phải kiểm tra dấu vân tay ở lần đầu.
+
+### 12.3 Các lớp phòng thủ ở tầng ứng dụng
+
+| Mối đe doạ | Biện pháp | Code |
+| --- | --- | --- |
+| Dò mật khẩu (brute force) | Sai 5 lần → khoá 15 phút theo cả email và IP | `LoginThrottle` |
+| Dò email đã đăng ký | Cùng một thông báo lỗi + thời gian phản hồi như nhau | `AuthService`, `PasswordHasher.burnTime` |
+| Mật khẩu yếu / lộ DB | Chính sách ≥ 8 ký tự có chữ và số; PBKDF2 210 000 vòng + salt | `PasswordPolicy`, `PasswordHasher` |
+| Phiên bị đánh cắp | Đổi mật khẩu / "đăng xuất mọi nơi" thu hồi ngay các phiên khác (EVENT `SESSION_REVOKED` rồi đóng kết nối) | `SessionManager.revokeAll` |
+| Client spam request (DoS) | Token bucket 30 req/s (burst 120) mỗi kết nối; spam dai dẳng bị ngắt | `RateLimiter`, `ClientHandler` |
+| Đăng ký hàng loạt | 10 tài khoản / IP / giờ | `SlidingWindowLimiter` |
+| Tệp độc hại đổi đuôi | Kiểm tra chữ ký đầu tệp (magic bytes) khớp phần mở rộng | `FileSignatures` |
+| Lộ mật khẩu DB qua Git | Bí mật nằm ở `config/server.properties` (bị .gitignore) hoặc biến môi trường | `ServerConfig` |
+| Giả mạo dòng log | Xoá ký tự xuống dòng trong dữ liệu từ client trước khi ghi log | `SecurityLog` |
+| SQL injection, path traversal | `PreparedStatement`; tên tệp lưu trữ do Server sinh (UUID) | DAO, `AttachmentStorage` |
 
 ---
 
@@ -541,35 +608,47 @@ Những gì **chưa có** và cần biết khi bảo vệ đồ án:
 - **ManualTestClient**: có thread nền in mọi frame nhận được. Mở 2 cửa sổ,
   đăng nhập 2 tài khoản, gửi thư từ cửa sổ 1 sẽ thấy `<< EVENT : NEW_MAIL` ở
   cửa sổ 2.
-- **ncat / telnet**: vì giao thức là văn bản theo dòng, có thể gõ tay:
+- **ncat**: giao thức là văn bản theo dòng *bên trong* TLS, nên vẫn gõ tay được
+  bằng chế độ TLS của ncat (bản đi kèm Nmap):
   ```text
-  ncat localhost 5000
+  ncat --ssl localhost 5000
   {"type":"REQUEST","requestId":"1","command":"PING"}
   ```
+  Thử `ncat localhost 5000` (không `--ssl`) sẽ thấy Server đóng kết nối ngay:
+  Server không bao giờ nói chuyện không mã hoá.
 - **Wireshark** với bộ lọc `tcp.port == 5000` trên adapter *Loopback* (Npcap).
-  Quan sát được: bắt tay SYN/SYN-ACK/ACK, mỗi frame JSON trong một hoặc nhiều
-  segment có cờ PSH, các khối upload bị chia nhỏ theo MSS, FIN khi đóng. Đây
-  cũng là cách chứng minh mật khẩu đang đi dạng văn bản rõ (mục 12).
+  Quan sát được: bắt tay TCP SYN/SYN-ACK/ACK, rồi bắt tay TLS (`Client Hello`,
+  `Server Hello`, `Change Cipher Spec`), sau đó chỉ còn các bản ghi
+  `Application Data` đã mã hoá: **không** thấy được mật khẩu hay nội dung thư.
+  So sánh độ dài bản ghi với kích thước khối upload (512 KB được chia thành
+  nhiều bản ghi TLS tối đa 16 KB) là một bài tập hay.
 - **netstat**: `netstat -ano | findstr :5000` liệt kê cổng LISTENING và từng kết
   nối ESTABLISHED. Sau khi đóng sẽ thấy các kết nối ở trạng thái TIME_WAIT.
 
-### 13.2 Test tự động (`mvn test`, không cần MySQL)
+### 13.2 Test tự động (`scripts/test.ps1`, không cần MySQL)
 
 | Test | Kiểm chứng |
 | --- | --- |
 | `FrameReaderTest` | Ghép frame bị chia nhỏ, CRLF, frame quá lớn rồi đồng bộ lại, frame dang dở |
-| `ServerNetworkTest` | TCP thật: PING, pipelining, frame hỏng, frame quá lớn, bắt buộc đăng nhập, từ chối khi quá tải, giải phóng slot khi đóng |
+| `ServerNetworkTest` | TLS 1.3 thật: dấu vân tay chứng chỉ, client TCP thường bị từ chối, client không tin chứng chỉ bị từ chối, giới hạn tốc độ, PING, pipelining, frame hỏng, frame quá lớn, bắt buộc đăng nhập, từ chối khi quá tải, giải phóng slot |
+| `CommandRouterTest` | Mọi command đều có route; mọi command (trừ PING/REGISTER/LOGIN) bị chặn khi chưa đăng nhập |
+| `SecurityComponentsTest` | PBKDF2 + salt, chính sách mật khẩu, khoá đăng nhập theo email/IP rồi hết hạn, token bucket, giới hạn đăng ký, magic bytes, tự sinh keystore TLS |
+| `TofuTrustManagerTest` | Hỏi lần đầu, ghi nhớ xuống đĩa, cảnh báo khi chứng chỉ đổi, cổng khác = máy chủ khác |
 | `SessionManagerTest` | Push tới mọi thiết bị, một thiết bị thoát không ảnh hưởng thiết bị khác |
 | `MailServiceTest` | Thao tác hàng loạt `entryIds` (gộp trùng, bỏ qua thư không thuộc mình, chặn lô rỗng/quá lớn), nhóm thư không gửi lại cho người gửi |
 | `UploadManagerTest` | Ghép khối, từ chối khối sai/lặp, kiểm tra đuôi và kích thước, dọn tệp tạm |
 | `ServerConnectionTest` | Ghép response theo `requestId` khi về ngược thứ tự, EVENT chen giữa, mất kết nối làm hỏng request đang chờ, thông báo quá tải, connect lỗi nhanh |
 
+Kiểm thử end-to-end với MySQL thật: `scripts/e2e.ps1` khởi động một Server riêng
+(cổng 5098) và chạy ~50 kịch bản qua TLS bằng `EndToEndCheck`, sau đó tự dọn dữ liệu.
+
 ### 13.3 Thử qua mạng LAN
 
 1. Máy chạy Server: mở cổng 5000 trên tường lửa Windows (Inbound rule, TCP 5000).
 2. Xem IP LAN của máy đó bằng `ipconfig`, VD `192.168.1.10`.
-3. Máy khác chạy Client, nhập `192.168.1.10:5000` ở ô **Máy chủ** của màn hình
-   đăng nhập.
+3. Máy khác chạy Client, mở mục **Máy chủ** ở cuối màn hình đăng nhập, nhập
+   `192.168.1.10:5000`. Lần đầu sẽ hiện hộp thoại dấu vân tay: đối chiếu với dòng
+   `[TLS] Dau van tay` trên console của Server rồi bấm tin.
 
 ---
 
@@ -606,13 +685,31 @@ và Server không phải biết mỗi Client đang mở thư mục nào.
 TCP của client nhận đầy. Hàng đợi tách thread gửi EVENT khỏi tốc độ mạng của người nhận.
 </details>
 
+<details><summary>Thêm TLS có phải sửa framing hay giao thức JSON không?</summary>
+Không. TLS là một lớp giữa TCP và ứng dụng; SSLSocket vẫn cung cấp InputStream/OutputStream
+như Socket thường. Chỉ đổi chỗ tạo socket (SSLServerSocketFactory / SSLSocketFactory).
+</details>
+
+<details><summary>Chứng chỉ tự ký có an toàn không? Ai xác nhận nó?</summary>
+Không có CA nào xác nhận, nên Client dùng TOFU: người dùng đối chiếu dấu vân tay SHA-256
+ở lần đầu, Client ghi nhớ và cảnh báo nếu sau này chứng chỉ thay đổi. An toàn với mọi tấn
+công man-in-the-middle xảy ra sau lần kết nối đầu tiên (giống SSH).
+</details>
+
+<details><summary>Vì sao khoá đăng nhập theo cả email lẫn IP?</summary>
+Theo email: chặn thử nhiều mật khẩu cho một tài khoản (kể cả đổi IP). Theo IP: chặn thử một
+mật khẩu phổ biến cho rất nhiều tài khoản. IP có ngưỡng cao hơn vì nhiều người có thể dùng
+chung một địa chỉ NAT.
+</details>
+
 ---
 
 ## 15. Hướng phát triển
 
 | Hướng | Lợi ích | Thay đổi chính |
 | --- | --- | --- |
-| TLS (`SSLSocket`) | Mã hoá mật khẩu và nội dung thư | `MailServer`, `ServerConnection` |
+| Mutual TLS (chứng chỉ phía Client) | Chỉ máy được cấp chứng chỉ mới kết nối được | `TlsContextFactory`, `TlsConnector` |
+| Chứng chỉ do CA nội bộ ký | Bỏ bước xác nhận dấu vân tay thủ công | Phân phối chứng chỉ CA cho Client |
 | Java NIO / Netty hoặc virtual threads | Phục vụ hàng nghìn kết nối | `MailServer`, `ClientHandler` |
 | Tự kết nối lại + gửi lại request an toàn | Không phải đăng nhập lại khi rớt mạng ngắn | Phiên có token, request idempotent |
 | Sliding window khi upload | Tận dụng băng thông trên đường truyền có RTT cao | `ComposeController`, `UploadManager` |

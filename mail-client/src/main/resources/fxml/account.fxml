@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
+<?import com.mailsystem.client.ui.PasswordField2?>
+<?import com.mailsystem.client.ui.PasswordStrength?>
+
+<StackPane fx:id="root" styleClass="dialog-root" xmlns:fx="http://javafx.com/fxml"
+           fx:controller="com.mailsystem.client.controller.AccountController">
+    <VBox spacing="12">
+        <padding><Insets top="16" right="16" bottom="16" left="16" /></padding>
+        <HBox fx:id="headerBox" styleClass="panel" alignment="CENTER_LEFT" spacing="14">
+            <VBox spacing="2">
+                <Label fx:id="nameLabel" styleClass="title-lg" />
+                <Label fx:id="emailLabel" styleClass="text-muted" />
+            </VBox>
+        </HBox>
+        <TabPane tabClosingPolicy="UNAVAILABLE" VBox.vgrow="ALWAYS">
+            <Tab text="Hồ sơ">
+                <graphic><FontIcon iconLiteral="mdi2a-account-circle-outline" iconSize="16" styleClass="icon" /></graphic>
+                <VBox styleClass="panel" spacing="10">
+                    <Label text="Tên hiển thị" styleClass="field-label" />
+                    <TextField fx:id="displayNameField" onAction="#handleSaveProfile" />
+                    <Label text="Tên này hiện với người nhận thư. Email đăng nhập không thể đổi." styleClass="hint" wrapText="true" />
+                    <HBox><Button text="Lưu thay đổi" onAction="#handleSaveProfile" styleClass="primary-button" /></HBox>
+                </VBox>
+            </Tab>
+            <Tab text="Bảo mật">
+                <graphic><FontIcon iconLiteral="mdi2s-shield-check-outline" iconSize="16" styleClass="icon" /></graphic>
+                <ScrollPane fitToWidth="true">
+                    <VBox spacing="14">
+                        <VBox styleClass="panel" spacing="10">
+                            <Label text="Đổi mật khẩu" styleClass="title-md" />
+                            <Label text="Mật khẩu hiện tại" styleClass="field-label" />
+                            <PasswordField2 fx:id="currentPasswordField" promptText="Mật khẩu hiện tại" />
+                            <Label text="Mật khẩu mới" styleClass="field-label" />
+                            <PasswordField2 fx:id="newPasswordField" promptText="Ít nhất 8 ký tự, có chữ và số" />
+                            <PasswordStrength fx:id="strength" />
+                            <Label text="Nhập lại mật khẩu mới" styleClass="field-label" />
+                            <PasswordField2 fx:id="confirmPasswordField" promptText="Nhập lại mật khẩu mới" />
+                            <Label text="Sau khi đổi, mọi thiết bị khác đang đăng nhập tài khoản này sẽ bị đăng xuất."
+                                   styleClass="hint" wrapText="true" />
+                            <HBox><Button fx:id="changePasswordButton" text="Đổi mật khẩu" onAction="#handleChangePassword"
+                                          styleClass="primary-button" /></HBox>
+                        </VBox>
+                        <VBox styleClass="panel" spacing="10">
+                            <Label text="Phiên đăng nhập" styleClass="title-md" />
+                            <Label text="Nếu bạn đăng nhập trên máy lạ hoặc nghi bị lộ mật khẩu, hãy đăng xuất khỏi mọi thiết bị rồi đổi mật khẩu."
+                                   styleClass="hint" wrapText="true" />
+                            <HBox><Button text="Đăng xuất khỏi mọi thiết bị" onAction="#handleLogoutAll" styleClass="danger-button">
+                                <graphic><FontIcon iconLiteral="mdi2d-devices" iconSize="16" styleClass="icon" /></graphic>
+                            </Button></HBox>
+                        </VBox>
+                    </VBox>
+                </ScrollPane>
+            </Tab>
+            <Tab text="Kết nối">
+                <graphic><FontIcon iconLiteral="mdi2s-server-network" iconSize="16" styleClass="icon" /></graphic>
+                <VBox styleClass="panel" spacing="10">
+                    <HBox fx:id="secureBadge" styleClass="secure-badge" alignment="CENTER_LEFT" spacing="6" maxWidth="-Infinity">
+                        <FontIcon iconLiteral="mdi2l-lock-outline" iconSize="14" styleClass="icon" />
+                        <Label fx:id="secureLabel" />
+                    </HBox>
+                    <GridPane hgap="12" vgap="10">
+                        <Label text="Máy chủ" styleClass="kv-key" GridPane.rowIndex="0" GridPane.columnIndex="0" />
+                        <Label fx:id="serverValue" styleClass="kv-value" GridPane.rowIndex="0" GridPane.columnIndex="1" />
+                        <Label text="Giao thức" styleClass="kv-key" GridPane.rowIndex="1" GridPane.columnIndex="0" />
+                        <Label fx:id="protocolValue" styleClass="kv-value" GridPane.rowIndex="1" GridPane.columnIndex="1" />
+                        <Label text="Bộ mã hoá" styleClass="kv-key" GridPane.rowIndex="2" GridPane.columnIndex="0" />
+                        <Label fx:id="cipherValue" styleClass="kv-value" wrapText="true" GridPane.rowIndex="2" GridPane.columnIndex="1" />
+                        <Label text="Dấu vân tay SHA-256" styleClass="kv-key" GridPane.rowIndex="3" GridPane.columnIndex="0" />
+                        <TextArea fx:id="fingerprintValue" styleClass="fingerprint" editable="false" wrapText="true"
+                                  prefRowCount="3" GridPane.rowIndex="3" GridPane.columnIndex="1" />
+                    </GridPane>
+                    <Label text="Ứng dụng ghi nhớ dấu vân tay của máy chủ (mô hình TOFU). Nếu chứng chỉ máy chủ thay đổi bất thường, bạn sẽ được cảnh báo trước khi gửi mật khẩu."
+                           styleClass="hint" wrapText="true" />
+                </VBox>
+            </Tab>
+        </TabPane>
+    </VBox>
+</StackPane>

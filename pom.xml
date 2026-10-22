@@ -26,6 +26,7 @@
         <mysql.version>8.3.0</mysql.version>
         <javafx.version>21.0.2</javafx.version>
         <junit.version>5.10.2</junit.version>
+        <ikonli.version>12.3.1</ikonli.version>
     </properties>
 
     <!-- Dùng cho test ở mọi module (kiểm thử framing, phiên, upload, kết nối TCP thật). -->

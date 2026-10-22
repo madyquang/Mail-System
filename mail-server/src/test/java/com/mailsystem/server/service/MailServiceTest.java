@@ -159,7 +159,7 @@ class MailServiceTest {
     @Test
     void batchRejectsInvalidPayloadsAndReportsNothingFound() {
         List<Object[]> calls = new ArrayList<>();
-        MailDAO mails = fake(MailDAO.class, Map.of("markRead", (args, c) -> false), calls);
+        MailDAO mails = fake(MailDAO.class, Map.of("setRead", (args, c) -> false), calls);
         MailService service = new MailService(mails, fake(AccountDAO.class, Map.of(), calls),
                 fake(FolderDAO.class, Map.of(), calls), fake(GroupDAO.class, Map.of(), calls), attachments);
 

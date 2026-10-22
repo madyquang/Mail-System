@@ -1,119 +1,133 @@
 package com.mailsystem.client.controller;
 
-import com.google.gson.JsonObject;
-import com.mailsystem.client.MailClientApp;
+import com.mailsystem.client.api.MailApi;
+import com.mailsystem.client.app.Navigator;
+import com.mailsystem.client.app.Session;
 import com.mailsystem.client.network.ServerConnection;
-import com.mailsystem.common.model.Account;
-import com.mailsystem.common.protocol.Command;
-import com.mailsystem.common.protocol.ProtocolUtil;
-import com.mailsystem.common.protocol.ResponseMessage;
+import com.mailsystem.client.ui.Fx;
+import com.mailsystem.client.ui.PasswordField2;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
+import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
-import javafx.scene.control.PasswordField;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TextField;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 
-import java.util.concurrent.CompletionException;
-
-/**
- * Login screen validation and presentation. Authentication remains
- * server-owned. Kết nối TCP được mở (hoặc mở lại) ngay trước khi gửi LOGIN.
- */
+/** Màn hình đăng nhập. Kết nối TLS được mở (hoặc mở lại) ngay trước khi gửi LOGIN. */
 public class LoginController {
 
     @FXML
-    private TextField serverField;
+    private StackPane root;
     @FXML
     private TextField emailField;
     @FXML
-    private PasswordField passwordField;
+    private PasswordField2 passwordField;
+    @FXML
+    private TextField serverField;
+    @FXML
+    private VBox serverBox;
+    @FXML
+    private Hyperlink serverToggle;
     @FXML
     private Label errorLabel;
     @FXML
+    private Label noticeLabel;
+    @FXML
     private Button loginButton;
+    @FXML
+    private ProgressIndicator spinner;
 
     @FXML
     public void initialize() {
-        serverField.setText(MailClientApp.getServerAddress());
-        Platform.runLater(emailField::requestFocus);
-        String reason = MailClientApp.consumeDisconnectReason();
-        if (reason != null) {
-            errorLabel.setText(reason);
+        serverField.setText(Session.serverAddress());
+        serverToggle.setText("Máy chủ: " + Session.serverAddress());
+        emailField.setText(Session.lastEmail());
+        passwordField.setOnAction(event -> handleLogin());
+        String notice = Navigator.consumeNotice();
+        if (notice != null) {
+            show(noticeLabel, notice);
         }
+        Platform.runLater(() -> {
+            if (emailField.getText().isBlank()) {
+                emailField.requestFocus();
+            } else {
+                passwordField.requestInputFocus();
+            }
+        });
     }
 
     @FXML
     public void handleLogin() {
         String email = emailField.getText() == null ? "" : emailField.getText().trim();
-        String password = passwordField.getText() == null ? "" : passwordField.getText();
+        String password = passwordField.getText();
         if (email.isBlank() || password.isBlank()) {
-            errorLabel.setText("Nhập email và mật khẩu để tiếp tục.");
+            showError("Nhập email và mật khẩu để tiếp tục.");
             return;
         }
-        String addressError = MailClientApp.setServerAddress(serverField.getText());
+        String addressError = Session.setServerAddress(serverField.getText());
         if (addressError != null) {
-            errorLabel.setText(addressError);
+            serverBox.setVisible(true);
+            serverBox.setManaged(true);
+            showError(addressError);
             return;
         }
-
-        errorLabel.setText("Đang kết nối tới " + MailClientApp.getServerAddress() + "...");
-        loginButton.setDisable(true);
-        JsonObject payload = new JsonObject();
-        payload.addProperty("email", email);
-        payload.addProperty("password", password);
-
-        ServerConnection connection = ServerConnection.getInstance();
-        connection.ensureConnectedAsync(MailClientApp.getServerHost(), MailClientApp.getServerPort())
-                .thenCompose(ignored -> connection.sendRequest(Command.LOGIN, payload))
-                .whenComplete((response, error) -> Platform.runLater(() -> showResult(response, error)));
-    }
-
-    private void showResult(ResponseMessage response, Throwable error) {
-        loginButton.setDisable(false);
-        if (error != null) {
-            errorLabel.setText(describe(error));
-            return;
-        }
-        if (response.isOk()) {
-            errorLabel.setText("");
-            MailClientApp.setCurrentAccount(readAccount(response));
-            MailClientApp.switchScene("/fxml/inbox.fxml");
-        } else {
-            errorLabel.setText(response.getMessage().isBlank()
-                    ? "Đăng nhập không thành công."
-                    : response.getMessage());
-        }
-    }
-
-    private Account readAccount(ResponseMessage response) {
-        try {
-            return ProtocolUtil.fromJson(response.getData().toString(), Account.class);
-        } catch (RuntimeException error) {
-            Account fallback = new Account();
-            fallback.setEmail(emailField.getText().trim());
-            return fallback;
-        }
+        serverToggle.setText("Máy chủ: " + Session.serverAddress());
+        hide(errorLabel);
+        setBusy(true);
+        Fx.then(ServerConnection.getInstance().ensureConnectedAsync(Session.serverHost(), Session.serverPort())
+                        .thenCompose(ignored -> MailApi.get().login(email, password)),
+                account -> {
+                    setBusy(false);
+                    Session.signIn(account);
+                    Navigator.show(Navigator.MAIN);
+                },
+                error -> {
+                    setBusy(false);
+                    showError(error);
+                    passwordField.requestInputFocus();
+                });
     }
 
     @FXML
     public void handleGoToRegister() {
-        MailClientApp.setServerAddress(serverField.getText());
-        MailClientApp.switchScene("/fxml/register.fxml");
+        Session.setServerAddress(serverField.getText());
+        Navigator.show(Navigator.REGISTER);
     }
 
-    /** Lấy thông báo dễ hiểu từ lỗi của một chuỗi CompletableFuture. */
-    static String describe(Throwable error) {
-        Throwable cause = error;
-        while ((cause instanceof CompletionException || cause instanceof java.io.UncheckedIOException)
-                && cause.getCause() != null) {
-            cause = cause.getCause();
+    @FXML
+    public void handleToggleServer() {
+        boolean show = !serverBox.isVisible();
+        serverBox.setVisible(show);
+        serverBox.setManaged(show);
+        if (show) {
+            serverField.requestFocus();
         }
-        if (cause instanceof java.util.concurrent.TimeoutException) {
-            return "Máy chủ không phản hồi kịp, vui lòng thử lại.";
-        }
-        return cause.getMessage() == null || cause.getMessage().isBlank()
-                ? "Không nhận được phản hồi từ máy chủ."
-                : cause.getMessage();
+    }
+
+    private void setBusy(boolean busy) {
+        loginButton.setDisable(busy);
+        loginButton.setText(busy ? "Đang kết nối..." : "Đăng nhập");
+        spinner.setVisible(busy);
+        emailField.setDisable(busy);
+        passwordField.setDisable(busy);
+    }
+
+    private void showError(String message) {
+        hide(noticeLabel);
+        show(errorLabel, message);
+    }
+
+    private static void show(Label label, String text) {
+        label.setText(text);
+        label.setVisible(true);
+        label.setManaged(true);
+    }
+
+    private static void hide(Label label) {
+        label.setVisible(false);
+        label.setManaged(false);
     }
 }

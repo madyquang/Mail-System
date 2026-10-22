@@ -43,6 +43,9 @@ public interface MailDAO {
      */
     List<MailSummary> getMailList(int accountId, int folderId) throws SQLException;
 
+    /** Thư có gắn sao của tài khoản ở mọi thư mục trừ Thùng rác. */
+    List<MailSummary> getStarredList(int accountId) throws SQLException;
+
     /**
      * Lay chi tiet thu ma account duoc phep xem; mo thu dong thoi danh dau da doc
      * dung ban thu (entry) duoc mo. entryId == null: uu tien ban thu nhan (khong
@@ -56,8 +59,18 @@ public interface MailDAO {
     Optional<Attachment> getAttachmentChunk(int attachmentId, int accountId, long offset, int maxBytes)
             throws SQLException;
 
-    /** Marks an account's active mail entry as read; returns false when it is not found. */
-    boolean markRead(int entryId, int accountId) throws SQLException;
+    /** Đặt trạng thái đã đọc/chưa đọc; false nếu bản thư không thuộc tài khoản. */
+    boolean setRead(int entryId, int accountId, boolean read) throws SQLException;
+
+    /** Gắn/bỏ sao; false nếu bản thư không thuộc tài khoản. */
+    boolean setStarred(int entryId, int accountId, boolean starred) throws SQLException;
+
+    /** Tệp đính kèm mà tài khoản có quyền xem (dùng khi chuyển tiếp thư kèm tệp). */
+    Optional<StoredAttachment> findAccessibleAttachment(int attachmentId, int accountId) throws SQLException;
+
+    /** Thông tin tệp đã lưu trên đĩa Server. */
+    record StoredAttachment(String filename, String mimeType, long sizeBytes, java.nio.file.Path file) {
+    }
 
     /** Moves an entry to the owning account's TRASH folder; returns false when it cannot be moved. */
     boolean moveMailToTrash(int entryId, int accountId) throws SQLException;

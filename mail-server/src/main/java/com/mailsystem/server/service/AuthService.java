@@ -1,58 +1,63 @@
 package com.mailsystem.server.service;
 
-import com.google.gson.JsonElement;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mailsystem.common.model.Account;
 import com.mailsystem.common.model.Folder;
+import com.mailsystem.common.protocol.ProtocolConstants;
 import com.mailsystem.common.protocol.ProtocolUtil;
 import com.mailsystem.common.protocol.ResponseMessage;
 import com.mailsystem.server.dao.AccountDAO;
 import com.mailsystem.server.dao.FolderDAO;
-import com.mailsystem.server.dao.JdbcAccountDAO;
-import com.mailsystem.server.dao.JdbcFolderDAO;
+import com.mailsystem.server.dao.jdbc.JdbcAccountDAO;
+import com.mailsystem.server.dao.jdbc.JdbcFolderDAO;
 import com.mailsystem.server.db.DatabaseConnection;
+import com.mailsystem.server.security.LoginThrottle;
+import com.mailsystem.server.security.PasswordHasher;
+import com.mailsystem.server.security.PasswordPolicy;
+import com.mailsystem.server.security.SecurityLog;
+import com.mailsystem.server.security.SlidingWindowLimiter;
 
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
 import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Locale;
+import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Xu ly nghiep vu REGISTER / LOGIN / LOGOUT. Password hash dùng PBKDF2 và salt
- * ngẫu nhiên.
+ * Đăng ký / đăng nhập. Mật khẩu băm PBKDF2 (PasswordHasher); chống dò mật khẩu
+ * bằng LoginThrottle; giới hạn số lần đăng ký mỗi IP; không bao giờ cho biết
+ * email nào đã tồn tại qua thông báo lỗi hay thời gian phản hồi.
  */
 public class AuthService {
 
-    private static final int PASSWORD_ITERATIONS = 210_000;
-    private static final int SALT_BYTES = 16;
-    private static final int HASH_BITS = 256;
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    static final String INVALID_CREDENTIALS = "Email hoặc mật khẩu không đúng";
+    private static final String EMAIL_PATTERN = "[^\\s@]+@[^\\s@]+\\.[^\\s@]+";
+
     private final AccountDAO accountDAO;
     private final FolderDAO folderDAO;
+    private final LoginThrottle loginThrottle;
+    private final SlidingWindowLimiter registrationLimiter;
 
-    public AuthService() {
-        this(new JdbcAccountDAO(), new JdbcFolderDAO());
+    public AuthService(LoginThrottle loginThrottle, SlidingWindowLimiter registrationLimiter) {
+        this(new JdbcAccountDAO(), new JdbcFolderDAO(), loginThrottle, registrationLimiter);
     }
 
-    AuthService(AccountDAO accountDAO, FolderDAO folderDAO) {
+    AuthService(AccountDAO accountDAO, FolderDAO folderDAO, LoginThrottle loginThrottle,
+            SlidingWindowLimiter registrationLimiter) {
         this.accountDAO = accountDAO;
         this.folderDAO = folderDAO;
+        this.loginThrottle = loginThrottle;
+        this.registrationLimiter = registrationLimiter;
     }
 
-    public ResponseMessage register(String requestId, JsonElement payload) {
+    public ResponseMessage register(String requestId, JsonElement payload, String ip) {
         if (payload == null || !payload.isJsonObject()) {
             return ResponseMessage.error(requestId, "Thông tin đăng ký không hợp lệ.");
         }
-
         JsonObject values = payload.getAsJsonObject();
         String email = getString(values, "email").trim().toLowerCase(Locale.ROOT);
         String displayName = getString(values, "displayName").trim();
@@ -61,14 +66,19 @@ public class AuthService {
         if (email.isBlank() || displayName.isBlank() || password.isBlank()) {
             return ResponseMessage.error(requestId, "Vui lòng điền đầy đủ thông tin đăng ký.");
         }
-        if (email.length() > 150 || !email.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) {
+        if (email.length() > 150 || !email.matches(EMAIL_PATTERN)) {
             return ResponseMessage.error(requestId, "Địa chỉ email chưa đúng định dạng.");
         }
-        if (displayName.length() > 100) {
-            return ResponseMessage.error(requestId, "Tên hiển thị không được vượt quá 100 ký tự.");
+        if (displayName.length() > ProtocolConstants.MAX_DISPLAY_NAME_CHARS || containsControl(displayName)) {
+            return ResponseMessage.error(requestId, "Tên hiển thị tối đa 100 ký tự và không chứa ký tự điều khiển.");
         }
-        if (password.length() < 6) {
-            return ResponseMessage.error(requestId, "Mật khẩu cần có ít nhất 6 ký tự.");
+        String policyError = PasswordPolicy.validate(password, email);
+        if (policyError != null) {
+            return ResponseMessage.error(requestId, policyError);
+        }
+        if (!registrationLimiter.tryAcquire(ip)) {
+            SecurityLog.event("REGISTER_RATE_LIMITED", ip, "email=" + email);
+            return ResponseMessage.error(requestId, "Có quá nhiều lượt đăng ký từ máy này, vui lòng thử lại sau.");
         }
 
         try (Connection connection = DatabaseConnection.getConnection()) {
@@ -78,11 +88,10 @@ public class AuthService {
                     connection.rollback();
                     return ResponseMessage.error(requestId, "Email này đã được đăng ký.");
                 }
-
-                String passwordHash = hashPassword(password);
-                int accountId = accountDAO.insertAccount(connection, email, passwordHash, displayName);
+                int accountId = accountDAO.insertAccount(connection, email, PasswordHasher.hash(password), displayName);
                 folderDAO.createDefaultFolders(connection, accountId);
                 connection.commit();
+                SecurityLog.event("REGISTER", ip, "accountId=" + accountId);
 
                 JsonObject data = new JsonObject();
                 data.addProperty("accountId", accountId);
@@ -91,8 +100,7 @@ public class AuthService {
                 return ResponseMessage.ok(requestId, data);
             } catch (SQLException | GeneralSecurityException error) {
                 connection.rollback();
-                if (error instanceof SQLException sqlError && isConstraintViolation(sqlError)
-                        && accountDAO.existsByEmail(connection, email)) {
+                if (error instanceof SQLException sqlError && isConstraintViolation(sqlError)) {
                     return ResponseMessage.error(requestId, "Email này đã được đăng ký.");
                 }
                 return ResponseMessage.error(requestId, "Không thể tạo tài khoản lúc này.");
@@ -102,33 +110,46 @@ public class AuthService {
         }
     }
 
-    public ResponseMessage login(String requestId, JsonElement payload) {
-        String invalidCredentials = "Email hoặc mật khẩu không đúng";
+    public ResponseMessage login(String requestId, JsonElement payload, String ip) {
         if (payload == null || !payload.isJsonObject()) {
-            return ResponseMessage.error(requestId, invalidCredentials);
+            return ResponseMessage.error(requestId, INVALID_CREDENTIALS);
         }
-
         JsonObject values = payload.getAsJsonObject();
         String email = getString(values, "email").trim().toLowerCase(Locale.ROOT);
         String password = getString(values, "password");
-        if (email.isBlank() || password.isBlank()) {
-            return ResponseMessage.error(requestId, invalidCredentials);
+        if (email.isBlank() || password.isBlank() || password.length() > ProtocolConstants.MAX_PASSWORD_LENGTH) {
+            return ResponseMessage.error(requestId, INVALID_CREDENTIALS);
+        }
+
+        Duration locked = loginThrottle.lockRemaining(email, ip);
+        if (!locked.isZero()) {
+            SecurityLog.event("LOGIN_BLOCKED", ip, "email=" + email);
+            return ResponseMessage.error(requestId, lockMessage(locked));
         }
 
         try {
             Optional<String> storedHash = accountDAO.findPasswordHashByEmail(email);
+            boolean valid;
             if (storedHash.isEmpty()) {
-                hashPassword(password);
-                return ResponseMessage.error(requestId, invalidCredentials);
+                PasswordHasher.burnTime(password); // thời gian phản hồi như khi email tồn tại
+                valid = false;
+            } else {
+                valid = PasswordHasher.verify(password, storedHash.get());
             }
-            if (!verifyPassword(password, storedHash.get())) {
-                return ResponseMessage.error(requestId, invalidCredentials);
+            if (!valid) {
+                boolean nowLocked = loginThrottle.recordFailure(email, ip);
+                SecurityLog.event(nowLocked ? "LOGIN_LOCKED" : "LOGIN_FAILED", ip, "email=" + email);
+                return ResponseMessage.error(requestId, nowLocked
+                        ? lockMessage(loginThrottle.lockRemaining(email, ip))
+                        : INVALID_CREDENTIALS);
             }
 
             Optional<Account> account = accountDAO.findByEmail(email);
             if (account.isEmpty()) {
-                return ResponseMessage.error(requestId, invalidCredentials);
+                return ResponseMessage.error(requestId, INVALID_CREDENTIALS);
             }
+            loginThrottle.recordSuccess(email, ip);
+            SecurityLog.event("LOGIN", ip, "accountId=" + account.get().getAccountId());
 
             List<Folder> folders = folderDAO.findFoldersByAccount(account.get().getAccountId());
             JsonObject data = new JsonObject();
@@ -141,66 +162,25 @@ public class AuthService {
         } catch (SQLException error) {
             return ResponseMessage.error(requestId, "Không thể truy cập cơ sở dữ liệu.");
         } catch (GeneralSecurityException | IllegalArgumentException error) {
-            return ResponseMessage.error(requestId, invalidCredentials);
+            return ResponseMessage.error(requestId, INVALID_CREDENTIALS);
         }
     }
 
-    private String getString(JsonObject values, String property) {
+    static String lockMessage(Duration remaining) {
+        long minutes = Math.max(1, (remaining.getSeconds() + 59) / 60);
+        return "Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau " + minutes + " phút.";
+    }
+
+    static boolean containsControl(String text) {
+        return text.chars().anyMatch(Character::isISOControl);
+    }
+
+    static String getString(JsonObject values, String property) {
         if (!values.has(property) || !values.get(property).isJsonPrimitive()
                 || !values.get(property).getAsJsonPrimitive().isString()) {
             return "";
         }
         return values.get(property).getAsString();
-    }
-
-    private String hashPassword(String password) throws GeneralSecurityException {
-        byte[] salt = new byte[SALT_BYTES];
-        SECURE_RANDOM.nextBytes(salt);
-        char[] passwordChars = password.toCharArray();
-        PBEKeySpec spec = new PBEKeySpec(passwordChars, salt, PASSWORD_ITERATIONS, HASH_BITS);
-        try {
-            byte[] hash = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-                    .generateSecret(spec).getEncoded();
-            Base64.Encoder encoder = Base64.getEncoder();
-            return "pbkdf2_sha256$" + PASSWORD_ITERATIONS + "$"
-                    + encoder.encodeToString(salt) + "$" + encoder.encodeToString(hash);
-        } finally {
-            spec.clearPassword();
-            Arrays.fill(passwordChars, '\0');
-        }
-    }
-
-    private boolean verifyPassword(String password, String encodedHash) throws GeneralSecurityException {
-        String[] parts = encodedHash.split("\\$", -1);
-        if (parts.length != 4 || !"pbkdf2_sha256".equals(parts[0])) {
-            return false;
-        }
-
-        int iterations;
-        byte[] salt;
-        byte[] expectedHash;
-        try {
-            iterations = Integer.parseInt(parts[1]);
-            salt = Base64.getDecoder().decode(parts[2]);
-            expectedHash = Base64.getDecoder().decode(parts[3]);
-        } catch (IllegalArgumentException error) {
-            return false;
-        }
-        if (iterations < 10_000 || iterations > 1_000_000 || salt.length != SALT_BYTES
-                || expectedHash.length != HASH_BITS / Byte.SIZE) {
-            return false;
-        }
-
-        char[] passwordChars = password.toCharArray();
-        PBEKeySpec spec = new PBEKeySpec(passwordChars, salt, iterations, expectedHash.length * Byte.SIZE);
-        try {
-            byte[] actualHash = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-                    .generateSecret(spec).getEncoded();
-            return MessageDigest.isEqual(expectedHash, actualHash);
-        } finally {
-            spec.clearPassword();
-            Arrays.fill(passwordChars, '\0');
-        }
     }
 
     private boolean isConstraintViolation(SQLException error) {

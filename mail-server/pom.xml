@@ -9,6 +9,12 @@
     <artifactId>mail-server</artifactId>
     <packaging>jar</packaging>
 
+    <properties>
+        <!-- Main class mặc định cho "mvn exec:java"; ghi đè bằng
+             "-Dexec.mainClass=..." (đặt cả cụm trong ngoặc kép khi dùng PowerShell). -->
+        <exec.mainClass>com.mailsystem.server.MailServerApplication</exec.mainClass>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.mailsystem</groupId>
@@ -31,7 +37,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>com.mailsystem.server.MailServer</mainClass>
+                            <mainClass>com.mailsystem.server.MailServerApplication</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

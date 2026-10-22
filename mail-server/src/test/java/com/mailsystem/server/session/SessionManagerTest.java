@@ -14,10 +14,16 @@ class SessionManagerTest {
 
     private static final class RecordingSession implements ClientSession {
         final List<EventMessage> events = new ArrayList<>();
+        String revokedReason;
 
         @Override
         public void sendEvent(EventMessage event) {
             events.add(event);
+        }
+
+        @Override
+        public void revoke(String reason) {
+            revokedReason = reason;
         }
     }
 
@@ -40,6 +46,22 @@ class SessionManagerTest {
         assertEquals(1, laptop.events.size());
         assertEquals(1, phone.events.size());
         assertEquals(0, otherUser.events.size());
+    }
+
+    @Test
+    void revokeAllSkipsTheRequestingSession() {
+        SessionManager manager = new SessionManager();
+        RecordingSession current = new RecordingSession();
+        RecordingSession laptop = new RecordingSession();
+        RecordingSession phone = new RecordingSession();
+        manager.register(1, current);
+        manager.register(1, laptop);
+        manager.register(1, phone);
+
+        assertEquals(2, manager.revokeAll(1, current, "đổi mật khẩu"));
+        assertEquals("đổi mật khẩu", laptop.revokedReason);
+        assertEquals("đổi mật khẩu", phone.revokedReason);
+        assertEquals(null, current.revokedReason);
     }
 
     @Test

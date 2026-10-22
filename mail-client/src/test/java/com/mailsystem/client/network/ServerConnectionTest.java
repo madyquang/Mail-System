@@ -38,7 +38,7 @@ class ServerConnectionTest {
     @BeforeEach
     void setUp() throws IOException {
         fakeServer = new ServerSocket(0);
-        connection = new ServerConnection(3600);
+        connection = new ServerConnection(3600, Connector.plain());
     }
 
     @AfterEach

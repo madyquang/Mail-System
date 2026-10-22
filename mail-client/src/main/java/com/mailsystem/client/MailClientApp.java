@@ -1,177 +1,51 @@
 package com.mailsystem.client;
 
+import com.mailsystem.client.app.Navigator;
 import com.mailsystem.client.network.ServerConnection;
-import com.mailsystem.common.model.Account;
-import com.mailsystem.common.protocol.ProtocolConstants;
+import com.mailsystem.client.network.TlsConnector;
+import com.mailsystem.client.service.DesktopNotifier;
+import com.mailsystem.client.ui.Dialogs;
 import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
-import javafx.scene.control.Alert;
 import javafx.stage.Stage;
 
-import java.io.IOException;
-
 /**
- * ENTRY POINT của JavaFX Client: điều hướng giữa các màn hình và giữ địa chỉ
- * máy chủ đang dùng. Kết nối TCP được mở khi người dùng đăng nhập/đăng ký (không
- * mở lúc khởi động), nên app vẫn chạy được khi Server chưa bật.
- *
- * Địa chỉ mặc định lấy từ biến môi trường MAIL_SERVER_HOST / MAIL_SERVER_PORT,
- * và có thể sửa trực tiếp ở màn hình đăng nhập (để thử qua mạng LAN).
+ * ENTRY POINT của JavaFX Client. Chỉ khởi tạo cửa sổ, gắn hộp thoại xác nhận
+ * chứng chỉ TLS và phản ứng khi mất kết nối; còn lại do Navigator và các
+ * Controller đảm nhiệm. Kết nối TCP/TLS chỉ được mở khi người dùng đăng nhập.
  */
 public class MailClientApp extends Application {
 
-    private static final String LOGIN_SCREEN = "/fxml/login.fxml";
-    private static final String REGISTER_SCREEN = "/fxml/register.fxml";
-
-    private static Stage primaryStage;
-    private static int selectedMailId;
-    private static int selectedEntryId;
-    private static Account currentAccount;
-    private static String currentScreen;
-    private static String disconnectReason;
-
-    private static String serverHost = environment("MAIL_SERVER_HOST", "localhost");
-    private static int serverPort = parsePort(environment("MAIL_SERVER_PORT",
-            Integer.toString(ProtocolConstants.DEFAULT_PORT)), ProtocolConstants.DEFAULT_PORT);
-
     @Override
     public void start(Stage stage) {
-        primaryStage = stage;
-        primaryStage.setTitle("Mail System");
-        primaryStage.setMinWidth(760);
-        primaryStage.setMinHeight(560);
+        Navigator.init(stage);
+        stage.setTitle("Mail System");
+        stage.setMinWidth(960);
+        stage.setMinHeight(640);
+        stage.setWidth(1240);
+        stage.setHeight(780);
 
+        TlsConnector tls = ServerConnection.getInstance().tlsConnector();
+        if (tls != null) {
+            tls.setDecider(identity -> Dialogs.trustServer(Navigator.owner(), identity));
+        }
         ServerConnection.getInstance().setDisconnectListener(reason -> Platform.runLater(() -> {
-            // Ở màn hình đăng nhập/đăng ký chưa có phiên nào bị mất: lần bấm
-            // tiếp theo sẽ tự kết nối lại, không cần làm gián đoạn người dùng.
-            if (LOGIN_SCREEN.equals(currentScreen) || REGISTER_SCREEN.equals(currentScreen)) {
-                return;
+            String screen = Navigator.currentScreen();
+            if (Navigator.LOGIN.equals(screen) || Navigator.REGISTER.equals(screen)) {
+                return; // chưa có phiên nào bị mất; lần bấm tiếp theo tự kết nối lại
             }
-            disconnectReason = reason;
-            currentAccount = null;
-            Alert alert = new Alert(Alert.AlertType.WARNING, reason
-                    + "\nVui lòng đăng nhập lại khi máy chủ sẵn sàng.");
-            alert.setHeaderText("Mất kết nối tới máy chủ");
-            alert.show();
-            switchScene(LOGIN_SCREEN);
+            DesktopNotifier.shutdown();
+            Navigator.showLogin(reason + " Vui lòng đăng nhập lại khi máy chủ sẵn sàng.");
         }));
 
-        switchScene(LOGIN_SCREEN);
-        primaryStage.show();
+        Navigator.show(Navigator.LOGIN);
+        stage.show();
     }
 
     @Override
     public void stop() {
+        DesktopNotifier.shutdown();
         ServerConnection.getInstance().disconnect();
-    }
-
-    public static void switchScene(String fxmlPath) {
-        // Màn hình mới tự đăng ký listener nếu cần; tránh để EVENT gọi vào Controller cũ.
-        ServerConnection.getInstance().setEventListener(null);
-        try {
-            Parent root = FXMLLoader.load(MailClientApp.class.getResource(fxmlPath));
-            Scene scene = new Scene(root);
-            scene.getStylesheets().add(MailClientApp.class.getResource("/styles/mail.css").toExternalForm());
-            primaryStage.setScene(scene);
-            primaryStage.sizeToScene();
-            currentScreen = fxmlPath;
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void setSelectedMailId(int mailId) {
-        setSelectedMail(mailId, 0);
-    }
-
-    /**
-     * Thư được mở: mailId là nội dung thư, entryId là "bản thư của tôi" được
-     * chọn trong danh sách (cần để đánh dấu đã đọc đúng bản khi tự gửi cho mình).
-     */
-    public static void setSelectedMail(int mailId, int entryId) {
-        selectedMailId = mailId;
-        selectedEntryId = entryId;
-    }
-
-    public static int getSelectedEntryId() {
-        return selectedEntryId;
-    }
-
-    /** Tài khoản đang đăng nhập (null khi chưa đăng nhập). */
-    public static Account getCurrentAccount() {
-        return currentAccount;
-    }
-
-    public static void setCurrentAccount(Account account) {
-        currentAccount = account;
-    }
-
-    public static int getSelectedMailId() {
-        return selectedMailId;
-    }
-
-    public static String getServerHost() {
-        return serverHost;
-    }
-
-    public static int getServerPort() {
-        return serverPort;
-    }
-
-    public static String getServerAddress() {
-        return serverHost + ":" + serverPort;
-    }
-
-    /**
-     * Đặt địa chỉ máy chủ dạng "host" hoặc "host:port".
-     *
-     * @return null nếu hợp lệ, ngược lại là thông báo lỗi
-     */
-    public static String setServerAddress(String address) {
-        String value = address == null ? "" : address.trim();
-        if (value.isEmpty()) {
-            return "Nhập địa chỉ máy chủ, VD: localhost:5000.";
-        }
-        String host = value;
-        int port = ProtocolConstants.DEFAULT_PORT;
-        int colon = value.lastIndexOf(':');
-        if (colon >= 0 && value.indexOf(':') == colon) {
-            host = value.substring(0, colon).trim();
-            port = parsePort(value.substring(colon + 1).trim(), -1);
-            if (port < 0) {
-                return "Cổng máy chủ phải là số từ 1 đến 65535.";
-            }
-        }
-        if (host.isEmpty() || host.contains(" ")) {
-            return "Địa chỉ máy chủ không hợp lệ.";
-        }
-        serverHost = host;
-        serverPort = port;
-        return null;
-    }
-
-    /** Lý do mất kết nối gần nhất (đọc một lần để hiển thị ở màn hình đăng nhập). */
-    public static String consumeDisconnectReason() {
-        String reason = disconnectReason;
-        disconnectReason = null;
-        return reason;
-    }
-
-    private static String environment(String name, String defaultValue) {
-        String value = System.getenv(name);
-        return value == null || value.isBlank() ? defaultValue : value.trim();
-    }
-
-    private static int parsePort(String value, int fallback) {
-        try {
-            int port = Integer.parseInt(value);
-            return port >= 1 && port <= 65535 ? port : fallback;
-        } catch (NumberFormatException error) {
-            return fallback;
-        }
     }
 
     public static void main(String[] args) {

@@ -1,0 +1,101 @@
+package com.mailsystem.server.security;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Chống dò mật khẩu (brute force): sau maxFailures lần sai liên tiếp trong
+ * cửa sổ thời gian, khoá tạm theo CẢ email lẫn địa chỉ IP.
+ *
+ * Khoá theo email chặn kẻ thử nhiều mật khẩu cho một tài khoản (kể cả từ nhiều
+ * IP); khoá theo IP chặn kẻ thử một mật khẩu cho nhiều tài khoản. Khoá áp dụng
+ * như nhau với email có hay không tồn tại, nên không lộ email nào đã đăng ký.
+ */
+public class LoginThrottle {
+
+    private final int maxFailures;
+    private final Duration lockDuration;
+    private final Clock clock;
+    private final Map<String, Attempts> attempts = new ConcurrentHashMap<>();
+
+    public LoginThrottle(int maxFailures, Duration lockDuration) {
+        this(maxFailures, lockDuration, Clock.systemUTC());
+    }
+
+    LoginThrottle(int maxFailures, Duration lockDuration, Clock clock) {
+        this.maxFailures = maxFailures;
+        this.lockDuration = lockDuration;
+        this.clock = clock;
+    }
+
+    /** @return thời gian còn bị khoá, hoặc Duration.ZERO nếu được phép thử */
+    public Duration lockRemaining(String email, String ip) {
+        Duration byEmail = remaining(key("email", email));
+        Duration byIp = remaining(key("ip", ip));
+        return byEmail.compareTo(byIp) >= 0 ? byEmail : byIp;
+    }
+
+    /** @return true nếu lần sai này làm tài khoản/IP bị khoá */
+    public boolean recordFailure(String email, String ip) {
+        boolean lockedEmail = increment(key("email", email));
+        // IP được phép sai nhiều hơn (nhiều người dùng chung một mạng LAN/NAT).
+        boolean lockedIp = increment(key("ip", ip), maxFailures * 4);
+        return lockedEmail || lockedIp;
+    }
+
+    public void recordSuccess(String email, String ip) {
+        attempts.remove(key("email", email));
+        attempts.remove(key("ip", ip));
+    }
+
+    private boolean increment(String key) {
+        return increment(key, maxFailures);
+    }
+
+    private boolean increment(String key, int limit) {
+        Instant now = clock.instant();
+        Attempts updated = attempts.compute(key, (k, current) -> {
+            Attempts value = current == null || current.isStale(now, lockDuration) ? new Attempts() : current;
+            value.failures++;
+            value.lastFailure = now;
+            if (value.failures >= limit) {
+                value.lockedUntil = now.plus(lockDuration);
+            }
+            return value;
+        });
+        return updated.lockedUntil != null && updated.lockedUntil.isAfter(now);
+    }
+
+    private Duration remaining(String key) {
+        Attempts value = attempts.get(key);
+        if (value == null || value.lockedUntil == null) {
+            return Duration.ZERO;
+        }
+        Duration left = Duration.between(clock.instant(), value.lockedUntil);
+        if (left.isNegative() || left.isZero()) {
+            attempts.remove(key, value);
+            return Duration.ZERO;
+        }
+        return left;
+    }
+
+    private static String key(String kind, String value) {
+        return kind + ":" + (value == null ? "" : value.toLowerCase(Locale.ROOT));
+    }
+
+    private static final class Attempts {
+        int failures;
+        Instant lastFailure;
+        Instant lockedUntil;
+
+        boolean isStale(Instant now, Duration window) {
+            boolean lockExpired = lockedUntil != null && !lockedUntil.isAfter(now);
+            boolean windowExpired = lastFailure != null && lastFailure.plus(window).isBefore(now);
+            return lockExpired || windowExpired;
+        }
+    }
+}

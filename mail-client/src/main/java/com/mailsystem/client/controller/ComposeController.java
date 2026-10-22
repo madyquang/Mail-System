@@ -1,47 +1,134 @@
 package com.mailsystem.client.controller;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.mailsystem.client.network.ServerConnection;
-import com.mailsystem.common.protocol.Command;
+import com.mailsystem.client.api.MailApi;
+import com.mailsystem.client.app.Navigator;
+import com.mailsystem.client.app.Session;
+import com.mailsystem.client.service.AttachmentTransfer;
+import com.mailsystem.client.ui.Dialogs;
+import com.mailsystem.client.ui.Formats;
+import com.mailsystem.client.ui.Fx;
+import com.mailsystem.client.ui.Icons;
+import com.mailsystem.client.ui.Toast;
+import com.mailsystem.common.model.Attachment;
+import com.mailsystem.common.model.Draft;
+import com.mailsystem.common.model.MailDetail;
 import com.mailsystem.common.protocol.ProtocolConstants;
-import com.mailsystem.common.protocol.ResponseMessage;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
+import javafx.geometry.Pos;
+import javafx.scene.control.Button;
+import javafx.scene.control.Hyperlink;
+import javafx.scene.control.Label;
+import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.ListView;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
+import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.stage.FileChooser;
-import javafx.stage.Window;
+import javafx.stage.Stage;
+import javafx.util.Duration;
 
-import java.io.EOFException;
 import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.io.UncheckedIOException;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Base64;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
- * Client-side compose interactions and validation. The server must repeat all
- * recipient and attachment validation before persisting a message.
- *
- * Gửi thư có tệp đính kèm gồm hai pha: tải từng tệp lên theo khối
- * (UPLOAD_ATTACHMENT_CHUNK, mỗi khối tối đa 512 KB) để nhận uploadId, rồi gửi
- * SEND_MAIL chỉ kèm danh sách uploadId.
+ * Cửa sổ soạn thư (mỗi thư một cửa sổ, có thể mở nhiều cái cùng lúc). Dùng cho
+ * thư mới, trả lời, trả lời tất cả, chuyển tiếp và tiếp tục thư nháp. Tự lưu
+ * nháp định kỳ khi có thay đổi; đóng cửa sổ khi thư chưa gửi thì hỏi lưu nháp.
  */
 public class ComposeController {
 
+    private static final Duration AUTOSAVE_INTERVAL = Duration.seconds(20);
+
+    /** Dữ liệu khởi tạo cửa sổ soạn thư. */
+    public record Request(String title, String to, String cc, String bcc, String subject, String body,
+            Integer draftId, List<Attachment> forwardAttachments) {
+
+        public static Request blank() {
+            return new Request("Thư mới", "", "", "", "", "", null, List.of());
+        }
+
+        public static Request draft(Draft draft) {
+            return new Request("Thư nháp", draft.getTo(), draft.getCc(), draft.getBcc(), draft.getSubject(),
+                    draft.getBody(), draft.getDraftId(), List.of());
+        }
+
+        public static Request reply(MailDetail mail, boolean all) {
+            String me = Session.account() == null ? "" : Session.account().getEmail();
+            Set<String> to = new LinkedHashSet<>();
+            to.add(mail.getSenderEmail());
+            Set<String> cc = new LinkedHashSet<>();
+            if (all) {
+                if (mail.getTo() != null) {
+                    to.addAll(mail.getTo());
+                }
+                if (mail.getCc() != null) {
+                    cc.addAll(mail.getCc());
+                }
+            }
+            // Không tự gửi cho mình (trừ khi chính mình là người gửi duy nhất).
+            if (to.size() > 1 || !mail.getSenderEmail().equalsIgnoreCase(me)) {
+                to.removeIf(email -> email.equalsIgnoreCase(me));
+            }
+            cc.removeIf(email -> email.equalsIgnoreCase(me) || to.contains(email));
+            String sender = mail.getSenderName() == null || mail.getSenderName().isBlank()
+                    ? mail.getSenderEmail() : mail.getSenderName();
+            String quote = "\n\nVào " + Formats.longDate(mail.getSentAt()) + ", " + sender + " <" + mail.getSenderEmail()
+                    + "> đã viết:\n" + quoted(mail.getBody());
+            return new Request(all ? "Trả lời tất cả" : "Trả lời", String.join(", ", to), String.join(", ", cc), "",
+                    prefixed("Re: ", mail.getSubject()), quote, null, List.of());
+        }
+
+        public static Request forward(MailDetail mail) {
+            String header = "\n\n---------- Thư được chuyển tiếp ----------\n"
+                    + "Từ: " + nullToEmpty(mail.getSenderName()) + " <" + mail.getSenderEmail() + ">\n"
+                    + "Ngày: " + Formats.longDate(mail.getSentAt()) + "\n"
+                    + "Tiêu đề: " + nullToEmpty(mail.getSubject()) + "\n"
+                    + "Tới: " + (mail.getTo() == null ? "" : String.join(", ", mail.getTo())) + "\n\n"
+                    + nullToEmpty(mail.getBody());
+            return new Request("Chuyển tiếp", "", "", "", prefixed("Fwd: ", mail.getSubject()), header, null,
+                    mail.getAttachments() == null ? List.of() : mail.getAttachments());
+        }
+
+        private static String prefixed(String prefix, String subject) {
+            String value = subject == null ? "" : subject.trim();
+            return value.toLowerCase(Locale.ROOT).startsWith(prefix.toLowerCase(Locale.ROOT)) ? value : prefix + value;
+        }
+
+        private static String quoted(String body) {
+            return nullToEmpty(body).lines().map(line -> "> " + line).collect(Collectors.joining("\n"));
+        }
+
+        private static String nullToEmpty(String value) {
+            return value == null ? "" : value;
+        }
+    }
+
+    /** Mở một cửa sổ soạn thư mới. */
+    public static void open(Request request) {
+        Navigator.<ComposeController>openWindow(Navigator.COMPOSE, request.title() + " – Mail System", 780, 640,
+                false, controller -> controller.init(request));
+    }
+
+    @FXML
+    private StackPane root;
+    @FXML
+    private Label titleLabel;
+    @FXML
+    private Label draftStatus;
     @FXML
     private TextField toField;
     @FXML
@@ -49,268 +136,315 @@ public class ComposeController {
     @FXML
     private TextField bccField;
     @FXML
+    private HBox ccRow;
+    @FXML
+    private HBox bccRow;
+    @FXML
+    private Hyperlink ccToggle;
+    @FXML
     private TextField subjectField;
     @FXML
     private TextArea bodyArea;
     @FXML
-    private ListView<File> attachmentListView;
-    @FXML
-    private Label statusLabel;
+    private FlowPane attachmentPane;
     @FXML
     private Button sendButton;
-
-    private static final long MAX_TOTAL_BYTES = ProtocolConstants.MAX_ATTACHMENT_TOTAL_BYTES;
-    /** Đọc tệp trên thread riêng: không chặn UI thread hay thread nghe mạng. */
-    private static final ExecutorService FILE_IO = Executors.newCachedThreadPool(task -> {
-        Thread thread = new Thread(task, "compose-file-io");
-        thread.setDaemon(true);
-        return thread;
-    });
-
     @FXML
-    public void initialize() {
-        attachmentListView.setCellFactory(list -> new javafx.scene.control.ListCell<>() {
-            @Override
-            protected void updateItem(File file, boolean empty) {
-                super.updateItem(file, empty);
-                setText(empty || file == null ? null : file.getName() + "  ·  " + formatSize(file.length()));
+    private Button attachButton;
+    @FXML
+    private Button saveDraftButton;
+    @FXML
+    private Button discardButton;
+    @FXML
+    private HBox progressBox;
+    @FXML
+    private ProgressBar uploadProgress;
+    @FXML
+    private Label progressLabel;
+    @FXML
+    private Label errorLabel;
+
+    private final List<File> files = new ArrayList<>();
+    private final List<Attachment> forwarded = new ArrayList<>();
+    private Integer draftId;
+    private boolean draftCreatedHere;
+    private boolean dirty;
+    private boolean sending;
+    private Timeline autosave;
+
+    private void init(Request request) {
+        titleLabel.setText(request.title());
+        toField.setText(request.to());
+        ccField.setText(request.cc());
+        bccField.setText(request.bcc());
+        subjectField.setText(request.subject());
+        bodyArea.setText(request.body());
+        draftId = request.draftId();
+        forwarded.addAll(request.forwardAttachments());
+        if (!request.cc().isBlank() || !request.bcc().isBlank()) {
+            handleToggleCc();
+        }
+        renderAttachments();
+        for (TextField field : new TextField[] {toField, ccField, bccField, subjectField}) {
+            field.textProperty().addListener((observable, old, value) -> dirty = true);
+        }
+        bodyArea.textProperty().addListener((observable, old, value) -> dirty = true);
+        dirty = false;
+
+        Platform.runLater(() -> {
+            if (toField.getText().isBlank()) {
+                toField.requestFocus();
+            } else {
+                bodyArea.requestFocus();
+                bodyArea.positionCaret(0);
             }
+            Stage stage = (Stage) root.getScene().getWindow();
+            stage.setOnCloseRequest(event -> {
+                event.consume();
+                handleDiscard();
+            });
+            root.getScene().getAccelerators().put(
+                    new KeyCodeCombination(KeyCode.ENTER, KeyCombination.SHORTCUT_DOWN), this::handleSend);
+            root.getScene().getAccelerators().put(
+                    new KeyCodeCombination(KeyCode.S, KeyCombination.SHORTCUT_DOWN), this::handleSaveDraft);
         });
+
+        autosave = new Timeline(new KeyFrame(AUTOSAVE_INTERVAL, event -> {
+            if (dirty && !sending && hasContent()) {
+                saveDraft(false, null);
+            }
+        }));
+        autosave.setCycleCount(Timeline.INDEFINITE);
+        autosave.play();
     }
+
+    // ------------------------------------------------------------------ gửi
 
     @FXML
     public void handleSend() {
-        JsonArray to = toEmailArray(toField.getText());
-        JsonArray cc = toEmailArray(ccField.getText());
-        JsonArray bcc = toEmailArray(bccField.getText());
-        if (to.isEmpty() && cc.isEmpty() && bcc.isEmpty()) {
-            showError("Thêm ít nhất một người nhận ở To, CC hoặc BCC.");
+        if (sending) {
             return;
         }
-
-        JsonObject payload = new JsonObject();
-        payload.add("to", to);
-        payload.add("cc", cc);
-        payload.add("bcc", bcc);
-        payload.addProperty("subject", subjectField.getText());
-        payload.addProperty("body", bodyArea.getText());
-
-        List<File> files = new ArrayList<>(attachmentListView.getItems());
-        long totalBytes = 0;
+        List<String> to = Formats.splitRecipients(toField.getText());
+        List<String> cc = Formats.splitRecipients(ccField.getText());
+        List<String> bcc = Formats.splitRecipients(bccField.getText());
+        if (to.isEmpty() && cc.isEmpty() && bcc.isEmpty()) {
+            showError("Thêm ít nhất một người nhận.");
+            toField.requestFocus();
+            return;
+        }
+        if (bodyArea.getText().length() > ProtocolConstants.MAX_BODY_CHARS) {
+            showError("Nội dung thư quá dài (tối đa " + ProtocolConstants.MAX_BODY_CHARS + " ký tự).");
+            return;
+        }
+        if (subjectField.getText().isBlank() && !Dialogs.confirm(window(), "Gửi thư không có tiêu đề?",
+                "Thư này chưa có tiêu đề.", "Vẫn gửi", false)) {
+            return;
+        }
         for (File file : files) {
             if (!file.isFile() || file.length() == 0) {
                 showError("Tệp không tồn tại hoặc rỗng: " + file.getName());
                 return;
             }
-            totalBytes += file.length();
-        }
-        if (totalBytes > MAX_TOTAL_BYTES) {
-            showError("Tổng dung lượng tệp không được vượt quá 25 MB.");
-            return;
         }
 
-        showStatus(files.isEmpty() ? "Đang gửi thư..." : "Đang tải tệp lên...");
-        sendButton.setDisable(true);
-        long uploadTotal = totalBytes;
-        AtomicLong uploaded = new AtomicLong();
-        uploadAll(files, uploaded, uploadTotal)
+        setSending(true);
+        long total = files.stream().mapToLong(File::length).sum();
+        if (total > 0) {
+            progressBox.setVisible(true);
+            progressBox.setManaged(true);
+        }
+        Fx.then(AttachmentTransfer.uploadAll(new ArrayList<>(files), sent -> Platform.runLater(() -> {
+                    uploadProgress.setProgress(total == 0 ? 1 : sent / (double) total);
+                    progressLabel.setText("Đang tải tệp lên " + Formats.size(sent) + " / " + Formats.size(total));
+                }))
                 .thenCompose(uploadIds -> {
-                    JsonArray attachments = new JsonArray();
-                    for (String uploadId : uploadIds) {
-                        JsonObject attachment = new JsonObject();
-                        attachment.addProperty("uploadId", uploadId);
-                        attachments.add(attachment);
-                    }
-                    payload.add("attachments", attachments);
-                    if (!uploadIds.isEmpty()) {
-                        Platform.runLater(() -> showStatus("Đã tải tệp lên, đang gửi thư..."));
-                    }
-                    return ServerConnection.getInstance().sendRequest(Command.SEND_MAIL, payload);
-                })
-                .whenComplete((response, error) -> Platform.runLater(() -> {
-                    sendButton.setDisable(false);
-                    if (error != null) {
-                        showError(LoginController.describe(error));
-                    } else if (response.isOk()) {
-                        statusLabel.getStyleClass().remove("error-text");
-                        statusLabel.getStyleClass().add("success-text");
-                        statusLabel.setText("Đã gửi thư thành công.");
-                        clearForm();
-                    } else {
-                        showError(response.getMessage());
-                    }
-                }));
+                    Platform.runLater(() -> progressLabel.setText("Đang gửi thư..."));
+                    return MailApi.get().send(new MailApi.OutgoingMail(to, cc, bcc, subjectField.getText(),
+                            bodyArea.getText(), uploadIds,
+                            forwarded.stream().map(Attachment::getAttachmentId).collect(Collectors.toList()), draftId));
+                }), mailId -> {
+                    close();
+                    StackPane mainRoot = Navigator.primaryStage().getScene().getRoot() instanceof StackPane pane
+                            ? pane : null;
+                    Toast.success(mainRoot, "Đã gửi thư.");
+                }, error -> {
+                    setSending(false);
+                    progressBox.setVisible(false);
+                    progressBox.setManaged(false);
+                    showError(error);
+                });
     }
 
-    /** Tải lần lượt từng tệp (tuần tự để tiến độ dễ theo dõi và giới hạn bộ nhớ). */
-    private CompletableFuture<List<String>> uploadAll(List<File> files, AtomicLong uploaded, long total) {
-        CompletableFuture<List<String>> chain = CompletableFuture.completedFuture(new ArrayList<>());
-        for (File file : files) {
-            chain = chain.thenCompose(ids -> uploadChunk(file, file.length(), null, 0, uploaded, total)
-                    .thenApply(uploadId -> {
-                        ids.add(uploadId);
-                        return ids;
-                    }));
+    private void setSending(boolean value) {
+        sending = value;
+        sendButton.setDisable(value);
+        sendButton.setText(value ? "Đang gửi..." : "Gửi");
+        for (javafx.scene.Node node : new javafx.scene.Node[] {toField, ccField, bccField, subjectField, bodyArea,
+                attachButton, saveDraftButton, discardButton, attachmentPane}) {
+            node.setDisable(value);
         }
-        return chain;
+        errorLabel.setText("");
     }
 
-    /**
-     * Gửi khối bắt đầu tại offset; khi Server xác nhận thì gửi khối kế tiếp
-     * (stop-and-wait). Server trả receivedBytes nên Client luôn tiếp tục đúng
-     * vị trí Server đã ghi.
-     */
-    private CompletableFuture<String> uploadChunk(File file, long size, String uploadId, long offset,
-            AtomicLong uploaded, long total) {
-        int length = (int) Math.min(ProtocolConstants.CHUNK_SIZE_BYTES, size - offset);
-        return CompletableFuture.supplyAsync(() -> readChunk(file, offset, length), FILE_IO)
-                .thenCompose(chunk -> {
-                    JsonObject payload = new JsonObject();
-                    if (uploadId != null) {
-                        payload.addProperty("uploadId", uploadId);
-                    }
-                    payload.addProperty("filename", file.getName());
-                    payload.addProperty("sizeBytes", size);
-                    payload.addProperty("offset", offset);
-                    payload.addProperty("dataBase64", Base64.getEncoder().encodeToString(chunk));
-                    return ServerConnection.getInstance().sendRequest(Command.UPLOAD_ATTACHMENT_CHUNK, payload);
-                })
-                .thenComposeAsync(response -> {
-                    UploadProgress progress = readProgress(response);
-                    long done = uploaded.addAndGet(progress.receivedBytes - offset);
-                    Platform.runLater(() -> showStatus("Đang tải tệp lên: " + file.getName() + " - "
-                            + formatSize(done) + " / " + formatSize(total)));
-                    if (progress.receivedBytes >= size) {
-                        return CompletableFuture.completedFuture(progress.uploadId);
-                    }
-                    return uploadChunk(file, size, progress.uploadId, progress.receivedBytes, uploaded, total);
-                }, FILE_IO);
-    }
-
-    private byte[] readChunk(File file, long offset, int length) {
-        try (RandomAccessFile input = new RandomAccessFile(file, "r")) {
-            byte[] chunk = new byte[length];
-            input.seek(offset);
-            input.readFully(chunk);
-            return chunk;
-        } catch (EOFException error) {
-            throw new UncheckedIOException(
-                    new IOException("Tệp " + file.getName() + " đã bị thay đổi khi đang gửi."));
-        } catch (IOException error) {
-            throw new UncheckedIOException(new IOException("Không đọc được tệp " + file.getName() + "."));
-        }
-    }
-
-    private UploadProgress readProgress(ResponseMessage response) {
-        if (!response.isOk()) {
-            throw new CompletionException(new IOException(response.getMessage()));
-        }
-        JsonElement data = response.getData();
-        try {
-            JsonObject values = data.getAsJsonObject();
-            return new UploadProgress(values.get("uploadId").getAsString(),
-                    values.get("receivedBytes").getAsLong());
-        } catch (RuntimeException error) {
-            throw new CompletionException(new IOException("Phản hồi tải tệp lên không hợp lệ."));
-        }
-    }
-
-    private record UploadProgress(String uploadId, long receivedBytes) {
-    }
+    // ------------------------------------------------------------------ tệp đính kèm
 
     @FXML
-    public void handleChooseAttachments() {
+    public void handleAttach() {
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Chọn tệp đính kèm");
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(
-                "Tệp được hỗ trợ", "*.pdf", "*.docx", "*.pptx", "*.txt", "*.jpg", "*.png", "*.zip"));
-        Window window = subjectField.getScene() == null ? null : subjectField.getScene().getWindow();
-        List<File> selected = chooser.showOpenMultipleDialog(window);
-        if (selected == null)
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Tệp được hỗ trợ (PDF, DOCX, PPTX, TXT, JPG, PNG, ZIP)",
+                "*.pdf", "*.docx", "*.pptx", "*.txt", "*.jpg", "*.png", "*.zip"));
+        List<File> selected = chooser.showOpenMultipleDialog(window());
+        if (selected == null) {
             return;
-
-        List<File> candidate = new ArrayList<>(attachmentListView.getItems());
+        }
+        List<File> candidate = new ArrayList<>(files);
         for (File file : selected) {
-            if (!ProtocolConstants.ALLOWED_ATTACHMENT_EXTENSIONS.contains(extension(file))) {
-                showError("Không hỗ trợ định dạng tệp: " + file.getName());
+            String name = file.getName();
+            String extension = name.contains(".") ? name.substring(name.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
+            if (!ProtocolConstants.ALLOWED_ATTACHMENT_EXTENSIONS.contains(extension)) {
+                showError("Không hỗ trợ định dạng tệp: " + name);
                 return;
             }
-            if (!candidate.contains(file))
+            if (!candidate.contains(file)) {
                 candidate.add(file);
+            }
         }
-        if (candidate.size() > ProtocolConstants.MAX_ATTACHMENTS_PER_MAIL) {
-            showError("Mỗi thư đính kèm tối đa 5 tệp.");
+        if (candidate.size() + forwarded.size() > ProtocolConstants.MAX_ATTACHMENTS_PER_MAIL) {
+            showError("Mỗi thư đính kèm tối đa " + ProtocolConstants.MAX_ATTACHMENTS_PER_MAIL + " tệp.");
             return;
         }
-        long totalBytes = candidate.stream().mapToLong(File::length).sum();
-        if (totalBytes > MAX_TOTAL_BYTES) {
-            showError("Tổng dung lượng tệp không được vượt quá 25 MB.");
+        long total = candidate.stream().mapToLong(File::length).sum()
+                + forwarded.stream().mapToLong(Attachment::getSizeBytes).sum();
+        if (total > ProtocolConstants.MAX_ATTACHMENT_TOTAL_BYTES) {
+            showError("Tổng dung lượng tệp không được vượt quá 25 MB (hiện tại " + Formats.size(total) + ").");
             return;
         }
-        attachmentListView.getItems().setAll(candidate);
-        showStatus(candidate.size() + " tệp · " + formatSize(totalBytes));
+        files.clear();
+        files.addAll(candidate);
+        errorLabel.setText("");
+        renderAttachments();
+    }
+
+    private void renderAttachments() {
+        attachmentPane.getChildren().clear();
+        for (Attachment attachment : forwarded) {
+            attachmentPane.getChildren().add(chip(attachment.getFilename(), attachment.getSizeBytes(), () -> {
+                forwarded.remove(attachment);
+                renderAttachments();
+            }));
+        }
+        for (File file : files) {
+            attachmentPane.getChildren().add(chip(file.getName(), file.length(), () -> {
+                files.remove(file);
+                renderAttachments();
+            }));
+        }
+    }
+
+    private HBox chip(String name, long size, Runnable onRemove) {
+        Label label = new Label(name + "  ·  " + Formats.size(size));
+        Button remove = new Button();
+        remove.setGraphic(Icons.of(Icons.CLOSE, 14));
+        remove.getStyleClass().add("icon-button");
+        remove.setStyle("-fx-min-width: 26; -fx-min-height: 26; -fx-padding: 3;");
+        remove.setOnAction(event -> onRemove.run());
+        HBox chip = new HBox(6, Icons.of(Icons.forFile(name), 16), label, remove);
+        chip.setAlignment(Pos.CENTER_LEFT);
+        chip.getStyleClass().add("file-chip");
+        return chip;
+    }
+
+    // ------------------------------------------------------------------ thư nháp
+
+    @FXML
+    public void handleSaveDraft() {
+        if (!sending) {
+            saveDraft(true, null);
+        }
+    }
+
+    private void saveDraft(boolean announce, Runnable afterSave) {
+        Draft draft = new Draft();
+        draft.setDraftId(draftId == null ? 0 : draftId);
+        draft.setTo(toField.getText());
+        draft.setCc(ccField.getText());
+        draft.setBcc(bccField.getText());
+        draft.setSubject(subjectField.getText());
+        draft.setBody(bodyArea.getText());
+        dirty = false;
+        draftStatus.setText("Đang lưu nháp...");
+        Fx.then(MailApi.get().saveDraft(draft), id -> {
+            if (draftId == null) {
+                draftCreatedHere = true;
+            }
+            draftId = id;
+            draftStatus.setText("Đã lưu nháp lúc " + LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")));
+            if (announce && files.size() > 0) {
+                draftStatus.setText(draftStatus.getText() + " (tệp đính kèm không lưu trong nháp)");
+            }
+            if (afterSave != null) {
+                afterSave.run();
+            }
+        }, error -> {
+            dirty = true;
+            draftStatus.setText("");
+            showError("Không lưu được nháp: " + error);
+        });
+    }
+
+    /** Đóng cửa sổ: thư còn nội dung chưa lưu thì hỏi lưu nháp. */
+    @FXML
+    public void handleDiscard() {
+        if (sending) {
+            return;
+        }
+        if (!dirty || !hasContent()) {
+            close();
+            return;
+        }
+        switch (Dialogs.unsavedDraft(window())) {
+            case SAVE -> saveDraft(false, this::close);
+            case DISCARD -> {
+                if (draftCreatedHere && draftId != null) {
+                    // Bản nháp do tự lưu tạo ra trong phiên soạn này: bỏ thư thì xoá luôn.
+                    MailApi.get().deleteDrafts(List.of(draftId));
+                }
+                close();
+            }
+            case CANCEL -> {
+            }
+        }
     }
 
     @FXML
-    public void handleRemoveAttachment() {
-        File selected = attachmentListView.getSelectionModel().getSelectedItem();
-        if (selected != null)
-            attachmentListView.getItems().remove(selected);
-        showStatus(attachmentListView.getItems().size() + " tệp đính kèm");
+    public void handleToggleCc() {
+        boolean show = !ccRow.isVisible();
+        ccRow.setVisible(show);
+        ccRow.setManaged(show);
+        bccRow.setVisible(show);
+        bccRow.setManaged(show);
+        ccToggle.setText(show ? "Ẩn Cc / Bcc" : "Cc / Bcc");
     }
 
-    @FXML
-    public void handleBack() {
-        com.mailsystem.client.MailClientApp.switchScene("/fxml/inbox.fxml");
-    }
-
-    private String extension(File file) {
-        String name = file.getName();
-        int dot = name.lastIndexOf('.');
-        return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
-    }
-
-    private void clearForm() {
-        toField.clear();
-        ccField.clear();
-        bccField.clear();
-        subjectField.clear();
-        bodyArea.clear();
-        attachmentListView.getItems().clear();
+    private boolean hasContent() {
+        return !toField.getText().isBlank() || !ccField.getText().isBlank() || !bccField.getText().isBlank()
+                || !subjectField.getText().isBlank() || !bodyArea.getText().isBlank();
     }
 
     private void showError(String message) {
-        statusLabel.getStyleClass().remove("success-text");
-        if (!statusLabel.getStyleClass().contains("error-text")) {
-            statusLabel.getStyleClass().add("error-text");
+        errorLabel.setText(message);
+    }
+
+    private javafx.stage.Window window() {
+        return root.getScene() == null ? Navigator.owner() : root.getScene().getWindow();
+    }
+
+    private void close() {
+        if (autosave != null) {
+            autosave.stop();
         }
-        statusLabel.setText(message == null || message.isBlank() ? "Gửi thư không thành công." : message);
-    }
-
-    private void showStatus(String message) {
-        statusLabel.getStyleClass().remove("error-text");
-        statusLabel.getStyleClass().remove("success-text");
-        statusLabel.setText(message);
-    }
-
-    private String formatSize(long bytes) {
-        if (bytes < 1024)
-            return bytes + " B";
-        if (bytes < 1024 * 1024)
-            return String.format("%.1f KB", bytes / 1024.0);
-        return String.format("%.1f MB", bytes / (1024.0 * 1024));
-    }
-
-    /** Tach chuoi email cach nhau boi dau phay thanh JsonArray. */
-    private JsonArray toEmailArray(String rawText) {
-        JsonArray arr = new JsonArray();
-        if (rawText == null || rawText.isBlank())
-            return arr;
-        for (String email : rawText.split(",")) {
-            String recipient = email.trim();
-            if (!recipient.isEmpty())
-                arr.add(recipient);
-        }
-        return arr;
+        ((Stage) root.getScene().getWindow()).close();
     }
 }

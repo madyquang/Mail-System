@@ -5,6 +5,9 @@ import java.util.List;
 /** DTO đầy đủ dùng cho GET_MAIL_DETAIL: nội dung + danh sách người nhận + attachment. */
 public class MailDetail {
     private int mailId;
+    private int entryId;          // bản thư của người xem đã được mở
+    private boolean starred;
+    private String folderType;
     private String senderEmail;
     private String senderName;
     private String subject;
@@ -17,6 +20,15 @@ public class MailDetail {
 
     public MailDetail() {
     }
+
+    public int getEntryId() { return entryId; }
+    public void setEntryId(int entryId) { this.entryId = entryId; }
+
+    public boolean isStarred() { return starred; }
+    public void setStarred(boolean starred) { this.starred = starred; }
+
+    public String getFolderType() { return folderType; }
+    public void setFolderType(String folderType) { this.folderType = folderType; }
 
     public int getMailId() { return mailId; }
     public void setMailId(int mailId) { this.mailId = mailId; }

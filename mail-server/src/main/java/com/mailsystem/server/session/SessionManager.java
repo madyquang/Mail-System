@@ -62,6 +62,28 @@ public class SessionManager {
         }
     }
 
+    /**
+     * Thu hồi mọi phiên của tài khoản trừ phiên except (có thể null). Dùng khi
+     * đổi mật khẩu hoặc "đăng xuất khỏi mọi thiết bị": kẻ đã đánh cắp phiên
+     * không thể tiếp tục dùng sau khi chủ tài khoản đổi mật khẩu.
+     *
+     * @return số phiên đã thu hồi
+     */
+    public int revokeAll(int accountId, ClientSession except, String reason) {
+        Set<ClientSession> sessions = onlineSessions.get(accountId);
+        if (sessions == null) {
+            return 0;
+        }
+        int revoked = 0;
+        for (ClientSession session : Set.copyOf(sessions)) {
+            if (session != except) {
+                session.revoke(reason);
+                revoked++;
+            }
+        }
+        return revoked;
+    }
+
     public int sessionCount(int accountId) {
         Set<ClientSession> sessions = onlineSessions.get(accountId);
         return sessions == null ? 0 : sessions.size();

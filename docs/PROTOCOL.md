@@ -19,7 +19,8 @@ Mã nguồn tham chiếu: [mail-common/.../protocol](../mail-common/src/main/jav
 | Đóng khung (framing) | Mỗi gói tin là **một dòng JSON**, kết thúc bằng `\n` (chấp nhận `\r\n`) |
 | Độ dài frame tối đa | Client → Server: `1 048 576` ký tự (`ProtocolConstants.MAX_FRAME_CHARS`) |
 | Chiều truyền | Song công (full-duplex): Server có thể gửi EVENT bất cứ lúc nào |
-| Mã hoá đường truyền | **Chưa có** (dữ liệu là văn bản rõ). Xem mục Bảo mật trong NETWORK_PROGRAMMING.md |
+| Mã hoá đường truyền | **Bắt buộc TLS 1.3** (`SSLSocket`). Server dùng chứng chỉ tự ký; Client ghim dấu vân tay SHA-256 theo mô hình TOFU (xem [SECURITY.md](SECURITY.md)) |
+| Giới hạn tốc độ | Mỗi kết nối 30 request/giây, dồn tối đa 120; vượt mức nhận `ERROR "Bạn gửi yêu cầu quá nhanh..."` |
 
 Một frame JSON không bao giờ chứa ký tự `\n` thô: xuống dòng trong chuỗi được
 escape thành `\\n`. Frame dài quá giới hạn bị Server đọc bỏ và trả lỗi
@@ -32,7 +33,7 @@ Trường `type` ở tầng ngoài cùng cho biết loại gói (`ProtocolUtil.p
 ### 2.1 REQUEST (Client → Server)
 
 ```json
-{"type":"REQUEST","requestId":"7f3c…","command":"LOGIN","payload":{"email":"an@mail.local","password":"123456"}}
+{"type":"REQUEST","requestId":"7f3c…","command":"LOGIN","payload":{"email":"an@mail.local","password":"Matkhau-2026"}}
 ```
 
 - `requestId`: chuỗi do Client sinh (UUID), **duy nhất trong một kết nối**.
@@ -99,19 +100,26 @@ RESPONSE khi `status = OK`.
 | `REGISTER` 🔓 | `{email, password, displayName}` | `{accountId, email, displayName}` |
 | `LOGIN` 🔓 | `{email, password}` | `{accountId, email, displayName, folders: [Folder]}` |
 | `LOGOUT` | không có | `null` |
+| `LOGOUT_ALL` | không có | `{revokedSessions}`: thu hồi mọi phiên khác rồi đăng xuất phiên này |
+| `UPDATE_PROFILE` | `{displayName}` | `{displayName}` |
+| `CHANGE_PASSWORD` | `{currentPassword, newPassword}` | `{revokedSessions}`: mọi phiên KHÁC bị thu hồi |
 
 `LOGIN` sai email hoặc mật khẩu đều trả cùng một thông báo
-`"Email hoặc mật khẩu không đúng"`.
+`"Email hoặc mật khẩu không đúng"`. Sai 5 lần (theo email, hoặc nhiều lần theo
+IP) thì bị khoá 15 phút: `"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau N phút."`.
+`REGISTER`/`CHANGE_PASSWORD` yêu cầu mật khẩu ≥ 8 ký tự, có cả chữ và số,
+không quá phổ biến, không chứa tên email. Mỗi IP đăng ký tối đa 10 tài khoản/giờ.
 
 ### 4.2 Thư mục & thư
 
 | Command | Payload | `data` khi OK |
 | --- | --- | --- |
 | `GET_FOLDERS` | không có | `[Folder]` (kèm `unreadCount`) |
-| `GET_MAIL_LIST` | `{folderId}` | `[MailSummary]`, mới nhất trước |
+| `GET_MAIL_LIST` | `{folderId}` hoặc `{view: "STARRED"}` | `[MailSummary]`, mới nhất trước (STARRED: thư gắn sao ở mọi thư mục trừ TRASH) |
 | `GET_MAIL_DETAIL` | `{mailId, entryId?}` | `MailDetail`; tự đánh dấu **đúng bản `entryId`** là đã đọc (trừ thư trong TRASH) |
 | `SEARCH_MAIL` | `{keyword?, fromFilter?, folderId?}`, cần ít nhất 1 điều kiện | `[MailSummary]` |
-| `MARK_READ` | `{entryId}` hoặc `{entryIds: [..]}` | `{processed, requested}` |
+| `MARK_READ` | `{entryIds: [..], read?: true}` (`read: false` = đánh dấu chưa đọc) | `{processed, requested}` |
+| `SET_STARRED` | `{entryIds: [..], starred: true\|false}` | `{processed, requested}` |
 | `DELETE_MAIL` | `{entryId}` hoặc `{entryIds: [..]}` | `{processed, requested}` (chuyển vào TRASH) |
 | `RESTORE_TRASH_MAIL` | `{entryId}` hoặc `{entryIds: [..]}` | `{processed, requested}` (về thư mục gốc) |
 | `DELETE_TRASH_MAIL` | `{entryId}` hoặc `{entryIds: [..]}` | `{processed, requested}` (xoá vĩnh viễn) |
@@ -133,7 +141,10 @@ lô chỉ sinh **một** EVENT.
 | Command | Payload | `data` khi OK |
 | --- | --- | --- |
 | `UPLOAD_ATTACHMENT_CHUNK` | `{uploadId?, filename, sizeBytes, offset, dataBase64}` | `{uploadId, receivedBytes, complete}` |
-| `SEND_MAIL` | `{to[], cc[], bcc[], subject, body, attachments: [{uploadId}]}` | `{mailId}` |
+| `SEND_MAIL` | `{to[], cc[], bcc[], subject, body, attachments: [{uploadId}], forwardAttachmentIds?: [..], draftId?}` | `{mailId}` |
+| `SAVE_DRAFT` | `{draftId?, to, cc, bcc, subject, body}` (chuỗi nguyên văn) | `{draftId}` |
+| `GET_DRAFTS` | không có | `[Draft]`, mới sửa trước |
+| `DELETE_DRAFTS` | `{draftIds: [..]}` | `{deleted}` |
 | `DOWNLOAD_ATTACHMENT` | `{attachmentId, offset}` | `Attachment` kèm `dataBase64` của 1 khối |
 
 **Tải tệp lên (upload theo khối):**
@@ -162,6 +173,19 @@ chối (all-or-nothing) với thông báo nêu rõ người nhận đó. Khi m�
 còn ai khác ngoài người gửi sẽ bị từ chối. Ghi email của chính mình trực tiếp
 vào To/CC/BCC vẫn được phép.
 
+**Kiểm tra nội dung tệp:** khi `SEND_MAIL`, Server đọc chữ ký đầu tệp (magic
+bytes): PDF phải bắt đầu `%PDF-`, PNG/JPG đúng chữ ký ảnh, DOCX/PPTX/ZIP là
+ZIP, TXT phải là UTF-8 không có byte NUL. Không khớp: `"Nội dung tệp không đúng định dạng .pdf: ..."`.
+
+**Chuyển tiếp kèm tệp:** `forwardAttachmentIds` là `attachmentId` của thư gốc mà
+người gửi có quyền xem. Server sao chép tệp thành bản riêng của thư mới; tính
+chung giới hạn 5 tệp / 25 MiB với tệp tải lên.
+
+**Gửi từ thư nháp:** kèm `draftId` thì sau khi gửi thành công bản nháp bị xoá
+(và mọi phiên nhận `DRAFTS_UPDATED`).
+
+**Giới hạn nội dung:** tiêu đề ≤ 255 ký tự, nội dung ≤ 100 000 ký tự.
+
 **Tải tệp xuống:** gửi `offset = 0`, ghi khối nhận được, rồi gửi
 `offset += số byte vừa nhận` cho tới khi đủ `sizeBytes`.
 
@@ -180,10 +204,14 @@ vào To/CC/BCC vẫn được phép.
 
 | `eventName` | `data` | Gửi tới | Khi nào |
 | --- | --- | --- | --- |
-| `NEW_MAIL` | `{mailId}` | mọi phiên của người nhận **và** người gửi | `SEND_MAIL` thành công |
-| `MAIL_READ_UPDATED` | `{entryId, entryIds}` | mọi phiên của tài khoản thao tác | `MARK_READ` |
+| `NEW_MAIL` | `{mailId, senderEmail, senderName, subject}` | mọi phiên của người nhận **và** người gửi | `SEND_MAIL` thành công (Client dùng để hiện thông báo desktop) |
+| `MAIL_READ_UPDATED` | `{entryId, entryIds, read}` | mọi phiên của tài khoản thao tác | `MARK_READ` |
+| `MAIL_STARRED` | `{entryId, entryIds, starred}` | mọi phiên của tài khoản thao tác | `SET_STARRED` |
 | `MAIL_DELETED` | `{entryId, entryIds}` hoặc `{}` | mọi phiên của tài khoản thao tác | `DELETE_MAIL`, `DELETE_TRASH_MAIL`, `EMPTY_TRASH` |
 | `MAIL_RESTORED` | `{entryId, entryIds}` | mọi phiên của tài khoản thao tác | `RESTORE_TRASH_MAIL` |
+| `DRAFTS_UPDATED` | `{}` | mọi phiên của tài khoản | `SAVE_DRAFT`, `DELETE_DRAFTS`, gửi từ nháp |
+| `PROFILE_UPDATED` | `{displayName}` | mọi phiên của tài khoản | `UPDATE_PROFILE` |
+| `SESSION_REVOKED` | `{reason}` | các phiên bị thu hồi (sau đó Server đóng kết nối) | `CHANGE_PASSWORD`, `LOGOUT_ALL` |
 
 EVENT chỉ là **tín hiệu**: Client nhận EVENT thì tải lại dữ liệu bằng
 `GET_MAIL_LIST`/`SEARCH_MAIL`. Phiên đang offline không nhận EVENT, nhưng lần
@@ -193,9 +221,11 @@ EVENT chỉ là **tín hiệu**: Client nhận EVENT thì tải lại dữ liệ
 
 ```text
 Folder       {folderId, folderName, folderType: INBOX|SENT|TRASH|CUSTOM, unreadCount}
-MailSummary  {mailId, entryId, senderEmail, senderName, subject, sentAt, read}
-MailDetail   {mailId, senderEmail, senderName, subject, body, sentAt,
+MailSummary  {mailId, entryId, senderEmail, senderName, subject, snippet, sentAt,
+              read, starred, hasAttachments, folderType}
+MailDetail   {mailId, entryId, starred, folderType, senderEmail, senderName, subject, body, sentAt,
               to: [email], cc: [email], bcc: [email], attachments: [Attachment]}
+Draft        {draftId, to, cc, bcc, subject, body, updatedAt}
 Attachment   {attachmentId, filename, mimeType, sizeBytes, dataBase64?}
 MailGroupDTO {groupId, groupName, ownerEmail, owner: bool, memberEmails: [email]}
 ```
@@ -206,7 +236,7 @@ MailGroupDTO {groupId, groupName, ownerEmail, owner: bool, memberEmails: [email]
 ## 7. Ví dụ phiên làm việc hoàn chỉnh
 
 ```text
-C→S {"type":"REQUEST","requestId":"1","command":"LOGIN","payload":{"email":"an@mail.local","password":"123456"}}
+C→S {"type":"REQUEST","requestId":"1","command":"LOGIN","payload":{"email":"an@mail.local","password":"Matkhau-2026"}}
 S→C {"type":"RESPONSE","requestId":"1","status":"OK","message":"","data":{"accountId":1,…,"folders":[…]}}
 C→S {"type":"REQUEST","requestId":"2","command":"UPLOAD_ATTACHMENT_CHUNK","payload":{"filename":"bao-cao.pdf","sizeBytes":700000,"offset":0,"dataBase64":"JVBERi0x…"}}
 S→C {"type":"RESPONSE","requestId":"2","status":"OK","message":"","data":{"uploadId":"9b1e…","receivedBytes":524288,"complete":false}}
@@ -222,6 +252,8 @@ S→C {"type":"RESPONSE","requestId":"4","status":"OK","message":"","data":{"mai
 
 ## 8. Quy tắc cho người viết Client
 
+0. Kết nối bằng TLS 1.3 và **kiểm tra chứng chỉ** (ghim dấu vân tay hoặc tin
+   chứng chỉ cụ thể). Không bao giờ dùng TrustManager "tin tất cả" trong ứng dụng thật.
 1. Đọc liên tục bằng một thread riêng; phân loại theo `type`, khớp RESPONSE
    bằng `requestId`. Đừng giả định RESPONSE tới ngay sau REQUEST.
 2. Luôn đặt timeout cho mỗi request (client chính thức: 30 giây).
@@ -229,3 +261,4 @@ S→C {"type":"RESPONSE","requestId":"4","status":"OK","message":"","data":{"mai
    đồng thời sẽ làm hai frame trộn lẫn byte của nhau).
 4. Khi mất kết nối, coi mọi request đang chờ là thất bại và đăng nhập lại.
 5. Gửi `PING` định kỳ (khoảng 30 giây) khi không có hoạt động nào khác.
+6. Nhận `SESSION_REVOKED` thì xoá trạng thái đăng nhập và quay về màn hình đăng nhập.

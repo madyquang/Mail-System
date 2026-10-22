@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
+
+<StackPane fx:id="root" styleClass="dialog-root" xmlns:fx="http://javafx.com/fxml"
+           fx:controller="com.mailsystem.client.controller.GroupsController">
+    <HBox spacing="14">
+        <padding><Insets top="16" right="16" bottom="16" left="16" /></padding>
+        <VBox styleClass="panel" spacing="12" prefWidth="320" minWidth="260">
+            <Label text="Nhóm thư của bạn" styleClass="title-md" />
+            <Label text="Gửi thư tới tên nhóm như một người nhận; mọi thành viên khác sẽ nhận được."
+                   styleClass="hint" wrapText="true" />
+            <HBox spacing="8" alignment="CENTER_LEFT">
+                <TextField fx:id="newGroupField" promptText="Tên nhóm mới" HBox.hgrow="ALWAYS"
+                           onAction="#handleCreate" />
+                <Button text="Tạo" onAction="#handleCreate" styleClass="primary-button">
+                    <graphic><FontIcon iconLiteral="mdi2p-plus" iconSize="16" styleClass="icon" /></graphic>
+                </Button>
+            </HBox>
+            <StackPane VBox.vgrow="ALWAYS">
+                <ListView fx:id="groupList" />
+                <StackPane fx:id="groupsEmpty" visible="false" />
+            </StackPane>
+        </VBox>
+        <StackPane styleClass="panel" HBox.hgrow="ALWAYS">
+            <VBox fx:id="detailBox" spacing="12" visible="false">
+                <HBox alignment="CENTER_LEFT" spacing="10">
+                    <FontIcon iconLiteral="mdi2a-account-group-outline" iconSize="26" styleClass="icon" />
+                    <VBox spacing="2" HBox.hgrow="ALWAYS">
+                        <Label fx:id="groupNameLabel" styleClass="title-lg" wrapText="true" />
+                        <Label fx:id="ownerLabel" styleClass="text-muted" />
+                    </VBox>
+                </HBox>
+                <HBox fx:id="addMemberRow" spacing="8" alignment="CENTER_LEFT">
+                    <TextField fx:id="memberEmailField" promptText="Email thành viên mới" HBox.hgrow="ALWAYS"
+                               onAction="#handleAddMember" />
+                    <Button text="Thêm" onAction="#handleAddMember" styleClass="secondary-button">
+                        <graphic><FontIcon iconLiteral="mdi2a-account-plus-outline" iconSize="16" styleClass="icon" /></graphic>
+                    </Button>
+                </HBox>
+                <Label fx:id="memberCountLabel" styleClass="field-label" />
+                <ListView fx:id="memberList" VBox.vgrow="ALWAYS" />
+                <HBox spacing="8" alignment="CENTER_LEFT">
+                    <Button fx:id="removeMemberButton" text="Xoá thành viên" onAction="#handleRemoveMember"
+                            styleClass="secondary-button">
+                        <graphic><FontIcon iconLiteral="mdi2a-account-remove-outline" iconSize="16" styleClass="icon" /></graphic>
+                    </Button>
+                    <Region HBox.hgrow="ALWAYS" />
+                    <Button fx:id="leaveButton" text="Rời nhóm" onAction="#handleLeave" styleClass="secondary-button">
+                        <graphic><FontIcon iconLiteral="mdi2e-exit-run" iconSize="16" styleClass="icon" /></graphic>
+                    </Button>
+                    <Button fx:id="deleteButton" text="Xoá nhóm" onAction="#handleDelete" styleClass="danger-button">
+                        <graphic><FontIcon iconLiteral="mdi2d-delete-outline" iconSize="16" styleClass="icon" /></graphic>
+                    </Button>
+                </HBox>
+            </VBox>
+            <StackPane fx:id="detailEmpty" />
+        </StackPane>
+    </HBox>
+</StackPane>

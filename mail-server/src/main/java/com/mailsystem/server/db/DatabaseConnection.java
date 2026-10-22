@@ -1,6 +1,6 @@
 package com.mailsystem.server.db;
 
-import com.mailsystem.server.ServerConfig;
+import com.mailsystem.server.config.ServerConfig;
 
 import java.sql.Connection;
 import java.sql.DriverManager;

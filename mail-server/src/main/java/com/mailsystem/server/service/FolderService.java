@@ -3,7 +3,7 @@ package com.mailsystem.server.service;
 import com.mailsystem.common.protocol.ProtocolUtil;
 import com.mailsystem.common.protocol.ResponseMessage;
 import com.mailsystem.server.dao.FolderDAO;
-import com.mailsystem.server.dao.JdbcFolderDAO;
+import com.mailsystem.server.dao.jdbc.JdbcFolderDAO;
 
 import java.sql.SQLException;
 

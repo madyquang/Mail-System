@@ -29,3 +29,10 @@ Thumbs.db
 
 # File dinh kem thu (neu Server luu ra dia trong thu muc nay khi test)
 attachments/
+
+# Cau hinh rieng tung may (chua mat khau) - chi commit file .example
+config/*.properties
+!config/*.properties.example
+
+# Du lieu khi chay Server: tep dinh kem, keystore TLS, log
+data/

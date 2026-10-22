@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
+
+<!-- Bố cục 3 cột kiểu Gmail: sidebar | danh sách thư | khung đọc thư.
+     StackPane gốc để Toast nổi lên trên mọi thứ. -->
+<StackPane fx:id="root" xmlns:fx="http://javafx.com/fxml"
+           fx:controller="com.mailsystem.client.controller.MainController">
+    <BorderPane>
+        <top>
+            <HBox styleClass="app-bar" alignment="CENTER_LEFT" spacing="8">
+                <Button fx:id="menuButton" styleClass="icon-button" onAction="#handleToggleSidebar">
+                    <graphic><FontIcon iconLiteral="mdi2m-menu" iconSize="22" styleClass="icon" /></graphic>
+                    <tooltip><Tooltip text="Thu gọn / mở rộng thanh bên" /></tooltip>
+                </Button>
+                <HBox alignment="CENTER_LEFT" spacing="8" minWidth="150">
+                    <StackPane styleClass="brand-logo" style="-fx-min-width: 32; -fx-min-height: 32; -fx-max-width: 32; -fx-max-height: 32; -fx-background-radius: 9;">
+                        <FontIcon iconLiteral="mdi2e-email-outline" iconSize="18" styleClass="icon" />
+                    </StackPane>
+                    <Label text="Mail System" styleClass="title-md" />
+                </HBox>
+                <HBox styleClass="search-box" alignment="CENTER_LEFT" spacing="4" HBox.hgrow="ALWAYS" maxWidth="720">
+                    <FontIcon iconLiteral="mdi2m-magnify" iconSize="20" styleClass="icon" />
+                    <TextField fx:id="searchField" promptText="Tìm thư  (Ctrl+F)"
+                               onAction="#handleSearch" HBox.hgrow="ALWAYS" />
+                    <TextField fx:id="fromFilterField" promptText="Người gửi" onAction="#handleSearch"
+                               prefWidth="150" minWidth="90" styleClass="search-filter" />
+                    <Button fx:id="clearSearchButton" styleClass="icon-button" onAction="#handleClearSearch"
+                            visible="false" managed="false">
+                        <graphic><FontIcon iconLiteral="mdi2c-close" iconSize="18" styleClass="icon" /></graphic>
+                        <tooltip><Tooltip text="Xoá tìm kiếm (Esc)" /></tooltip>
+                    </Button>
+                </HBox>
+                <Region HBox.hgrow="SOMETIMES" minWidth="8" />
+                <HBox fx:id="connectionChip" styleClass="connection-chip" alignment="CENTER_LEFT" spacing="6">
+                    <FontIcon iconLiteral="mdi2l-lock-outline" iconSize="14" styleClass="icon" />
+                    <Label fx:id="connectionLabel" text="Đã kết nối an toàn" />
+                </HBox>
+                <Button styleClass="icon-button" onAction="#handleRefresh">
+                    <graphic><FontIcon iconLiteral="mdi2r-refresh" iconSize="20" styleClass="icon" /></graphic>
+                    <tooltip><Tooltip text="Làm mới (F5)" /></tooltip>
+                </Button>
+                <Button styleClass="icon-button" onAction="#handleOpenGroups">
+                    <graphic><FontIcon iconLiteral="mdi2a-account-group-outline" iconSize="20" styleClass="icon" /></graphic>
+                    <tooltip><Tooltip text="Nhóm thư" /></tooltip>
+                </Button>
+                <MenuButton fx:id="profileMenu" styleClass="profile-menu">
+                    <tooltip><Tooltip fx:id="profileTooltip" /></tooltip>
+                </MenuButton>
+            </HBox>
+        </top>
+        <left>
+            <VBox fx:id="sidebar" styleClass="sidebar" spacing="4" prefWidth="250" minWidth="250">
+                <Button fx:id="composeButton" text="Soạn thư" onAction="#handleCompose" styleClass="compose-button">
+                    <graphic><FontIcon iconLiteral="mdi2p-pencil-outline" iconSize="22" styleClass="icon" /></graphic>
+                    <tooltip><Tooltip text="Soạn thư mới (Ctrl+N)" /></tooltip>
+                    <VBox.margin><Insets left="8" bottom="12" top="4" /></VBox.margin>
+                </Button>
+                <VBox fx:id="navBox" spacing="1" />
+                <Region VBox.vgrow="ALWAYS" />
+                <Label fx:id="footerLabel" styleClass="hint" wrapText="true">
+                    <VBox.margin><Insets left="18" /></VBox.margin>
+                </Label>
+            </VBox>
+        </left>
+        <center>
+            <SplitPane fx:id="splitPane" dividerPositions="0.44">
+                <BorderPane.margin><Insets right="16" bottom="16" /></BorderPane.margin>
+                <StackPane styleClass="content-card" minWidth="340">
+                    <VBox>
+                        <VBox styleClass="list-toolbar" spacing="8">
+                            <HBox alignment="CENTER_LEFT" spacing="10">
+                                <CheckBox fx:id="selectAllCheck" onAction="#handleToggleSelectAll">
+                                    <tooltip><Tooltip text="Chọn tất cả (Ctrl+A)" /></tooltip>
+                                </CheckBox>
+                                <Label fx:id="listTitle" text="Hộp thư đến" styleClass="list-title" />
+                                <Label fx:id="listCount" styleClass="text-muted" />
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Button fx:id="emptyTrashButton" text="Dọn sạch" onAction="#handleEmptyTrash"
+                                        styleClass="text-button" visible="false" managed="false">
+                                    <graphic><FontIcon iconLiteral="mdi2d-delete-forever-outline" iconSize="16" styleClass="icon" /></graphic>
+                                </Button>
+                            </HBox>
+                            <HBox fx:id="selectionBar" styleClass="selection-bar" alignment="CENTER_LEFT" spacing="2"
+                                  visible="false" managed="false">
+                                <Label fx:id="selectionLabel" />
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Button fx:id="bulkReadButton" styleClass="icon-button" onAction="#handleBulkRead">
+                                    <graphic><FontIcon iconLiteral="mdi2e-email-open-outline" iconSize="18" styleClass="icon" /></graphic>
+                                    <tooltip><Tooltip text="Đánh dấu đã đọc" /></tooltip>
+                                </Button>
+                                <Button fx:id="bulkUnreadButton" styleClass="icon-button" onAction="#handleBulkUnread">
+                                    <graphic><FontIcon iconLiteral="mdi2e-email-mark-as-unread" iconSize="18" styleClass="icon" /></graphic>
+                                    <tooltip><Tooltip text="Đánh dấu chưa đọc" /></tooltip>
+                                </Button>
+                                <Button fx:id="bulkStarButton" styleClass="icon-button" onAction="#handleBulkStar">
+                                    <graphic><FontIcon iconLiteral="mdi2s-star-outline" iconSize="18" styleClass="icon" /></graphic>
+                                    <tooltip><Tooltip fx:id="bulkStarTooltip" text="Gắn sao" /></tooltip>
+                                </Button>
+                                <Button fx:id="bulkTrashButton" styleClass="icon-button" onAction="#handleBulkTrash">
+                                    <graphic><FontIcon iconLiteral="mdi2d-delete-outline" iconSize="18" styleClass="icon" /></graphic>
+                                    <tooltip><Tooltip text="Chuyển vào Thùng rác (Delete)" /></tooltip>
+                                </Button>
+                                <Button fx:id="bulkRestoreButton" styleClass="icon-button" onAction="#handleBulkRestore">
+                                    <graphic><FontIcon iconLiteral="mdi2r-restore" iconSize="18" styleClass="icon" /></graphic>
+                                    <tooltip><Tooltip text="Khôi phục" /></tooltip>
+                                </Button>
+                                <Button fx:id="bulkDeleteButton" styleClass="icon-button" onAction="#handleBulkDeleteForever">
+                                    <graphic><FontIcon iconLiteral="mdi2d-delete-forever-outline" iconSize="18" styleClass="icon" /></graphic>
+                                    <tooltip><Tooltip text="Xoá vĩnh viễn (Delete)" /></tooltip>
+                                </Button>
+                            </HBox>
+                        </VBox>
+                        <HBox fx:id="errorBanner" styleClass="banner-error" alignment="CENTER_LEFT" spacing="8"
+                              visible="false" managed="false">
+                            <VBox.margin><Insets top="8" right="10" left="10" /></VBox.margin>
+                            <FontIcon iconLiteral="mdi2a-alert-circle-outline" iconSize="18" styleClass="icon" />
+                            <Label fx:id="errorBannerLabel" wrapText="true" HBox.hgrow="ALWAYS" maxWidth="Infinity" />
+                            <Button text="Thử lại" styleClass="text-button" onAction="#handleRefresh" />
+                        </HBox>
+                        <StackPane fx:id="listStack" VBox.vgrow="ALWAYS">
+                            <ListView fx:id="mailList" styleClass="mail-list" />
+                            <ListView fx:id="draftList" styleClass="mail-list" visible="false" />
+                            <StackPane fx:id="listEmpty" visible="false" />
+                            <StackPane fx:id="listLoading" styleClass="loading-pane" visible="false">
+                                <ProgressIndicator maxWidth="40" maxHeight="40" />
+                            </StackPane>
+                        </StackPane>
+                    </VBox>
+                </StackPane>
+                <StackPane fx:id="readerHost" minWidth="360" />
+            </SplitPane>
+        </center>
+    </BorderPane>
+</StackPane>

@@ -2,37 +2,63 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
+<?import com.mailsystem.client.ui.PasswordField2?>
+<?import com.mailsystem.client.ui.PasswordStrength?>
 
-<StackPane styleClass="auth-screen" xmlns:fx="http://javafx.com/fxml"
+<StackPane fx:id="root" styleClass="auth-screen" xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.mailsystem.client.controller.RegisterController">
-    <HBox maxWidth="920" maxHeight="600" styleClass="auth-shell">
-        <VBox alignment="CENTER_LEFT" spacing="22" styleClass="auth-aside">
-            <Label text="POST /" styleClass="brand-mark" />
-            <Region VBox.vgrow="ALWAYS" />
-            <Label text="Một hộp thư.&#10;Một cộng đồng." styleClass="auth-headline" wrapText="true" />
-            <Label text="Tạo tài khoản nội bộ để bắt đầu trao đổi." styleClass="auth-caption" wrapText="true" />
-            <Region VBox.vgrow="ALWAYS" />
-            <Label text="MAIL SYSTEM  ·  DESKTOP" styleClass="aside-footnote" />
-        </VBox>
-        <VBox alignment="CENTER_LEFT" spacing="11" styleClass="auth-form" HBox.hgrow="ALWAYS">
-            <padding><Insets top="38" right="54" bottom="38" left="54" /></padding>
-            <Label text="Tạo tài khoản" styleClass="page-title" />
-            <Label text="Thông tin tài khoản mail nội bộ." styleClass="muted-text" />
-            <Region prefHeight="6" />
-            <Label text="TÊN HIỂN THỊ" styleClass="field-label" />
-            <TextField fx:id="displayNameField" promptText="Tên của bạn" styleClass="text-input" />
-            <Label text="EMAIL" styleClass="field-label" />
-            <TextField fx:id="emailField" promptText="ten@mail.local" styleClass="text-input" />
-            <Label text="MẬT KHẨU" styleClass="field-label" />
-            <PasswordField fx:id="passwordField" promptText="Ít nhất 6 ký tự" styleClass="text-input" />
-            <PasswordField fx:id="confirmPasswordField" promptText="Nhập lại mật khẩu" styleClass="text-input" />
-            <Label fx:id="statusLabel" wrapText="true" minHeight="20" styleClass="error-text" />
-            <Button fx:id="registerButton" text="Tạo tài khoản" onAction="#handleRegister"
-                    maxWidth="Infinity" styleClass="primary-button" />
-            <HBox alignment="CENTER" spacing="5">
-                <Label text="Đã có tài khoản?" styleClass="muted-text" />
-                <Hyperlink text="Đăng nhập" onAction="#handleBackToLogin" styleClass="text-link" />
-            </HBox>
-        </VBox>
-    </HBox>
+    <ScrollPane fitToWidth="true" fitToHeight="true" hbarPolicy="NEVER">
+        <StackPane>
+            <padding><Insets top="28" right="24" bottom="28" left="24" /></padding>
+            <VBox styleClass="auth-card" spacing="12" maxWidth="440" minWidth="360" maxHeight="-Infinity">
+                <HBox alignment="CENTER_LEFT" spacing="12">
+                    <StackPane styleClass="brand-logo">
+                        <FontIcon iconLiteral="mdi2a-account-plus-outline" iconSize="26" styleClass="icon" />
+                    </StackPane>
+                    <VBox spacing="2">
+                        <Label text="Mail System" styleClass="brand-name" />
+                        <Label fx:id="serverLabel" styleClass="hint" />
+                    </VBox>
+                </HBox>
+                <Label text="Tạo tài khoản" styleClass="title-xl" />
+
+                <VBox spacing="6">
+                    <Label text="Tên hiển thị" styleClass="field-label" />
+                    <TextField fx:id="displayNameField" promptText="VD: Nguyễn Văn An" />
+                </VBox>
+                <VBox spacing="6">
+                    <Label text="Email" styleClass="field-label" />
+                    <TextField fx:id="emailField" promptText="ten@mail.local" />
+                </VBox>
+                <VBox spacing="6">
+                    <Label text="Mật khẩu" styleClass="field-label" />
+                    <PasswordField2 fx:id="passwordField" promptText="Ít nhất 8 ký tự, có chữ và số" />
+                    <PasswordStrength fx:id="strength" />
+                </VBox>
+                <VBox spacing="6">
+                    <Label text="Nhập lại mật khẩu" styleClass="field-label" />
+                    <PasswordField2 fx:id="confirmField" promptText="Nhập lại mật khẩu" />
+                </VBox>
+
+                <Label fx:id="errorLabel" styleClass="form-error" wrapText="true" maxWidth="Infinity"
+                       visible="false" managed="false" />
+                <Label fx:id="successLabel" styleClass="form-info" wrapText="true" maxWidth="Infinity"
+                       visible="false" managed="false" />
+
+                <StackPane>
+                    <Button fx:id="registerButton" text="Tạo tài khoản" onAction="#handleRegister" defaultButton="true"
+                            maxWidth="Infinity" styleClass="primary-button" />
+                    <ProgressIndicator fx:id="spinner" maxWidth="22" maxHeight="22" visible="false"
+                                       StackPane.alignment="CENTER_RIGHT">
+                        <StackPane.margin><Insets right="14" /></StackPane.margin>
+                    </ProgressIndicator>
+                </StackPane>
+                <HBox alignment="CENTER" spacing="4">
+                    <Label text="Đã có tài khoản?" styleClass="text-muted" />
+                    <Hyperlink text="Đăng nhập" onAction="#handleBackToLogin" />
+                </HBox>
+            </VBox>
+        </StackPane>
+    </ScrollPane>
 </StackPane>

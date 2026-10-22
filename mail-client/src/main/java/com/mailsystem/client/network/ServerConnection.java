@@ -16,7 +16,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
-import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -73,17 +72,38 @@ public class ServerConnection {
     private long generation;
     private ScheduledFuture<?> heartbeatTask;
     private String serverNotice;
+    private Connector.SecurityInfo security;
 
     private volatile Consumer<EventMessage> eventListener;
     private volatile Consumer<String> disconnectListener;
     private final int heartbeatIntervalSeconds;
+    private final Connector connector;
 
-    ServerConnection(int heartbeatIntervalSeconds) {
+    ServerConnection(int heartbeatIntervalSeconds, Connector connector) {
         this.heartbeatIntervalSeconds = heartbeatIntervalSeconds;
+        this.connector = connector;
     }
 
     private ServerConnection() {
-        this(ProtocolConstants.HEARTBEAT_INTERVAL_SECONDS);
+        this(ProtocolConstants.HEARTBEAT_INTERVAL_SECONDS, new TlsConnector(KnownServers.inUserHome()));
+    }
+
+    /** Bộ kết nối TLS (để giao diện gắn hộp thoại xác nhận chứng chỉ). */
+    public TlsConnector tlsConnector() {
+        return connector instanceof TlsConnector tls ? tls : null;
+    }
+
+    /** Thông tin kênh mã hoá của kết nối hiện tại (null nếu chưa kết nối). */
+    public Connector.SecurityInfo securityInfo() {
+        synchronized (lock) {
+            return socket == null ? null : security;
+        }
+    }
+
+    public String connectedAddress() {
+        synchronized (lock) {
+            return socket == null ? null : host + ":" + port;
+        }
     }
 
     public static ServerConnection getInstance() {
@@ -94,15 +114,10 @@ public class ServerConnection {
     public void connect(String host, int port) throws IOException {
         disconnect();
 
-        Socket newSocket = new Socket();
+        Connector.Connected connected = connector.connect(host, port, CONNECT_TIMEOUT_MILLIS);
+        Socket newSocket = connected.socket();
         newSocket.setTcpNoDelay(true);
         newSocket.setKeepAlive(true);
-        try {
-            newSocket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS);
-        } catch (IOException error) {
-            newSocket.close();
-            throw error;
-        }
         FrameReader reader = new FrameReader(
                 new InputStreamReader(newSocket.getInputStream(), StandardCharsets.UTF_8),
                 MAX_INBOUND_FRAME_CHARS);
@@ -116,6 +131,7 @@ public class ServerConnection {
             this.host = host;
             this.port = port;
             serverNotice = null;
+            security = connected.security();
             connectionGeneration = ++generation;
             heartbeatTask = heartbeatScheduler.scheduleWithFixedDelay(this::sendHeartbeat,
                     heartbeatIntervalSeconds, heartbeatIntervalSeconds, TimeUnit.SECONDS);
@@ -135,8 +151,9 @@ public class ServerConnection {
             try {
                 connect(host, port);
             } catch (IOException error) {
-                throw new java.util.concurrent.CompletionException(
-                        new ConnectionLostException("Không kết nối được tới " + host + ":" + port
+                throw new java.util.concurrent.CompletionException(error instanceof ConnectionLostException
+                        ? error
+                        : new ConnectionLostException("Không kết nối được tới " + host + ":" + port
                                 + " (" + describe(error) + ")"));
             }
         });

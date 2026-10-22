@@ -7,8 +7,8 @@ import com.mailsystem.common.protocol.ProtocolUtil;
 import com.mailsystem.common.protocol.ResponseMessage;
 import com.mailsystem.server.dao.AccountDAO;
 import com.mailsystem.server.dao.GroupDAO;
-import com.mailsystem.server.dao.JdbcAccountDAO;
-import com.mailsystem.server.dao.JdbcGroupDAO;
+import com.mailsystem.server.dao.jdbc.JdbcAccountDAO;
+import com.mailsystem.server.dao.jdbc.JdbcGroupDAO;
 
 import java.sql.SQLException;
 import java.util.Optional;

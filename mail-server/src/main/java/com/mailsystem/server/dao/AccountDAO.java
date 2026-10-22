@@ -40,4 +40,10 @@ public interface AccountDAO {
     boolean existsByEmail(String email) throws SQLException;
 
     boolean existsByEmail(Connection connection, String email) throws SQLException;
+
+    Optional<String> findPasswordHashById(int accountId) throws SQLException;
+
+    boolean updateDisplayName(int accountId, String displayName) throws SQLException;
+
+    boolean updatePasswordHash(int accountId, String passwordHash) throws SQLException;
 }

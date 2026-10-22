@@ -32,6 +32,21 @@ public final class ProtocolConstants {
     /** Chu kỳ Client gửi PING để phát hiện kết nối "chết" (half-open). */
     public static final int HEARTBEAT_INTERVAL_SECONDS = 30;
 
+    /** Chỉ dùng TLS 1.3: bỏ hẳn các bộ mã hoá cũ, bắt tay nhanh hơn (1-RTT). */
+    public static final String[] TLS_PROTOCOLS = {"TLSv1.3"};
+
+    /** Số thư tối đa trong một thao tác hàng loạt ({entryIds: [...]}). */
+    public static final int MAX_ENTRIES_PER_REQUEST = 500;
+
+    /** Độ dài tối đa của nội dung thư (cột MEDIUMTEXT). */
+    public static final int MAX_BODY_CHARS = 100_000;
+    public static final int MAX_SUBJECT_CHARS = 255;
+    public static final int MAX_DISPLAY_NAME_CHARS = 100;
+
+    /** Chính sách mật khẩu: tối thiểu 8 ký tự, có chữ và số; tối đa 128 để chặn DoS băm. */
+    public static final int MIN_PASSWORD_LENGTH = 8;
+    public static final int MAX_PASSWORD_LENGTH = 128;
+
     private ProtocolConstants() {
     }
 }

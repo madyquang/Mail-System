@@ -1,0 +1,11 @@
+# Mẫu cấu hình riêng cho từng máy. Sao chép thành config/server.properties
+# (file đó bị .gitignore nên mật khẩu không bao giờ lên Git) rồi sửa giá trị.
+#
+#   Copy-Item config/server.properties.example config/server.properties
+
+db.username=root
+db.password=MAT_KHAU_MYSQL_CUA_BAN
+
+# Bỏ comment để đổi cổng hoặc nới giới hạn khi demo:
+# server.port=5000
+# security.loginMaxFailures=5

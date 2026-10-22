@@ -2,49 +2,70 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
 
-<BorderPane styleClass="mail-app" xmlns:fx="http://javafx.com/fxml"
-      fx:controller="com.mailsystem.client.controller.ComposeController">
-  <top>
-    <HBox alignment="CENTER_LEFT" spacing="14" styleClass="mail-toolbar">
-      <padding><Insets top="18" right="30" bottom="18" left="30" /></padding>
-      <Button text="←  Hộp thư" onAction="#handleBack" styleClass="quiet-button" />
-      <Label text="THƯ MỚI" styleClass="field-label" />
-    </HBox>
-  </top>
-  <center>
-    <VBox spacing="12" styleClass="compose-content">
-      <padding><Insets top="24" right="42" bottom="26" left="42" /></padding>
-      <HBox alignment="CENTER_LEFT" spacing="12">
-        <Label text="Đến" styleClass="recipient-label" />
-        <TextField fx:id="toField" promptText="Địa chỉ hoặc tên nhóm, phân cách bằng dấu phẩy"
-               styleClass="text-input" HBox.hgrow="ALWAYS" />
-      </HBox>
-      <HBox alignment="CENTER_LEFT" spacing="12">
-        <Label text="CC" styleClass="recipient-label" />
-        <TextField fx:id="ccField" promptText="Người nhận bản sao" styleClass="text-input"
-               HBox.hgrow="ALWAYS" />
-      </HBox>
-      <HBox alignment="CENTER_LEFT" spacing="12">
-        <Label text="BCC" styleClass="recipient-label" />
-        <TextField fx:id="bccField" promptText="Người nhận ẩn" styleClass="text-input"
-               HBox.hgrow="ALWAYS" />
-      </HBox>
-      <Separator />
-      <TextField fx:id="subjectField" promptText="Tiêu đề" styleClass="subject-input" />
-      <TextArea fx:id="bodyArea" promptText="Viết nội dung thư..." wrapText="true"
-            VBox.vgrow="ALWAYS" styleClass="compose-body" />
-      <HBox alignment="CENTER_LEFT" spacing="10">
-        <Button text="＋  Đính kèm" onAction="#handleChooseAttachments" styleClass="quiet-button" />
-        <Button text="Loại bỏ mục chọn" onAction="#handleRemoveAttachment" styleClass="quiet-button" />
-        <ListView fx:id="attachmentListView" prefHeight="68" minHeight="52" HBox.hgrow="ALWAYS"
-              styleClass="attachment-list" />
-      </HBox>
-      <HBox alignment="CENTER_LEFT" spacing="16">
-        <Label fx:id="statusLabel" text="Tệp đính kèm tùy chọn" wrapText="true" styleClass="status-bar"
-             HBox.hgrow="ALWAYS" />
-        <Button fx:id="sendButton" text="Gửi thư" onAction="#handleSend" styleClass="primary-button" />
-      </HBox>
-    </VBox>
-  </center>
-</BorderPane>
+<StackPane fx:id="root" styleClass="compose-root" xmlns:fx="http://javafx.com/fxml"
+           fx:controller="com.mailsystem.client.controller.ComposeController">
+    <BorderPane>
+        <top>
+            <HBox styleClass="compose-header" alignment="CENTER_LEFT" spacing="8">
+                <FontIcon iconLiteral="mdi2p-pencil-outline" iconSize="18" styleClass="icon" />
+                <Label fx:id="titleLabel" text="Thư mới" styleClass="title-md" />
+                <Region HBox.hgrow="ALWAYS" />
+                <Label fx:id="draftStatus" styleClass="hint" />
+            </HBox>
+        </top>
+        <center>
+            <VBox spacing="0">
+                <padding><Insets top="4" right="20" bottom="8" left="20" /></padding>
+                <HBox alignment="CENTER_LEFT" spacing="6">
+                    <Label text="Tới" styleClass="recipient-label" />
+                    <TextField fx:id="toField" styleClass="flat-field" HBox.hgrow="ALWAYS"
+                               promptText="Email hoặc tên nhóm, phân cách bằng dấu phẩy" />
+                    <Hyperlink fx:id="ccToggle" text="Cc / Bcc" onAction="#handleToggleCc" />
+                </HBox>
+                <HBox fx:id="ccRow" alignment="CENTER_LEFT" spacing="6" visible="false" managed="false">
+                    <Label text="Cc" styleClass="recipient-label" />
+                    <TextField fx:id="ccField" styleClass="flat-field" HBox.hgrow="ALWAYS"
+                               promptText="Người nhận bản sao (mọi người đều thấy)" />
+                </HBox>
+                <HBox fx:id="bccRow" alignment="CENTER_LEFT" spacing="6" visible="false" managed="false">
+                    <Label text="Bcc" styleClass="recipient-label" />
+                    <TextField fx:id="bccField" styleClass="flat-field" HBox.hgrow="ALWAYS"
+                               promptText="Người nhận bản sao ẩn (người khác không thấy)" />
+                </HBox>
+                <TextField fx:id="subjectField" styleClass="flat-field" promptText="Tiêu đề" />
+                <TextArea fx:id="bodyArea" styleClass="flat-area" wrapText="true" VBox.vgrow="ALWAYS"
+                          promptText="Soạn nội dung thư..." />
+                <FlowPane fx:id="attachmentPane" hgap="8" vgap="8">
+                    <VBox.margin><Insets top="6" /></VBox.margin>
+                </FlowPane>
+            </VBox>
+        </center>
+        <bottom>
+            <HBox styleClass="compose-footer" alignment="CENTER_LEFT" spacing="8">
+                <Button fx:id="sendButton" text="Gửi" onAction="#handleSend" styleClass="primary-button" minWidth="96">
+                    <graphic><FontIcon iconLiteral="mdi2s-send-outline" iconSize="18" styleClass="icon" /></graphic>
+                    <tooltip><Tooltip text="Gửi thư (Ctrl+Enter)" /></tooltip>
+                </Button>
+                <Button fx:id="attachButton" styleClass="icon-button" onAction="#handleAttach">
+                    <graphic><FontIcon iconLiteral="mdi2p-paperclip" iconSize="20" styleClass="icon" /></graphic>
+                    <tooltip><Tooltip text="Đính kèm tệp (tối đa 5 tệp, 25 MB)" /></tooltip>
+                </Button>
+                <HBox fx:id="progressBox" alignment="CENTER_LEFT" spacing="8" visible="false" managed="false">
+                    <ProgressBar fx:id="uploadProgress" prefWidth="160" />
+                    <Label fx:id="progressLabel" styleClass="hint" />
+                </HBox>
+                <Label fx:id="errorLabel" styleClass="error-text" wrapText="true" HBox.hgrow="ALWAYS" maxWidth="Infinity" />
+                <Button fx:id="saveDraftButton" styleClass="icon-button" onAction="#handleSaveDraft">
+                    <graphic><FontIcon iconLiteral="mdi2c-content-save-outline" iconSize="20" styleClass="icon" /></graphic>
+                    <tooltip><Tooltip text="Lưu nháp (Ctrl+S)" /></tooltip>
+                </Button>
+                <Button fx:id="discardButton" styleClass="icon-button" onAction="#handleDiscard">
+                    <graphic><FontIcon iconLiteral="mdi2d-delete-outline" iconSize="20" styleClass="icon" /></graphic>
+                    <tooltip><Tooltip text="Bỏ thư" /></tooltip>
+                </Button>
+            </HBox>
+        </bottom>
+    </BorderPane>
+</StackPane>
