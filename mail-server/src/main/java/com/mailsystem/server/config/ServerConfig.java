@@ -46,8 +46,8 @@ public final class ServerConfig {
     }
 
     /**
-     * Mô hình thread cho kết nối: "virtual" (Java 21+, rẻ, phục vụ hàng nghìn
-     * kết nối), "platform" (thread hệ điều hành), "auto" = virtual nếu JDK hỗ trợ.
+     * Mô hình thread cho kết nối: "virtual" (mặc định, rẻ, phục vụ hàng nghìn
+     * kết nối), "platform" (thread hệ điều hành), "auto" = virtual thread.
      */
     public static String threadMode() {
         return value("server.threads", "MAIL_SERVER_THREADS", "auto");

@@ -51,7 +51,7 @@ import javax.net.ssl.SSLSocket;
 
 /**
  * Xử lý MỘT kết nối Client (đã bọc TLS). Mỗi kết nối dùng hai tác vụ (virtual
- * thread nếu JDK hỗ trợ, xem ServerThreads):
+ * thread mặc định, xem ServerThreads):
  *
  * - Đọc (run()): bắt tay TLS, kiểm tra thiết bị (mutual TLS), rồi đọc từng
  *   frame JSON (1 frame = 1 REQUEST), giao cho CommandRouter và xếp RESPONSE

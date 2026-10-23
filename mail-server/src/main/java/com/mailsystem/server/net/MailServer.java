@@ -64,7 +64,7 @@ public class MailServer {
         this.router = router;
         this.rateLimiters = rateLimiters;
         this.connectionSlots = new Semaphore(maxClients);
-        // Virtual thread (Java 21+) hoặc thread pool thường, xem ServerThreads.
+        // Virtual thread mặc định hoặc platform thread theo cấu hình.
         this.clientThreads = ServerThreads.newConnectionExecutor();
     }
 

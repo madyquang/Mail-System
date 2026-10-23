@@ -177,7 +177,7 @@ public final class LoadTest {
         return false;
     }
 
-    /** Mã nguồn biên dịch ở mức Java 17 nên dùng thread thường (daemon). */
+    /** Dùng thread platform daemon cho các client tải thử. */
     private static void startDaemon(Runnable task) {
         Thread thread = new Thread(task, "load-client");
         thread.setDaemon(true);

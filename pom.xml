@@ -18,9 +18,9 @@
     </modules>
 
     <properties>
-        <!-- release (thay vì source/target) bảo đảm chỉ dùng API có trong Java 17,
+        <!-- release (thay vì source/target) bảo đảm chỉ dùng API có trong Java 25,
              kể cả khi máy build cài JDK mới hơn. -->
-        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <gson.version>2.10.1</gson.version>
         <mysql.version>8.3.0</mysql.version>

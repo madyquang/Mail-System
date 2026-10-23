@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java: ["17", "21"]
+        java: ["25"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "25"
           cache: maven
       - name: Tạo bảng
         run: mysql -h 127.0.0.1 -uroot -pci-root-password mail_system < database/schema.sql

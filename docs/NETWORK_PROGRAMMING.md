@@ -295,19 +295,18 @@ if (!connectionSlots.tryAcquire()) { rejectBusy(client); return; }
 clientThreads.execute(new ClientHandler(client, onClose));
 ```
 
-- **Thread pool** tái sử dụng thread đã kết thúc thay vì `new Thread()` mỗi
-  lần. Từ v3, khi chạy trên Java 21+ Server dùng **virtual thread** (xem
-  [mục 16.6](#166-virtual-thread-và-connection-pool)), Java 17 thì quay về
-  `newCachedThreadPool`.
+- **Thread pool** quản lý tác vụ kết nối. Server mặc định dùng **virtual
+  thread** trên Java 25 (xem [mục 16.6](#166-virtual-thread-và-connection-pool));
+  `server.threads=platform` chọn thread hệ điều hành.
 - **Semaphore** giới hạn `server.maxClients` kết nối đồng thời. Kết nối vượt
   mức **không bị treo**: Server gửi một frame lỗi "Máy chủ đang quá tải" rồi
   đóng, nên Client hiển thị được lý do.
 
 | Mô hình | Thread | Phù hợp |
 | --- | --- | --- |
-| Thread-per-connection + blocking I/O (dự án, Java 17) | 2 / kết nối | Vài trăm kết nối, code dễ hiểu |
+| Thread-per-connection + blocking I/O (dự án) | 2 / kết nối | Code dễ hiểu; dự án chạy virtual thread mặc định |
 | NIO `Selector` (non-blocking, event loop) | Vài thread cho hàng nghìn kết nối | Server lớn (Netty, Nginx) |
-| Virtual threads (Java 21+, dự án mặc định từ v3) | Hàng triệu thread "nhẹ" | Viết như blocking, chi phí như NIO |
+| Virtual threads (Java 21+, dự án mặc định) | Hàng triệu thread "nhẹ" | Viết như blocking, chi phí như NIO |
 
 ### 6.2 Vì sao mỗi kết nối có thêm một thread ghi
 
@@ -865,12 +864,11 @@ hằng) để không lộ mã qua thời gian phản hồi (timing attack).
 
 ### 16.6 Virtual thread và connection pool
 
-- **Virtual thread** (Java 21): JVM tự "gỡ" thread ảo khỏi thread hệ điều hành
+- **Virtual thread** (Java 21+): JVM tự "gỡ" thread ảo khỏi thread hệ điều hành
   mỗi khi nó chặn ở I/O, nên viết code blocking như mục 6 mà vẫn chạy được
-  hàng chục nghìn kết nối. Mã nguồn biên dịch ở mức Java 17, nên
-  [ServerThreads](../mail-server/src/main/java/com/mailsystem/server/net/ServerThreads.java)
-  gọi `Executors.newVirtualThreadPerTaskExecutor` qua **reflection**, không có
-  thì dùng thread pool thường (`server.threads=auto|virtual|platform`).
+  hàng chục nghìn kết nối. Dự án biên dịch và chạy trên Java 25; `auto` dùng
+  `Executors.newVirtualThreadPerTaskExecutor`, còn `server.threads=platform`
+  dùng thread pool nền tảng khi cần.
 - **HikariCP**: mở một kết nối MySQL tốn một lần bắt tay TCP + TLS + xác thực
   (vài ms tới vài chục ms). Pool giữ sẵn tối đa `db.poolSize` (10) kết nối và
   cho mượn. Pool cũng là một **giới hạn đồng thời**: 1 000 Client cùng gửi thư

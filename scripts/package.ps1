@@ -1,4 +1,4 @@
-# Dong goi ung dung bang jpackage (co san trong JDK 17+): tao thu muc chay doc lap,
+# Dong goi ung dung bang jpackage (co san trong JDK 25+): tao thu muc chay doc lap,
 # KHONG can cai Java tren may nguoi dung (kem san runtime Java thu gon).
 #   .\scripts\package.ps1              -> dist\MailSystem\MailSystem.exe (Client) + dist\MailServer\MailServer.exe
 #   .\scripts\package.ps1 -Installer   -> them bo cai .msi (can WiX Toolset 3 hoac 4 trong PATH)
@@ -8,7 +8,7 @@ param([switch] $Installer, [string] $Version = '3.0.0')
 $jpackage = Join-Path $env:JAVA_HOME 'bin\jpackage.exe'
 if (-not $env:JAVA_HOME -or -not (Test-Path $jpackage)) {
     $command = Get-Command jpackage.exe -ErrorAction SilentlyContinue
-    if (-not $command) { throw 'Khong tim thay jpackage. Dat JAVA_HOME tro toi JDK 17+.' }
+    if (-not $command) { throw 'Khong tim thay jpackage. Dat JAVA_HOME tro toi JDK 25+.' }
     $jpackage = $command.Source
 }
 

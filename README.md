@@ -23,7 +23,7 @@ Hệ thống mail nội bộ theo mô hình Client–Server, đồ án môn **L�
 
 ## 1. Yêu cầu
 
-- **JDK 17+** (`java -version`). Không cần cài Maven: dự án có Maven Wrapper (`mvnw.cmd`).
+- **JDK 25+ (LTS)** (`java -version`). Không cần cài Maven: dự án có Maven Wrapper (`mvnw.cmd`).
 - **MySQL Server 8.x** đang chạy.
 - Windows PowerShell để chạy các script trong `scripts/` (hoặc gõ lệnh Maven tương ứng trên hệ điều hành khác).
 
@@ -90,7 +90,7 @@ máy, bị `.gitignore`) > `server-defaults.properties` (mặc định, được
 | `security.registrationsPerHourPerIp` | `MAIL_REGISTRATIONS_PER_HOUR` | `10` | Giới hạn đăng ký |
 | `security.resumeTokenMinutes` | `MAIL_RESUME_TOKEN_MINUTES` | `720` | Hạn token tự kết nối lại |
 | `tls.clientAuth` | `MAIL_TLS_CLIENT_AUTH` | `want` | Chứng chỉ thiết bị: `off` / `want` / `need` |
-| `server.threads` | `MAIL_SERVER_THREADS` | `auto` | `virtual` (Java 21+) / `platform` |
+| `server.threads` | `MAIL_SERVER_THREADS` | `auto` | `virtual` (mặc định) / `platform` |
 | `monitor.enabled` / `monitor.port` / `monitor.token` | `MAIL_MONITOR_*` | `true` / `8090` / ngẫu nhiên | Bảng giám sát HTTP (chỉ 127.0.0.1) |
 | `upload.expiryMinutes` | `MAIL_UPLOAD_EXPIRY_MINUTES` | `30` | Giữ tệp tải lên dở để tải tiếp |
 
@@ -108,7 +108,7 @@ máy, bị `.gitignore`) > `server-defaults.properties` (mặc định, được
 .\scripts\loadtest.ps1 -Clients 100 -Seconds 20   # kiểm thử tải: request/giây, độ trễ p50/p95/p99
 ```
 
-GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) chạy build + test trên JDK 17 và 21,
+GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) chạy build + test trên JDK 25,
 rồi chạy e2e với MySQL 8 trong container, ở mỗi lần push / pull request.
 
 ## 5b. Đóng gói

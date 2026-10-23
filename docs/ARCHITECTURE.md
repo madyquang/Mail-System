@@ -4,7 +4,7 @@
 
 ```text
 Mail-System/
-├── pom.xml                      Maven parent: phiên bản thư viện dùng chung, JUnit, release 17
+├── pom.xml                      Maven parent: phiên bản thư viện dùng chung, JUnit, release 25
 ├── mvnw, mvnw.cmd, .mvn/        Maven Wrapper: build không cần cài Maven
 ├── config/
 │   ├── server.properties.example   Mẫu cấu hình riêng từng máy (được commit)
@@ -13,7 +13,7 @@ Mail-System/
 │   ├── schema.sql               Tạo CSDL mới
 │   └── migrations/              Nâng cấp CSDL đã có (chạy lại nhiều lần vẫn an toàn)
 ├── scripts/                     setup-db, build, run-server, run-client, test, e2e, loadtest, package (PowerShell)
-├── .github/workflows/ci.yml     CI: build + unit test (JDK 17, 21) và e2e với MySQL 8 trên mỗi push
+├── .github/workflows/ci.yml     CI: build + unit test (JDK 25) và e2e với MySQL 8 trên mỗi push
 ├── docs/                        Tài liệu (xem README)
 ├── data/                        Sinh ra khi chạy Server (bị .gitignore)
 │   ├── attachments/             Nội dung tệp đính kèm (tên UUID)
