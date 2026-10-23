@@ -107,6 +107,13 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
 - Chủ nhóm thêm/xoá thành viên (email phải có tài khoản), xoá nhóm; thành viên
   thường rời nhóm. Chủ nhóm không tự xoá mình / rời nhóm.
 - Chỉ thành viên được gửi tới nhóm; người gửi không nhận lại thư của chính mình.
+- **Người được thêm vào nhóm luôn được báo**: một thư thông báo (gửi danh nghĩa
+  chủ nhóm) vào Hộp thư đến, kèm thông báo desktop nếu đang online; offline thì
+  lần đăng nhập sau vẫn thấy thư. Thư cho biết ai thêm, nhóm có bao nhiêu người,
+  cách gửi thư cho nhóm và cách rời nhóm. Tương tự khi bị xoá khỏi nhóm hoặc
+  nhóm bị xoá. Thành viên tự rời nhóm thì chủ nhóm nhận thông báo trong ứng dụng.
+  Thư thông báo không nằm trong mục Đã gửi của chủ nhóm. Cửa sổ Nhóm thư đang mở
+  tự cập nhật.
 
 ## 9. Tính năng v3
 
@@ -114,7 +121,6 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
 | --- | --- |
 | **Thư mục tự tạo** | Mục "Thư mục" ở thanh bên: nút + để tạo, chuột phải để đổi tên / xoá (thư bên trong vào Thùng rác). **Kéo thư** từ danh sách thả vào thư mục, Hộp thư đến hoặc Thùng rác; hoặc nút "Chuyển tới" trên thanh thao tác khi chọn nhiều thư |
 | **Hội thoại** | Trả lời tự nối vào hội thoại. Danh sách gộp các thư cùng hội thoại thành một dòng có số thư; khung đọc xếp thư cũ → mới, thư cũ thu gọn (bấm để mở). Bật/tắt ở menu ảnh đại diện → "Gộp thư theo hội thoại" |
-| **Hoàn tác gửi** | Bấm Gửi: toast "Đang gửi thư... Hoàn tác (8)" đếm ngược; bấm Hoàn tác thì khung soạn mở lại nguyên nội dung và tệp |
 | **Hẹn giờ gửi** | Nút lịch cạnh nút Gửi: sau 1 giờ, sáng mai 8:00, chiều mai 13:00, sáng thứ Hai, hoặc tự chọn ngày giờ. Mục **Đã lên lịch** liệt kê thư chờ, nút "Huỷ & sửa" |
 | **Giao diện tối** | Menu ảnh đại diện → "Giao diện tối"; đổi ngay cho mọi cửa sổ, được nhớ cho lần sau |
 | **Xem trước tệp** | Ảnh PNG/JPG, PDF (từng trang) và TXT mở ngay trong ứng dụng (nút con mắt); vẫn có nút lưu về máy / mở bằng ứng dụng khác |
@@ -129,4 +135,5 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
 - Chưa gửi/nhận qua Internet (SMTP/IMAP), chưa có mã khôi phục cho 2FA.
 - Hẹn giờ dùng giờ của máy chủ (Client và Server cùng múi giờ trong mạng nội bộ).
 - Huỷ thư hẹn giờ từ mục Đã lên lịch thì phải đính kèm lại tệp (tệp đã nằm ở
-  Server, không còn trên máy). Hoàn tác ngay sau khi gửi thì vẫn giữ tệp.
+  Server, không còn trên máy).
+- Bấm Gửi là thư đi ngay, không có hoàn tác (đã bỏ theo yêu cầu).

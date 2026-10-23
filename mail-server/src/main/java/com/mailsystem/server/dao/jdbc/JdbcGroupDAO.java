@@ -106,6 +106,18 @@ public class JdbcGroupDAO implements GroupDAO {
     }
 
     @Override
+    public Optional<String> findGroupName(int groupId) throws SQLException {
+        String sql = "SELECT group_name FROM mail_group WHERE group_id = ?";
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, groupId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(result.getString("group_name")) : Optional.empty();
+            }
+        }
+    }
+
+    @Override
     public List<MailGroupDTO> findGroupsByMember(int accountId) throws SQLException {
         String sql = "SELECT g.group_id, g.group_name, g.owner_id, owner.email AS owner_email, "
                 + "member.email AS member_email "

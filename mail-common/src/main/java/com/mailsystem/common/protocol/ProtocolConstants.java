@@ -35,8 +35,7 @@ public final class ProtocolConstants {
     /** Chỉ dùng TLS 1.3: bỏ hẳn các bộ mã hoá cũ, bắt tay nhanh hơn (1-RTT). */
     public static final String[] TLS_PROTOCOLS = {"TLSv1.3"};
 
-    /** Thời gian chờ để hoàn tác gửi thư (giây) và giới hạn hẹn giờ. */
-    public static final int UNDO_SEND_SECONDS = 8;
+    /** SEND_MAIL {delaySeconds} tối đa (giây) và giới hạn hẹn giờ. Client chính thức gửi ngay, không trễ. */
     public static final int MAX_UNDO_SECONDS = 30;
     public static final int MAX_SCHEDULE_DAYS = 365;
 

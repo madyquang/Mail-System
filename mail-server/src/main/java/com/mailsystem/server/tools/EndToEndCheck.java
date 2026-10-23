@@ -470,7 +470,17 @@ public class EndToEndCheck {
 
             System.out.println("== Nhom + upload + gui");
             int groupId = a1.req(Command.CREATE_GROUP, obj("groupName", group)).getData().getAsJsonObject().get("groupId").getAsInt();
+            b1.events.clear();
             check(a1.req(Command.ADD_MEMBER, obj("groupId", groupId, "email", b)).isOk(), "ADD_MEMBER B");
+            EventMessage added = b1.awaitEvent("GROUP_UPDATED", 3000);
+            check(added != null && added.getData().getAsJsonObject().get("action").getAsString().equals("ADDED")
+                    && added.getData().getAsJsonObject().get("groupName").getAsString().equals(group),
+                    "B nhan EVENT GROUP_UPDATED (ADDED) khi duoc them vao nhom");
+            JsonObject notice = findBySubject(list(b1, "INBOX"), "Bạn đã được thêm vào nhóm \"" + group + "\"");
+            check(notice != null && notice.get("senderEmail").getAsString().equals(a),
+                    "B co thu thong bao trong Hop thu den (gui danh nghia chu nhom)");
+            check(findBySubject(list(a1, "SENT"), "Bạn đã được thêm vào nhóm \"" + group + "\"") == null,
+                    "Thu thong bao khong lam day muc Da gui cua chu nhom");
             byte[] pdf = new byte[900_000];
             new Random(7).nextBytes(pdf);
             System.arraycopy("%PDF-1.7\n".getBytes(StandardCharsets.US_ASCII), 0, pdf, 0, 9);
@@ -504,7 +514,7 @@ public class EndToEndCheck {
 
             System.out.println("== Gan sao / chua doc / tim kiem");
             JsonArray bInbox = list(b1, "INBOX");
-            check(bInbox.size() == 3, "B co 3 thu trong INBOX");
+            check(bInbox.size() == 4, "B co 4 thu trong INBOX (3 thu + 1 thu thong bao vao nhom)");
             int fileEntry = -1, fileMail = -1;
             for (JsonElement e : bInbox) {
                 JsonObject m = e.getAsJsonObject();

@@ -8,6 +8,8 @@ import com.mailsystem.common.protocol.ResponseMessage;
 import com.mailsystem.server.dao.AccountDAO;
 import com.mailsystem.server.dao.GroupDAO;
 import com.mailsystem.server.dao.jdbc.JdbcAccountDAO;
+import com.mailsystem.server.dao.jdbc.JdbcFolderDAO;
+import com.mailsystem.server.dao.jdbc.JdbcMailDAO;
 import com.mailsystem.server.dao.jdbc.JdbcGroupDAO;
 
 import java.sql.SQLException;
@@ -17,14 +19,35 @@ public class GroupService {
 
     private final GroupDAO groupDAO;
     private final AccountDAO accountDAO;
+    /** null = không gửi thông báo (test với DAO giả). */
+    private final GroupNotifier notifier;
 
     public GroupService() {
-        this(new JdbcGroupDAO(), new JdbcAccountDAO());
+        this(new JdbcGroupDAO(), new JdbcAccountDAO(),
+                new GroupNotifier(new JdbcMailDAO(), new JdbcFolderDAO(), new JdbcAccountDAO()));
     }
 
     GroupService(GroupDAO groupDAO, AccountDAO accountDAO) {
+        this(groupDAO, accountDAO, null);
+    }
+
+    GroupService(GroupDAO groupDAO, AccountDAO accountDAO, GroupNotifier notifier) {
         this.groupDAO = groupDAO;
         this.accountDAO = accountDAO;
+        this.notifier = notifier;
+    }
+
+    /** Báo cho người bị ảnh hưởng (thư thông báo + EVENT); lỗi đọc DB ở đây không làm hỏng thao tác chính. */
+    private void notifyMember(GroupNotifier.Action action, int groupId, String groupName, int actorId, int targetId) {
+        if (notifier == null) {
+            return;
+        }
+        int memberCount = 0;
+        try {
+            memberCount = action == GroupNotifier.Action.ADDED ? groupDAO.getMemberAccountIds(groupId).size() : 0;
+        } catch (SQLException ignored) {
+        }
+        notifier.notify(action, groupId, groupName, actorId, targetId, memberCount);
     }
 
     public ResponseMessage createGroup(String requestId, Integer accountId, JsonElement payload) {
@@ -72,7 +95,15 @@ public class GroupService {
             if (!ownerId.get().equals(accountId)) {
                 return ResponseMessage.error(requestId, "Chỉ chủ nhóm mới được xóa nhóm.");
             }
+            // Lấy tên + danh sách thành viên TRƯỚC khi xoá để còn báo cho họ.
+            String groupName = groupDAO.findGroupName(groupId).orElse("");
+            java.util.List<Integer> members = groupDAO.getMemberAccountIds(groupId);
             groupDAO.deleteGroup(groupId);
+            for (int memberId : members) {
+                if (memberId != accountId) {
+                    notifyMember(GroupNotifier.Action.DELETED, groupId, groupName, accountId, memberId);
+                }
+            }
             return ResponseMessage.ok(requestId, null);
         } catch (SQLException error) {
             logDatabaseError("deleteGroup", error);
@@ -106,6 +137,8 @@ public class GroupService {
                 return ResponseMessage.error(requestId, "Tài khoản này đã là thành viên của nhóm.");
             }
             groupDAO.insertMember(groupId, member.get().getAccountId());
+            notifyMember(GroupNotifier.Action.ADDED, groupId, groupDAO.findGroupName(groupId).orElse(""),
+                    accountId, member.get().getAccountId());
             return ResponseMessage.ok(requestId, null);
         } catch (SQLException error) {
             if (isConstraintViolation(error)) {
@@ -145,6 +178,8 @@ public class GroupService {
                 return ResponseMessage.error(requestId, "Tài khoản này không phải thành viên của nhóm.");
             }
             groupDAO.removeMember(groupId, memberId);
+            notifyMember(GroupNotifier.Action.REMOVED, groupId, groupDAO.findGroupName(groupId).orElse(""),
+                    accountId, memberId);
             return ResponseMessage.ok(requestId, null);
         } catch (SQLException error) {
             logDatabaseError("removeMember", error);
@@ -172,6 +207,9 @@ public class GroupService {
                 return ResponseMessage.error(requestId, "Bạn không phải thành viên của nhóm này.");
             }
             groupDAO.removeMember(groupId, accountId);
+            // Thành viên tự rời: báo chủ nhóm (chỉ EVENT, không gửi thư).
+            notifyMember(GroupNotifier.Action.MEMBER_LEFT, groupId, groupDAO.findGroupName(groupId).orElse(""),
+                    accountId, ownerId.get());
             return ResponseMessage.ok(requestId, null);
         } catch (SQLException error) {
             logDatabaseError("leaveGroup", error);

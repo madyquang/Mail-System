@@ -13,6 +13,7 @@ public enum EventName {
     DRAFTS_UPDATED,     // {}: danh sách thư nháp thay đổi
     SCHEDULED_UPDATED,  // {}: thư chờ gửi thay đổi (đã gửi / huỷ / thêm)
     SCHEDULED_FAILED,   // {outboxId, subject, reason}: thư hẹn giờ không gửi được, đã chuyển thành nháp
+    GROUP_UPDATED,      // {action: ADDED|REMOVED|DELETED|MEMBER_LEFT, groupId, groupName, actorEmail, actorName}
     PROFILE_UPDATED,    // {displayName}: tên hiển thị thay đổi
     SESSION_REVOKED     // {reason}: phiên bị thu hồi (đổi mật khẩu, đăng xuất mọi nơi)
 }

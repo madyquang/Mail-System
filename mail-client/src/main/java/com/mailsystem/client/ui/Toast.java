@@ -70,42 +70,6 @@ public final class Toast {
         sequence.play();
     }
 
-    /**
-     * Toast có nút hành động (VD "Hoàn tác") đếm ngược seconds giây. Bấm nút thì
-     * gọi action; hết giờ hoặc đóng thì không làm gì (thư cứ thế được gửi).
-     */
-    public static void withAction(StackPane root, String message, String actionText, int seconds, Runnable action) {
-        if (root == null) {
-            return;
-        }
-        VBox host = host(root);
-        Label text = new Label(message);
-        text.setWrapText(true);
-        text.getStyleClass().add("toast-text");
-        javafx.scene.control.Button button = new javafx.scene.control.Button(actionText + " (" + seconds + ")");
-        button.getStyleClass().add("toast-action");
-        HBox toast = new HBox(10, Icons.of(Icons.SENT, 18), text, button);
-        toast.setAlignment(Pos.CENTER_LEFT);
-        toast.getStyleClass().addAll("toast", "toast-info");
-        toast.setMaxWidth(520);
-        host.getChildren().add(toast);
-
-        int[] left = {seconds};
-        javafx.animation.Timeline countdown = new javafx.animation.Timeline(
-                new javafx.animation.KeyFrame(Duration.seconds(1), event -> {
-                    left[0]--;
-                    button.setText(actionText + " (" + Math.max(0, left[0]) + ")");
-                }));
-        countdown.setCycleCount(seconds);
-        countdown.setOnFinished(event -> host.getChildren().remove(toast));
-        button.setOnAction(event -> {
-            countdown.stop();
-            host.getChildren().remove(toast);
-            action.run();
-        });
-        countdown.play();
-    }
-
     private static VBox host(StackPane root) {
         for (Node child : root.getChildren()) {
             if (HOST_ID.equals(child.getId()) && child instanceof VBox box) {

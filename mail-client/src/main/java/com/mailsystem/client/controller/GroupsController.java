@@ -58,9 +58,22 @@ public class GroupsController {
     private Button deleteButton;
 
     private final MailApi api = MailApi.get();
+    /** Cửa sổ Nhóm thư đang mở (nếu có), để EVENT GROUP_UPDATED tải lại danh sách. */
+    private static java.lang.ref.WeakReference<GroupsController> open = new java.lang.ref.WeakReference<>(null);
+
+    /** Gọi trên UI thread khi Server báo nhóm của mình thay đổi (được thêm, bị xoá, nhóm bị xoá...). */
+    public static void refreshIfOpen() {
+        GroupsController controller = open.get();
+        if (controller != null && controller.root.getScene() != null
+                && controller.root.getScene().getWindow() != null && controller.root.getScene().getWindow().isShowing()) {
+            MailGroupDTO selected = controller.groupList.getSelectionModel().getSelectedItem();
+            controller.load(selected == null ? null : selected.getGroupId());
+        }
+    }
 
     @FXML
     public void initialize() {
+        open = new java.lang.ref.WeakReference<>(this);
         groupList.setCellFactory(list -> new ListCell<>() {
             @Override
             protected void updateItem(MailGroupDTO group, boolean empty) {

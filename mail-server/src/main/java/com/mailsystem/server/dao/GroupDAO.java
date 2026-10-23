@@ -27,6 +27,9 @@ public interface GroupDAO {
      */
     Optional<Integer> findOwnerId(int groupId) throws SQLException;
 
+    /** Ten nhom, dung trong thu thong bao khi them / xoa thanh vien. */
+    Optional<String> findGroupName(int groupId) throws SQLException;
+
     List<MailGroupDTO> findGroupsByMember(int accountId) throws SQLException;
 
     /**

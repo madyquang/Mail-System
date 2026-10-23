@@ -273,7 +273,7 @@ public class ComposeController {
         }
     }
 
-    /** sendAt null: gửi sau UNDO_SEND_SECONDS giây (hoàn tác được); khác null: hẹn giờ. */
+    /** sendAt null: gửi ngay; khác null: hẹn giờ (Server giữ thư trong hộp chờ gửi). */
     private void send(LocalDateTime sendAt) {
         if (sending) {
             return;
@@ -316,18 +316,16 @@ public class ComposeController {
                     return MailApi.get().send(new MailApi.OutgoingMail(to, cc, bcc, subjectField.getText(),
                             bodyArea.getText(), uploadIds,
                             forwarded.stream().map(Attachment::getAttachmentId).collect(Collectors.toList()), draftId,
-                            inReplyTo, sendAt == null ? ProtocolConstants.UNDO_SEND_SECONDS : null, sendAt));
+                            inReplyTo, null, sendAt));
                 }), result -> {
                     close();
                     StackPane mainRoot = Navigator.primaryStage().getScene().getRoot() instanceof StackPane pane
                             ? pane : null;
-                    if (!result.queued()) {
-                        Toast.success(mainRoot, "Đã gửi thư.");
-                    } else if (sendAt != null) {
+                    if (result.queued()) {
                         Toast.success(mainRoot, "Đã hẹn gửi lúc " + Formats.longDate(result.sendAt())
                                 + ". Xem trong mục Đã lên lịch.");
                     } else {
-                        offerUndo(mainRoot, result.outboxId());
+                        Toast.success(mainRoot, "Đã gửi thư.");
                     }
                 }, error -> {
                     setSending(false);
@@ -335,20 +333,6 @@ public class ComposeController {
                     progressBox.setManaged(false);
                     showError(error);
                 });
-    }
-
-    /**
-     * HOÀN TÁC GỬI: thư nằm ở hộp chờ gửi của Server vài giây. Bấm Hoàn tác thì
-     * CANCEL_SCHEDULED lấy thư ra (nếu Server chưa kịp gửi) và mở lại khung soạn
-     * với cùng nội dung và các tệp trên máy.
-     */
-    private void offerUndo(StackPane mainRoot, int outboxId) {
-        List<File> localFiles = new ArrayList<>(files);
-        List<Attachment> forwardedCopy = new ArrayList<>(forwarded);
-        Toast.withAction(mainRoot, "Đang gửi thư...", "Hoàn tác", ProtocolConstants.UNDO_SEND_SECONDS,
-                () -> Fx.then(MailApi.get().cancelScheduled(outboxId),
-                        data -> open(Request.reopened(data, forwardedCopy, localFiles)),
-                        error -> Toast.error(mainRoot, "Không hoàn tác được: " + error)));
     }
 
     private void setSending(boolean value) {

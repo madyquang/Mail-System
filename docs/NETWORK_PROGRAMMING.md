@@ -877,6 +877,9 @@ hằng) để không lộ mã qua thời gian phản hồi (timing attack).
 
 ### 16.7 Hộp thư chờ gửi: hoàn tác, hẹn giờ và "gửi đúng một lần"
 
+(Client chính thức hiện gửi ngay và chỉ dùng cơ chế này cho hẹn giờ; Server vẫn
+hỗ trợ `delaySeconds` nên phần dưới vẫn đúng cho mọi client dùng nó.)
+
 "Hoàn tác gửi" của Gmail không rút được thư đã gửi: thư thật ra **chưa gửi**.
 `SEND_MAIL {delaySeconds: 8}` chỉ cất thư vào bảng `outbox`; bộ điều phối
 (`ScheduledExecutorService`, mỗi giây) mới giao thư khi tới hạn. Hẹn giờ gửi

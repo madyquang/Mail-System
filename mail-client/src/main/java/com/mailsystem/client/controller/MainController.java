@@ -1245,6 +1245,15 @@ public class MainController implements MailReader.Actions {
                 refreshCounts();
             }
             case READ_RECEIPT -> onReadReceipt(event);
+            case GROUP_UPDATED -> {
+                // Được thêm / bị xoá / nhóm bị xoá: thư thông báo đi kèm đã hiện toast + thông báo desktop
+                // qua NEW_MAIL. Thành viên tự rời nhóm thì chỉ báo cho chủ nhóm ở đây.
+                if ("MEMBER_LEFT".equals(text(event, "action", ""))) {
+                    Toast.info(root, text(event, "actorName", "Một thành viên") + " đã rời nhóm \""
+                            + text(event, "groupName", "") + "\".");
+                }
+                GroupsController.refreshIfOpen();
+            }
             case DRAFTS_UPDATED -> {
                 if (view == View.DRAFTS) {
                     loadList(false);

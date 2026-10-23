@@ -46,7 +46,7 @@
             <HBox styleClass="compose-footer" alignment="CENTER_LEFT" spacing="8">
                 <Button fx:id="sendButton" text="Gửi" onAction="#handleSend" styleClass="primary-button" minWidth="96">
                     <graphic><FontIcon iconLiteral="mdi2s-send-outline" iconSize="18" styleClass="icon" /></graphic>
-                    <tooltip><Tooltip text="Gửi thư (Ctrl+Enter) · hoàn tác được trong 8 giây" /></tooltip>
+                    <tooltip><Tooltip text="Gửi thư (Ctrl+Enter)" /></tooltip>
                 </Button>
                 <Button fx:id="scheduleButton" styleClass="icon-button" onAction="#handleSchedule">
                     <graphic><FontIcon iconLiteral="mdi2c-calendar-clock" iconSize="20" styleClass="icon" /></graphic>

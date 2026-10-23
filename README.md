@@ -7,7 +7,7 @@ Hệ thống mail nội bộ theo mô hình Client–Server, đồ án môn **L�
 - Server **chủ động đẩy** thay đổi tới mọi thiết bị đang đăng nhập (thư mới, đã đọc, gắn sao, xoá...).
 - Tệp đính kèm truyền **theo khối 512 KB** hai chiều, có tiến độ, **tải tiếp** sau khi rớt mạng.
 - Giao diện desktop 3 cột kiểu Gmail (sáng / tối): thư mục | danh sách thư | khung đọc thư.
-- v3: tự kết nối lại, hội thoại, thư mục tự tạo + kéo thả, hoàn tác / hẹn giờ gửi, báo đã đọc,
+- v3: tự kết nối lại, hội thoại, thư mục tự tạo + kéo thả, hẹn giờ gửi, thông báo khi được thêm vào nhóm, báo đã đọc,
   xem trước tệp, xác minh 2 bước (TOTP), chứng chỉ thiết bị (mutual TLS), bảng giám sát HTTP,
   virtual thread + HikariCP, MySQL qua TLS, CI, kiểm thử tải, đóng gói jpackage.
 

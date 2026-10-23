@@ -243,7 +243,7 @@ chung giới hạn 5 tệp / 25 MiB với tệp tải lên.
 | Trường | Ý nghĩa | `data` khi OK |
 | --- | --- | --- |
 | (không có) | gửi ngay như cũ | `{mailId}` |
-| `delaySeconds: 1..30` | thư nằm ở hộp chờ gửi vài giây để người gửi **hoàn tác** | `{outboxId, sendAt, scheduled: true}` |
+| `delaySeconds: 1..30` | thư nằm ở hộp chờ gửi vài giây để người gửi **hoàn tác** (Client chính thức hiện không dùng: gửi ngay) | `{outboxId, sendAt, scheduled: true}` |
 | `sendAt: "2026-10-23T08:00:00"` | hẹn giờ (ít nhất 10 giây tới tối đa 365 ngày sau, giờ máy chủ) | `{outboxId, sendAt, scheduled: true}` |
 
 Người nhận, tệp đính kèm và quyền chuyển tiếp được kiểm tra **ngay lúc gọi**;
@@ -275,11 +275,16 @@ hỏi `UPLOAD_STATUS` rồi gửi tiếp từ `receivedBytes`.
 | `DRAFTS_UPDATED` | `{}` | mọi phiên của tài khoản | `SAVE_DRAFT`, `DELETE_DRAFTS`, gửi từ nháp |
 | `PROFILE_UPDATED` | `{displayName}` | mọi phiên của tài khoản | `UPDATE_PROFILE` |
 | `SESSION_REVOKED` | `{reason}` | các phiên bị thu hồi (sau đó Server đóng kết nối) | `CHANGE_PASSWORD`, `LOGOUT_ALL` |
+| `GROUP_UPDATED` | `{action: ADDED\|REMOVED\|DELETED\|MEMBER_LEFT, groupId, groupName, actorEmail, actorName}` | mọi phiên của người bị ảnh hưởng (thành viên được thêm / bị xoá / nhóm bị xoá; chủ nhóm khi có người tự rời) | `ADD_MEMBER`, `REMOVE_MEMBER`, `DELETE_GROUP`, `LEAVE_GROUP` |
 | `MAIL_MOVED` | `{entryId, entryIds, folderId}` | mọi phiên của tài khoản thao tác | `MOVE_MAIL` |
 | `FOLDERS_UPDATED` | `{}` | mọi phiên của tài khoản | `CREATE_FOLDER`, `RENAME_FOLDER`, `DELETE_FOLDER` |
 | `READ_RECEIPT` | `{mailId, subject, readerEmail, readerName, readAt}` | mọi phiên của **người gửi** | người nhận mở thư lần đầu (và cho phép báo đã đọc) |
 | `SCHEDULED_UPDATED` | `{}` | mọi phiên của người gửi | thư chờ gửi được thêm / huỷ / đã gửi |
 | `SCHEDULED_FAILED` | `{outboxId, subject, reason}` | mọi phiên của người gửi | thư hẹn giờ không gửi được (đã chuyển thành nháp) |
+
+Với `ADDED`, `REMOVED`, `DELETED`, Server còn đặt một **thư thông báo** vào Hộp
+thư đến của người bị ảnh hưởng (người gửi = chủ nhóm, không có bản trong Đã gửi)
+và đẩy `NEW_MAIL` cho thư đó, nên người đang offline vẫn biết khi đăng nhập lại.
 
 EVENT chỉ là **tín hiệu**: Client nhận EVENT thì tải lại dữ liệu bằng
 `GET_MAIL_LIST`/`SEARCH_MAIL`. Phiên đang offline không nhận EVENT, nhưng lần
