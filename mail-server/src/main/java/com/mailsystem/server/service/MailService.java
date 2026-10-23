@@ -945,6 +945,14 @@ public class MailService {
         }
     }
 
+    /**
+     * Chỉ phân giải người nhận (email, nhóm → tài khoản), không ghi gì vào DB.
+     * Dùng cho test: kiểm tra ai nhận thư mà không cần MySQL.
+     */
+    java.util.Set<Integer> resolveRecipientIds(JsonObject payload, int senderId) throws Exception {
+        return resolveRecipients(payload, senderId).keySet();
+    }
+
     private Map<Integer, Recipient> resolveRecipients(JsonObject payload, int senderId)
             throws SQLException, InvalidRecipientException {
         Map<Integer, Recipient> recipients = new LinkedHashMap<>();

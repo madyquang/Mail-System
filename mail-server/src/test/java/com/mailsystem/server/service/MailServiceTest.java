@@ -46,45 +46,23 @@ class MailServiceTest {
         });
     }
 
-    /**
-     * Sau bước phân giải người nhận, Service mở kết nối MySQL thật để lưu thư.
-     * Test chỉ quan tâm bước phân giải: không có DB thì nhận lỗi kết nối, có DB
-     * thì DAO giả ném UnsupportedOperationException ở insertMail - cả hai đều bỏ qua.
-     */
-    private static void sendIgnoringStorage(MailService service, JsonObject payload) {
-        try {
-            service.sendMail("send", SENDER, payload, null);
-        } catch (UnsupportedOperationException ignored) {
-        }
-    }
-
     @Test
-    void groupMailIsNotDeliveredBackToTheSender() {
+    void groupMailIsNotDeliveredBackToTheSender() throws Exception {
         List<Object[]> calls = new ArrayList<>();
         GroupDAO groups = fake(GroupDAO.class, Map.of(
                 "findGroupIdByName", (args, c) -> Optional.of(7),
                 "isMember", (args, c) -> true,
                 "getMemberAccountIds", (args, c) -> List.of(SENDER, 2, 3)), calls);
-        List<Integer> inboxLookups = new ArrayList<>();
-        FolderDAO folders = fake(FolderDAO.class, Map.of(
-                "findFolderIdByType", (args, c) -> {
-                    // Hai overload: (accountId, type) và (connection, accountId, type).
-                    int accountId = (Integer) args[args.length - 2];
-                    if ("INBOX".equals(args[args.length - 1])) {
-                        inboxLookups.add(accountId);
-                    }
-                    return Optional.of(100 + accountId);
-                }), calls);
         MailService service = new MailService(fake(MailDAO.class, Map.of(), calls),
-                fake(AccountDAO.class, Map.of(), calls), folders, groups, attachments);
+                fake(AccountDAO.class, Map.of(), calls), fake(FolderDAO.class, Map.of(), calls), groups, attachments);
 
         JsonObject payload = new JsonObject();
         JsonArray to = new JsonArray();
         to.add("Lop-LTM");
         payload.add("to", to);
-        sendIgnoringStorage(service, payload);
 
-        assertEquals(List.of(2, 3), inboxLookups, "chỉ các thành viên khác người gửi nhận thư");
+        assertEquals(Set.of(2, 3), service.resolveRecipientIds(payload, SENDER),
+                "chỉ các thành viên khác người gửi nhận thư");
     }
 
     @Test
@@ -109,30 +87,22 @@ class MailServiceTest {
     }
 
     @Test
-    void selfAddressedMailStillReachesSender() {
+    void selfAddressedMailStillReachesSender() throws Exception {
         List<Object[]> calls = new ArrayList<>();
         Account self = new Account();
         self.setAccountId(SENDER);
         self.setEmail("me@mail.local");
-        List<Integer> inboxLookups = new ArrayList<>();
-        FolderDAO folders = fake(FolderDAO.class, Map.of(
-                "findFolderIdByType", (args, c) -> {
-                    if ("INBOX".equals(args[args.length - 1])) {
-                        inboxLookups.add((Integer) args[args.length - 2]);
-                    }
-                    return Optional.of(1);
-                }), calls);
         MailService service = new MailService(fake(MailDAO.class, Map.of(), calls),
                 fake(AccountDAO.class, Map.of("findByEmail", (args, c) -> Optional.of(self)), calls),
-                folders, fake(GroupDAO.class, Map.of(), calls), attachments);
+                fake(FolderDAO.class, Map.of(), calls), fake(GroupDAO.class, Map.of(), calls), attachments);
 
         JsonObject payload = new JsonObject();
         JsonArray to = new JsonArray();
         to.add("me@mail.local");
         payload.add("to", to);
-        sendIgnoringStorage(service, payload);
 
-        assertEquals(List.of(SENDER), inboxLookups, "gửi trực tiếp cho chính mình vẫn được phép");
+        assertEquals(Set.of(SENDER), service.resolveRecipientIds(payload, SENDER),
+                "gửi trực tiếp cho chính mình vẫn được phép");
     }
 
     @Test
