@@ -121,6 +121,16 @@ public class LoginController {
                             return;
                         }
                     }
+                    if (!ServerConnection.getInstance().isConnected()) {
+                        // Không tới được máy chủ: mở sẵn ô địa chỉ để người dùng thấy và sửa ngay
+                        // (địa chỉ được nhớ từ lần trước, có thể đã cũ).
+                        serverBox.setVisible(true);
+                        serverBox.setManaged(true);
+                        showError(Fx.message(error) + " Kiểm tra địa chỉ máy chủ bên dưới và chắc chắn Server đang chạy.");
+                        serverField.requestFocus();
+                        serverField.selectAll();
+                        return;
+                    }
                     showError(Fx.message(error));
                     if (totpBox.isVisible()) {
                         totpField.requestFocus();

@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+- Nâng yêu cầu Java lên JDK 25 LTS, cập nhật CI và đóng gói; dùng API virtual thread trực tiếp.
+- Màn hình đăng nhập: không kết nối được thì tự mở ô Máy chủ, chọn sẵn địa chỉ đang nhớ để sửa; màn đăng ký chỉ chỗ đổi máy chủ.
+
 ## [3.0.0] - 2026-10-22
 
 **Mạng & hiệu năng**

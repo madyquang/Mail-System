@@ -90,7 +90,8 @@ public class RegisterController {
                 },
                 error -> {
                     setBusy(false);
-                    showError(error);
+                    showError(ServerConnection.getInstance().isConnected() ? error
+                            : error + " Đổi địa chỉ máy chủ ở mục Máy chủ trên màn hình Đăng nhập.");
                 });
     }
 
