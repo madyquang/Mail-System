@@ -145,7 +145,7 @@ không quá phổ biến, không chứa tên email. Mỗi IP đăng ký tối đ
 | `GET_THREAD` | `{threadId}` | `[MailDetail]`: mọi thư của hội thoại mà mình xem được (trừ TRASH), cũ trước mới sau; đánh dấu đã đọc từng thư |
 | `GET_MAIL_DETAIL` | `{mailId, entryId?}` | `MailDetail`; tự đánh dấu **đúng bản `entryId`** là đã đọc (trừ thư trong TRASH) |
 | `SEARCH_MAIL` | `{keyword?, fromFilter?, folderId?}`, cần ít nhất 1 điều kiện; bỏ `folderId` = mọi thư mục | `[MailSummary]` |
-| `SUGGEST_CONTACTS` | `{query, limit?: 1..10, includeGroups?: true}` | `[Contact]`: nhóm mình là thành viên (tối đa 3) rồi tới người khớp email/tên, người đã trao đổi nhiều thư xếp trước; không gồm chính mình |
+| `SUGGEST_CONTACTS` | `{query, limit?: 1..10, includeGroups?: true}` | `[Contact]`: nhóm mình là thành viên (tối đa 3) rồi tới người khớp email/tên **đã từng trao đổi thư với mình** (nhiều thư xếp trước); không gồm chính mình, không gồm người chưa từng trao đổi |
 | `MARK_READ` | `{entryIds: [..], read?: true}` (`read: false` = đánh dấu chưa đọc) | `{processed, requested}` |
 | `SET_STARRED` | `{entryIds: [..], starred: true\|false}` | `{processed, requested}` |
 | `DELETE_MAIL` | `{entryId}` hoặc `{entryIds: [..]}` | `{processed, requested}` (chuyển vào TRASH) |

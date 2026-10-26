@@ -6,6 +6,7 @@
 - Màn hình đăng nhập: không kết nối được thì tự mở ô Máy chủ, chọn sẵn địa chỉ đang nhớ để sửa; màn đăng ký chỉ chỗ đổi máy chủ.
 - Thông báo nhóm: người được thêm vào / bị xoá khỏi nhóm, hoặc nhóm bị xoá, nhận thư thông báo trong Hộp thư đến
   (kể cả khi offline) và EVENT `GROUP_UPDATED`; chủ nhóm được báo khi có người tự rời; cửa sổ Nhóm thư tự cập nhật.
+- Gợi ý khi gõ chỉ hiện người đã trao đổi thư với mình (không còn dò được email của mọi tài khoản).
 - Bỏ hoàn tác gửi: bấm Gửi là thư đi ngay (Server vẫn hỗ trợ `delaySeconds`; hẹn giờ gửi giữ nguyên).
 
 ## [3.0.0] - 2026-10-22

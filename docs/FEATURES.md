@@ -60,13 +60,15 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
 ## 4. Gợi ý khi gõ
 
 - **Ô Tới / Cc / Bcc**: gõ 1 ký tự trở lên là hiện gợi ý người (theo email hoặc
-  tên có dấu) và nhóm thư mình là thành viên. Người đã trao đổi thư nhiều được
-  xếp trước, kèm số thư đã trao đổi. Gợi ý chỉ áp dụng cho địa chỉ đang gõ sau
+  tên có dấu) và nhóm thư mình là thành viên. **Chỉ gợi ý người đã trao đổi thư
+  với mình** (gửi hoặc nhận ít nhất một thư); người đã trao đổi nhiều được xếp
+  trước, kèm số thư. Người chưa từng trao đổi thì gõ đầy đủ email. Gợi ý chỉ áp dụng cho địa chỉ đang gõ sau
   dấu phẩy cuối và bỏ qua địa chỉ đã có trong ô; chọn xong tự thêm ", " để gõ tiếp.
 - **Ô tìm thư**: khi ô trống hiện tối đa 8 từ khoá tìm gần đây (lưu trên máy);
   gõ từ 2 ký tự hiện: "Tìm ... trong mọi thư mục" kèm số thư khớp, tối đa 5 thư
   khớp (chọn là mở thư đó ngay) và người gửi khớp (chọn là lọc thư từ người đó).
-- **Ô Người gửi** (bộ lọc tìm kiếm) và **ô thêm thành viên nhóm**: gợi ý người.
+- **Ô Người gửi** (bộ lọc tìm kiếm) và **ô thêm thành viên nhóm**: gợi ý người
+  (cùng quy tắc: chỉ người đã trao đổi thư).
 - Bàn phím: ↓ / ↑ chọn gợi ý, Enter hoặc Tab dùng gợi ý, Esc đóng; bấm chuột cũng chọn được.
 
 ## 5. Soạn thư

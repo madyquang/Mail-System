@@ -17,6 +17,8 @@ public class JdbcContactDAO implements ContactDAO {
     public List<Contact> findPeople(int accountId, String containsPattern, String prefixPattern, int limit)
             throws SQLException {
         // interactions: số thư tôi gửi cho họ + số thư họ gửi cho tôi (đếm theo bản thư mail_recipient).
+        // Chỉ gợi ý người ĐÃ trao đổi thư (interactions > 0): không ai dò được danh sách email
+        // của cả hệ thống bằng cách gõ từng chữ cái.
         String sql = "SELECT a.email, a.display_name, "
                 + "(SELECT COUNT(*) FROM mail_recipient mr JOIN mail m ON m.mail_id = mr.mail_id "
                 + "  WHERE mr.recipient_type IN ('TO','CC','BCC') AND ("
@@ -25,6 +27,7 @@ public class JdbcContactDAO implements ContactDAO {
                 + "FROM account a "
                 + "WHERE a.account_id <> ? "
                 + "AND (a.email LIKE ? ESCAPE '!' OR a.display_name LIKE ? ESCAPE '!') "
+                + "HAVING interactions > 0 "
                 + "ORDER BY interactions DESC, (a.email LIKE ? ESCAPE '!') DESC, a.email "
                 + "LIMIT ?";
         try (Connection connection = DatabaseConnection.getConnection();

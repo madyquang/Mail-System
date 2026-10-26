@@ -15,7 +15,7 @@ import java.util.List;
 /**
  * Gợi ý người nhận khi gõ (autocomplete). Payload {query, limit?, includeGroups?}.
  * Nhóm (chỉ nhóm mình là thành viên, tức là nhóm mình gửi tới được) xếp trước,
- * rồi tới người. Giới hạn kết quả nhỏ để frame trả về luôn nhỏ; client gọi lại
+ * rồi tới người — chỉ những người đã trao đổi thư với mình. Giới hạn kết quả nhỏ để frame trả về luôn nhỏ; client gọi lại
  * sau mỗi lần gõ (có debounce) nên request phải rẻ.
  */
 public class ContactService {

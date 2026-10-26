@@ -571,6 +571,9 @@ public class EndToEndCheck {
                     "Goi y nhom minh la thanh vien");
             JsonArray selfSug = a1.req(Command.SUGGEST_CONTACTS, obj("query", a)).getData().getAsJsonArray();
             check(selfSug.size() == 0, "Khong goi y chinh minh");
+            // C chưa từng trao đổi thư với A: gõ đúng email của C cũng không được gợi ý.
+            JsonArray strangerSug = a1.req(Command.SUGGEST_CONTACTS, obj("query", c, "includeGroups", false)).getData().getAsJsonArray();
+            check(strangerSug.size() == 0, "Khong goi y nguoi chua tung trao doi thu (chong do email)");
 
             System.out.println("== Thu nhap");
             a1.events.clear(); a2.events.clear();
