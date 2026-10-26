@@ -71,8 +71,32 @@ public final class Navigator {
     public static void showLogin(String notice) {
         pendingNotice = notice;
         Session.signOut();
+        closeSessionWindows();
         primaryStage.setTitle("Mail System");
         show(LOGIN);
+    }
+
+    /**
+     * Khoá trong stage.getProperties(): giá trị là BooleanSupplier, trả true nếu cửa sổ
+     * cần GIỮ LẠI khi phiên kết thúc (VD khung soạn thư đang có nội dung).
+     */
+    public static final String KEEP_ON_SIGN_OUT = "mail.keepOnSignOut";
+
+    /**
+     * Phiên kết thúc (đăng xuất, bị thu hồi, không kết nối lại được): đóng các cửa sổ phụ
+     * của phiên cũ (Nhóm thư, Tài khoản...). Nếu để lại, thao tác trong đó sẽ chạy dưới
+     * phiên MỚI, có thể là của một tài khoản khác.
+     */
+    private static void closeSessionWindows() {
+        for (Window window : new java.util.ArrayList<>(Window.getWindows())) {
+            if (window instanceof Stage stage && stage != primaryStage) {
+                Object keep = stage.getProperties().get(KEEP_ON_SIGN_OUT);
+                if (keep instanceof java.util.function.BooleanSupplier supplier && supplier.getAsBoolean()) {
+                    continue;
+                }
+                stage.close();
+            }
+        }
     }
 
     /** Thông báo chờ hiển thị ở màn hình đăng nhập (đọc một lần). */

@@ -6,6 +6,11 @@
 - Màn hình đăng nhập: không kết nối được thì tự mở ô Máy chủ, chọn sẵn địa chỉ đang nhớ để sửa; màn đăng ký chỉ chỗ đổi máy chủ.
 - Thông báo nhóm: người được thêm vào / bị xoá khỏi nhóm, hoặc nhóm bị xoá, nhận thư thông báo trong Hộp thư đến
   (kể cả khi offline) và EVENT `GROUP_UPDATED`; chủ nhóm được báo khi có người tự rời; cửa sổ Nhóm thư tự cập nhật.
+- Sửa lỗi cửa sổ Nhóm thư: khi phiên kết thúc (đăng xuất, Server khởi động lại, bị thu hồi) cửa sổ Nhóm thư / Tài khoản
+  của phiên cũ được đóng; trước đây chúng còn mở và thao tác chạy dưới phiên mới (có thể là tài khoản khác).
+  Bấm Nhóm thư khi cửa sổ đã mở thì đưa cửa sổ lên trước thay vì mở thêm. Khung soạn thư đang có nội dung được giữ lại
+  nhưng chỉ gửi / lưu nháp được dưới đúng tài khoản đã mở nó.
+- Nút đỏ (Xoá nhóm, Xoá vĩnh viễn...): icon trắng dễ đọc; giao diện tối dùng chữ tối trên nền hồng.
 - Gợi ý khi gõ chỉ hiện người đã trao đổi thư với mình (không còn dò được email của mọi tài khoản).
 - Bỏ hoàn tác gửi: bấm Gửi là thư đi ngay (Server vẫn hỗ trợ `delaySeconds`; hẹn giờ gửi giữ nguyên).
 

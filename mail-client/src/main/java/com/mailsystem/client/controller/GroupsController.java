@@ -61,6 +61,19 @@ public class GroupsController {
     /** Cửa sổ Nhóm thư đang mở (nếu có), để EVENT GROUP_UPDATED tải lại danh sách. */
     private static java.lang.ref.WeakReference<GroupsController> open = new java.lang.ref.WeakReference<>(null);
 
+    /** Cửa sổ Nhóm thư đã mở thì đưa lên trước thay vì mở thêm cửa sổ mới. @return true nếu đã có */
+    public static boolean focusIfOpen() {
+        GroupsController controller = open.get();
+        if (controller != null && controller.root.getScene() != null
+                && controller.root.getScene().getWindow() instanceof javafx.stage.Stage stage && stage.isShowing()) {
+            stage.setIconified(false);
+            stage.toFront();
+            stage.requestFocus();
+            return true;
+        }
+        return false;
+    }
+
     /** Gọi trên UI thread khi Server báo nhóm của mình thay đổi (được thêm, bị xoá, nhóm bị xoá...). */
     public static void refreshIfOpen() {
         GroupsController controller = open.get();

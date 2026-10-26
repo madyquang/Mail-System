@@ -1380,7 +1380,9 @@ public class MainController implements MailReader.Actions {
 
     @FXML
     public void handleOpenGroups() {
-        Navigator.openWindow(Navigator.GROUPS, "Nhóm thư – Mail System", 860, 580, false, null);
+        if (!GroupsController.focusIfOpen()) {
+            Navigator.openWindow(Navigator.GROUPS, "Nhóm thư – Mail System", 860, 580, false, null);
+        }
     }
 
     public void handleOpenAccount() {

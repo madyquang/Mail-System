@@ -41,6 +41,8 @@
 
 .primary-button, .primary-button .label { -fx-text-fill: #0b1e3a; }
 .primary-button .icon, .brand-logo .icon { -fx-icon-color: #0b1e3a; }
+.danger-button, .danger-button .label { -fx-text-fill: #3b0a08; }
+.danger-button .icon { -fx-icon-color: #3b0a08; }
 .check-box:selected .mark, .check-box:indeterminate .mark { -fx-background-color: #0b1e3a; }
 .tooltip { -fx-background-color: #e6e6e6; -fx-text-fill: #1f1f1f; }
 .context-menu, .menu-button .context-menu { -fx-background-color: -c-surface-2; }

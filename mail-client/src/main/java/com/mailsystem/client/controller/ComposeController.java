@@ -200,12 +200,15 @@ public class ComposeController {
     private final List<Attachment> forwarded = new ArrayList<>();
     private Integer draftId;
     private Integer inReplyTo;
+    /** Tài khoản đã mở khung soạn: thư chỉ được gửi / lưu nháp dưới đúng tài khoản này. */
+    private Integer ownerAccountId;
     private boolean draftCreatedHere;
     private boolean dirty;
     private boolean sending;
     private Timeline autosave;
 
     private void init(Request request) {
+        ownerAccountId = Session.account() == null ? null : Session.account().getAccountId();
         titleLabel.setText(request.title());
         toField.setText(request.to());
         ccField.setText(request.cc());
@@ -239,6 +242,13 @@ public class ComposeController {
                 bodyArea.positionCaret(0);
             }
             Stage stage = (Stage) root.getScene().getWindow();
+            // Phiên kết thúc: khung soạn đang có nội dung được giữ lại để không mất chữ đã gõ.
+            stage.getProperties().put(Navigator.KEEP_ON_SIGN_OUT, (java.util.function.BooleanSupplier) this::hasContent);
+            stage.setOnHidden(event -> {
+                if (autosave != null) {
+                    autosave.stop();
+                }
+            });
             stage.setOnCloseRequest(event -> {
                 event.consume();
                 handleDiscard();
@@ -250,7 +260,7 @@ public class ComposeController {
         });
 
         autosave = new Timeline(new KeyFrame(AUTOSAVE_INTERVAL, event -> {
-            if (dirty && !sending && hasContent()) {
+            if (dirty && !sending && hasContent() && sameAccount()) {
                 saveDraft(false, null);
             }
         }));
@@ -276,6 +286,10 @@ public class ComposeController {
     /** sendAt null: gửi ngay; khác null: hẹn giờ (Server giữ thư trong hộp chờ gửi). */
     private void send(LocalDateTime sendAt) {
         if (sending) {
+            return;
+        }
+        if (!sameAccount()) {
+            showError(wrongAccountMessage());
             return;
         }
         List<String> to = Formats.splitRecipients(toField.getText());
@@ -449,7 +463,23 @@ public class ComposeController {
         }
     }
 
+    /** Còn đăng nhập đúng tài khoản đã mở khung soạn này không (sau khi đăng xuất / đổi tài khoản). */
+    private boolean sameAccount() {
+        return Session.account() != null && ownerAccountId != null
+                && Session.account().getAccountId() == ownerAccountId;
+    }
+
+    private static String wrongAccountMessage() {
+        return Session.account() == null
+                ? "Phiên đăng nhập đã kết thúc. Đăng nhập lại đúng tài khoản để gửi hoặc lưu thư này."
+                : "Thư này được soạn từ tài khoản khác. Đăng nhập lại tài khoản đó để gửi, hoặc sao chép nội dung sang thư mới.";
+    }
+
     private void saveDraft(boolean announce, Runnable afterSave) {
+        if (!sameAccount()) {
+            showError(wrongAccountMessage());
+            return;
+        }
         Draft draft = new Draft();
         draft.setDraftId(draftId == null ? 0 : draftId);
         draft.setTo(toField.getText());
@@ -491,7 +521,7 @@ public class ComposeController {
         switch (Dialogs.unsavedDraft(window())) {
             case SAVE -> saveDraft(false, this::close);
             case DISCARD -> {
-                if (draftCreatedHere && draftId != null) {
+                if (draftCreatedHere && draftId != null && sameAccount()) {
                     // Bản nháp do tự lưu tạo ra trong phiên soạn này: bỏ thư thì xoá luôn.
                     MailApi.get().deleteDrafts(List.of(draftId));
                 }

@@ -127,6 +127,7 @@
     -fx-text-fill: white;
 }
 .danger-button:hover { -fx-background-color: derive(-c-danger, -15%); }
+.danger-button .icon { -fx-icon-color: white; }
 .text-button {
     -fx-background-color: transparent;
     -fx-text-fill: -c-primary;
