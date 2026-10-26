@@ -11,7 +11,14 @@
   Bấm Nhóm thư khi cửa sổ đã mở thì đưa cửa sổ lên trước thay vì mở thêm. Khung soạn thư đang có nội dung được giữ lại
   nhưng chỉ gửi / lưu nháp được dưới đúng tài khoản đã mở nó.
 - Nút đỏ (Xoá nhóm, Xoá vĩnh viễn...): icon trắng dễ đọc; giao diện tối dùng chữ tối trên nền hồng.
-- Gợi ý khi gõ chỉ hiện người đã trao đổi thư với mình (không còn dò được email của mọi tài khoản).
+- Gợi ý khi gõ quay lại gợi ý mọi tài khoản (người đã trao đổi thư xếp trước), nhóm khớp cả theo địa chỉ.
+- Địa chỉ nhóm `<ten-nhom>@group.local`: tự sinh từ tên (bỏ dấu), sửa được khi tạo, trùng thì tự thêm `-2`;
+  gửi tới nhóm bằng địa chỉ hoặc tên; migration `20261026_group_address.sql`, nhóm cũ được Server tự điền địa chỉ.
+- Chống giật giao diện: trạng thái hover / focus / chọn chỉ đổi màu hoặc vẽ bóng, không đổi viền / padding / cỡ chữ
+  (nút phình 36→41 px khi focus, tab đổi kích thước khi chuyển, ô mật khẩu cao thêm 2 px khi focus);
+  thanh "Đã chọn N" thay chỗ hàng tiêu đề (trước đây đẩy danh sách xuống 58 px); dải báo lỗi nổi trên danh sách;
+  tải lại danh sách chỉ cập nhật dòng thay đổi và giữ vị trí cuộn; khung đọc chỉ hiện vòng quay nếu tải > 200 ms;
+  ô thư không tạo lại icon / tooltip mỗi lần vẽ (cuộn mượt hơn).
 - Bỏ hoàn tác gửi: bấm Gửi là thư đi ngay (Server vẫn hỗ trợ `delaySeconds`; hẹn giờ gửi giữ nguyên).
 
 ## [3.0.0] - 2026-10-22

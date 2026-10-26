@@ -60,15 +60,15 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
 ## 4. Gợi ý khi gõ
 
 - **Ô Tới / Cc / Bcc**: gõ 1 ký tự trở lên là hiện gợi ý người (theo email hoặc
-  tên có dấu) và nhóm thư mình là thành viên. **Chỉ gợi ý người đã trao đổi thư
-  với mình** (gửi hoặc nhận ít nhất một thư); người đã trao đổi nhiều được xếp
-  trước, kèm số thư. Người chưa từng trao đổi thì gõ đầy đủ email. Gợi ý chỉ áp dụng cho địa chỉ đang gõ sau
+  tên có dấu) trong toàn bộ tài khoản, và nhóm thư mình là thành viên (theo tên
+  hoặc địa chỉ nhóm). Người đã trao đổi thư nhiều được xếp trước, kèm số thư;
+  chọn nhóm thì điền địa chỉ `...@group.local`. Gợi ý chỉ áp dụng cho địa chỉ đang gõ sau
   dấu phẩy cuối và bỏ qua địa chỉ đã có trong ô; chọn xong tự thêm ", " để gõ tiếp.
 - **Ô tìm thư**: khi ô trống hiện tối đa 8 từ khoá tìm gần đây (lưu trên máy);
   gõ từ 2 ký tự hiện: "Tìm ... trong mọi thư mục" kèm số thư khớp, tối đa 5 thư
   khớp (chọn là mở thư đó ngay) và người gửi khớp (chọn là lọc thư từ người đó).
 - **Ô Người gửi** (bộ lọc tìm kiếm) và **ô thêm thành viên nhóm**: gợi ý người
-  (cùng quy tắc: chỉ người đã trao đổi thư).
+  (mọi tài khoản, người đã trao đổi thư xếp trước).
 - Bàn phím: ↓ / ↑ chọn gợi ý, Enter hoặc Tab dùng gợi ý, Esc đóng; bấm chuột cũng chọn được.
 
 ## 5. Soạn thư
@@ -106,6 +106,10 @@ Server, không gửi ra dịch vụ email bên ngoài. Mọi kết nối đượ
 
 - Tạo nhóm (tên ≤ 100 ký tự, không chứa `@` hoặc dấu phẩy, không trùng kể cả
   khác hoa/thường); người tạo là chủ nhóm và thành viên đầu tiên.
+- **Địa chỉ nhóm** `...@group.local`: gõ tên nhóm thì ô địa chỉ tự điền (bỏ dấu,
+  chữ thường, khoảng trắng thành `-`), người tạo sửa được trước khi bấm Tạo.
+  Địa chỉ hiện ở chi tiết nhóm (nút sao chép), trong danh sách nhóm, gợi ý khi gõ
+  và thư thông báo thêm vào nhóm. Gửi tới nhóm bằng địa chỉ hoặc tên đều được.
 - Chủ nhóm thêm/xoá thành viên (email phải có tài khoản), xoá nhóm; thành viên
   thường rời nhóm. Chủ nhóm không tự xoá mình / rời nhóm.
 - Chỉ thành viên được gửi tới nhóm; người gửi không nhận lại thư của chính mình.

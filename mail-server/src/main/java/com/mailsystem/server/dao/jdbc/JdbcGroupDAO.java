@@ -36,8 +36,8 @@ public class JdbcGroupDAO implements GroupDAO {
     }
 
     @Override
-    public int createGroupWithOwner(String groupName, int ownerId) throws SQLException {
-        String insertGroup = "INSERT INTO mail_group (group_name, owner_id) VALUES (?, ?)";
+    public int createGroupWithOwner(String groupName, String groupAddress, int ownerId) throws SQLException {
+        String insertGroup = "INSERT INTO mail_group (group_name, group_address, owner_id) VALUES (?, ?, ?)";
         String insertOwner = "INSERT INTO group_member (group_id, account_id) VALUES (?, ?)";
         try (Connection connection = DatabaseConnection.getConnection()) {
             connection.setAutoCommit(false);
@@ -46,7 +46,8 @@ public class JdbcGroupDAO implements GroupDAO {
                 try (PreparedStatement statement = connection.prepareStatement(
                         insertGroup, Statement.RETURN_GENERATED_KEYS)) {
                     statement.setString(1, groupName);
-                    statement.setInt(2, ownerId);
+                    statement.setString(2, groupAddress);
+                    statement.setInt(3, ownerId);
                     statement.executeUpdate();
                     try (ResultSet keys = statement.getGeneratedKeys()) {
                         if (!keys.next()) {
@@ -119,7 +120,7 @@ public class JdbcGroupDAO implements GroupDAO {
 
     @Override
     public List<MailGroupDTO> findGroupsByMember(int accountId) throws SQLException {
-        String sql = "SELECT g.group_id, g.group_name, g.owner_id, owner.email AS owner_email, "
+        String sql = "SELECT g.group_id, g.group_name, g.group_address, g.owner_id, owner.email AS owner_email, "
                 + "member.email AS member_email "
                 + "FROM mail_group g "
                 + "JOIN group_member visible_member ON visible_member.group_id = g.group_id "
@@ -140,6 +141,7 @@ public class JdbcGroupDAO implements GroupDAO {
                         group = new MailGroupDTO();
                         group.setGroupId(groupId);
                         group.setGroupName(result.getString("group_name"));
+                        group.setGroupAddress(result.getString("group_address"));
                         group.setOwnerEmail(result.getString("owner_email"));
                         group.setOwner(result.getInt("owner_id") == accountId);
                         group.setMemberEmails(new ArrayList<>());
@@ -180,6 +182,55 @@ public class JdbcGroupDAO implements GroupDAO {
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() ? Optional.of(result.getInt("group_id")) : Optional.empty();
             }
+        }
+    }
+
+    @Override
+    public Optional<Integer> findGroupIdByAddress(String groupAddress) throws SQLException {
+        String sql = "SELECT group_id FROM mail_group WHERE LOWER(group_address) = LOWER(?) LIMIT 1";
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, groupAddress);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(result.getInt("group_id")) : Optional.empty();
+            }
+        }
+    }
+
+    @Override
+    public java.util.Map<Integer, String> findGroupsWithoutAddress() throws SQLException {
+        String sql = "SELECT group_id, group_name FROM mail_group WHERE group_address IS NULL ORDER BY group_id";
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql);
+                ResultSet result = statement.executeQuery()) {
+            java.util.Map<Integer, String> groups = new LinkedHashMap<>();
+            while (result.next()) {
+                groups.put(result.getInt("group_id"), result.getString("group_name"));
+            }
+            return groups;
+        }
+    }
+
+    @Override
+    public Optional<String> findGroupAddress(int groupId) throws SQLException {
+        String sql = "SELECT group_address FROM mail_group WHERE group_id = ?";
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, groupId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.ofNullable(result.getString("group_address")) : Optional.empty();
+            }
+        }
+    }
+
+    @Override
+    public void updateGroupAddress(int groupId, String groupAddress) throws SQLException {
+        String sql = "UPDATE mail_group SET group_address = ? WHERE group_id = ?";
+        try (Connection connection = DatabaseConnection.getConnection();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, groupAddress);
+            statement.setInt(2, groupId);
+            statement.executeUpdate();
         }
     }
 

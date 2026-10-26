@@ -19,8 +19,9 @@ public class PasswordField2 extends StackPane {
 
     public PasswordField2() {
         visible.textProperty().bindBidirectional(hidden.textProperty());
+        // Hai ô chồng lên nhau trong StackPane và luôn nằm trong bố cục; ẩn/hiện mật khẩu chỉ đổi
+        // ô nào được nhìn thấy nên kích thước không đổi.
         visible.setVisible(false);
-        visible.setManaged(false);
         visible.promptTextProperty().bind(hidden.promptTextProperty());
         hidden.setStyle("-fx-padding: 9px 42px 9px 12px;");
         visible.setStyle("-fx-padding: 9px 42px 9px 12px;");
@@ -41,9 +42,7 @@ public class PasswordField2 extends StackPane {
     private void setRevealed(boolean reveal) {
         boolean focused = hidden.isFocused() || visible.isFocused();
         visible.setVisible(reveal);
-        visible.setManaged(reveal);
         hidden.setVisible(!reveal);
-        hidden.setManaged(!reveal);
         toggle.setGraphic(Icons.of(reveal ? Icons.EYE_OFF : Icons.EYE, 18));
         toggle.getTooltip().setText(reveal ? "Ẩn mật khẩu" : "Hiện mật khẩu");
         if (focused) {

@@ -71,21 +71,42 @@ public class MailReader extends StackPane {
     }
 
     public void showEmpty() {
+        contentChanged();
         getChildren().setAll(new EmptyState().show(Icons.MAIL, "Chọn một thư để đọc",
                 "Nội dung thư sẽ hiển thị ở đây. Mẹo: Ctrl/Shift + click để chọn nhiều thư."));
     }
 
+    /**
+     * Mở thư thường chỉ mất vài chục ms: hiện vòng quay ngay sẽ làm khung đọc nháy
+     * (nội dung → vòng quay → nội dung). Chỉ hiện nếu sau 200 ms thư vẫn chưa về.
+     */
     public void showLoading() {
-        ProgressIndicator indicator = new ProgressIndicator();
-        indicator.setMaxSize(36, 36);
-        getChildren().setAll(indicator);
+        int token = ++contentVersion;
+        javafx.animation.PauseTransition delay = new javafx.animation.PauseTransition(javafx.util.Duration.millis(200));
+        delay.setOnFinished(event -> {
+            if (token == contentVersion) {
+                ProgressIndicator indicator = new ProgressIndicator();
+                indicator.setMaxSize(36, 36);
+                getChildren().setAll(indicator);
+            }
+        });
+        delay.play();
+    }
+
+    /** Tăng mỗi khi nội dung khung đọc thay đổi; vòng quay đến trễ thì không ghi đè nội dung mới. */
+    private int contentVersion;
+
+    private void contentChanged() {
+        contentVersion++;
     }
 
     public void showError(String message) {
+        contentChanged();
         getChildren().setAll(new EmptyState().show(Icons.ERROR, "Không tải được thư", message));
     }
 
     public void showSelection(int count) {
+        contentChanged();
         getChildren().setAll(new EmptyState().show(Icons.SELECT_ALL, "Đã chọn " + count + " thư",
                 "Dùng thanh thao tác phía trên danh sách để đánh dấu, gắn sao hoặc xoá các thư đã chọn."));
     }
@@ -93,6 +114,7 @@ public class MailReader extends StackPane {
     // ------------------------------------------------------------------ chi tiết thư
 
     public void showMail(MailDetail mail, String myEmail) {
+        contentChanged();
         boolean inTrash = "TRASH".equals(mail.getFolderType());
 
         HBox toolbar = new HBox(2);
@@ -480,6 +502,7 @@ public class MailReader extends StackPane {
     // ------------------------------------------------------------------ thư nháp
 
     public void showDraft(Draft draft) {
+        contentChanged();
         Label subject = new Label(draft.getSubject() == null || draft.getSubject().isBlank()
                 ? "(Không có tiêu đề)" : draft.getSubject());
         subject.getStyleClass().add("reader-subject");

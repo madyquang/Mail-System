@@ -61,6 +61,10 @@ public final class MailServerApplication {
         System.out.println("[MailServer] Ket noi MySQL " + (dbCipher == null ? "KHONG ma hoa" : "ma hoa TLS: " + dbCipher));
 
         ServerServices services = ServerServices.createDefault();
+        int filledAddresses = services.group().backfillGroupAddresses();
+        if (filledAddresses > 0) {
+            System.out.println("[MailServer] Da sinh dia chi @group.local cho " + filledAddresses + " nhom cu");
+        }
         String clientAuth = ServerConfig.tlsClientAuth();
         MailServer server = new MailServer(ServerConfig.port(), ServerConfig.maxClients(),
                 ServerConfig.idleTimeoutSeconds() * 1000, tls.context().getServerSocketFactory(),

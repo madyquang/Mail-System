@@ -13,6 +13,7 @@ public class Contact {
     private String email;        // PERSON
     private String displayName;  // PERSON
     private String groupName;    // GROUP
+    private String groupAddress; // GROUP: <ten-nhom>@group.local
     private int memberCount;     // GROUP
     private int interactions;    // PERSON: số thư đã trao đổi với người dùng (để xếp hạng)
 
@@ -28,10 +29,11 @@ public class Contact {
         return contact;
     }
 
-    public static Contact group(String groupName, int memberCount) {
+    public static Contact group(String groupName, String groupAddress, int memberCount) {
         Contact contact = new Contact();
         contact.kind = GROUP;
         contact.groupName = groupName;
+        contact.groupAddress = groupAddress;
         contact.memberCount = memberCount;
         return contact;
     }
@@ -40,15 +42,19 @@ public class Contact {
         return GROUP.equals(kind);
     }
 
-    /** Giá trị điền vào ô người nhận: email của người, hoặc tên nhóm. */
+    /** Giá trị điền vào ô người nhận: email của người, hoặc địa chỉ nhóm (tên nhóm nếu chưa có địa chỉ). */
     public String address() {
-        return isGroup() ? groupName : email;
+        if (!isGroup()) {
+            return email;
+        }
+        return groupAddress == null || groupAddress.isBlank() ? groupName : groupAddress;
     }
 
     public String getKind() { return kind; }
     public String getEmail() { return email; }
     public String getDisplayName() { return displayName; }
     public String getGroupName() { return groupName; }
+    public String getGroupAddress() { return groupAddress; }
     public int getMemberCount() { return memberCount; }
     public int getInteractions() { return interactions; }
 }

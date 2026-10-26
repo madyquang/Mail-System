@@ -354,8 +354,10 @@ public final class MailApi {
         return call(Command.GET_MY_GROUPS, null, data -> list(data, new TypeToken<List<MailGroupDTO>>() { }.getType()));
     }
 
-    public CompletableFuture<Integer> createGroup(String name) {
-        return call(Command.CREATE_GROUP, object("groupName", name), data -> data.getAsJsonObject().get("groupId").getAsInt());
+    /** address: phần trước @group.local (rỗng = Server tự sinh từ tên nhóm). */
+    public CompletableFuture<Integer> createGroup(String name, String address) {
+        return call(Command.CREATE_GROUP, object("groupName", name, "address", address),
+                data -> data.getAsJsonObject().get("groupId").getAsInt());
     }
 
     public CompletableFuture<Void> deleteGroup(int groupId) {

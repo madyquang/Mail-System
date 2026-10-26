@@ -32,6 +32,8 @@ public class MailCell extends ListCell<MailSummary> {
     private final Label snippet = new Label();
     private final StackPane attachmentIcon = new StackPane(Icons.of(Icons.ATTACH, 15));
     private final Button star = new Button();
+    private final org.kordamp.ikonli.javafx.FontIcon starIcon = Icons.of(Icons.STAR_OUTLINE, 18);
+    private final Tooltip starTooltip = new Tooltip();
     private final HBox root;
 
     public MailCell(Consumer<MailSummary> onToggleStar, boolean showFolderTag) {
@@ -52,6 +54,8 @@ public class MailCell extends ListCell<MailSummary> {
         snippet.setMinWidth(0);
         star.getStyleClass().add("star-button");
         star.setFocusTraversable(false);
+        star.setGraphic(starIcon);
+        star.setTooltip(starTooltip);
         star.setOnAction(event -> {
             if (getItem() != null) {
                 onToggleStar.accept(getItem());
@@ -115,8 +119,8 @@ public class MailCell extends ListCell<MailSummary> {
         if (mail.isStarred()) {
             star.getStyleClass().add("starred");
         }
-        star.setGraphic(Icons.of(mail.isStarred() ? Icons.STAR : Icons.STAR_OUTLINE, 18));
-        star.setTooltip(new Tooltip(mail.isStarred() ? "Bỏ gắn sao" : "Gắn sao"));
+        starIcon.setIconLiteral(mail.isStarred() ? Icons.STAR : Icons.STAR_OUTLINE);
+        starTooltip.setText(mail.isStarred() ? "Bỏ gắn sao" : "Gắn sao");
         setGraphic(root);
     }
 

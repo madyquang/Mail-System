@@ -226,6 +226,31 @@ public class EndToEndCheck {
 
     /** Các tính năng v3: tiếp tục phiên, thư mục, hội thoại, báo đã đọc, hoàn tác/hẹn giờ, tải tiếp, 2FA, mTLS, giám sát. */
     static void runV3(String tag, String pw, String a, String b, Conn a1, Conn b1, int fileEntry) throws Exception {
+        System.out.println("== Dia chi nhom @group.local");
+        String groupAddress = "e2e-nhom-" + tag + "@group.local";
+        boolean listed = false;
+        for (JsonElement g : a1.req(Command.GET_MY_GROUPS, null).getData().getAsJsonArray()) {
+            JsonObject group = g.getAsJsonObject();
+            listed |= group.has("groupAddress") && group.get("groupAddress").getAsString().equals(groupAddress);
+        }
+        check(listed, "Nhom co dia chi tu sinh tu ten: " + groupAddress);
+        check(a1.req(Command.SEND_MAIL, obj("to", arr(groupAddress), "subject", "Qua địa chỉ nhóm " + tag, "body", "x")).isOk(),
+                "Gui thu toi nhom bang dia chi @group.local");
+        check(findBySubject(list(b1, "INBOX"), "Qua địa chỉ nhóm " + tag) != null, "Thanh vien nhan thu gui bang dia chi nhom");
+        ResponseMessage custom = a1.req(Command.CREATE_GROUP, obj("groupName", "e2e-nhom-tu-chon-" + tag, "address", "E2E-DC-" + tag));
+        check(custom.isOk() && data(custom).get("groupAddress").getAsString().equals("e2e-dc-" + tag + "@group.local"),
+                "Tao nhom voi dia chi tu chon (chuan hoa chu thuong)");
+        ResponseMessage duplicate = a1.req(Command.CREATE_GROUP, obj("groupName", "e2e-nhom-trung-" + tag, "address", "e2e-dc-" + tag));
+        check(!duplicate.isOk() && duplicate.getMessage().contains("đã được dùng"), "Dia chi nhom trung bi tu choi");
+        ResponseMessage collide = a1.req(Command.CREATE_GROUP, obj("groupName", "E2E nhóm " + tag));
+        check(collide.isOk() && data(collide).get("groupAddress").getAsString().equals("e2e-nhom-" + tag + "-2@group.local"),
+                "Ten khac nhung trung dia chi tu sinh -> tu them -2 (bo dau tieng Viet)");
+        check(!a1.req(Command.CREATE_GROUP, obj("groupName", "e2e-nhom-sai-" + tag, "address", "có dấu")).isOk(),
+                "Dia chi nhom co dau / khoang trang bi tu choi");
+        JsonArray groupSuggest = a1.req(Command.SUGGEST_CONTACTS, obj("query", "e2e-dc-" + tag)).getData().getAsJsonArray();
+        check(groupSuggest.size() >= 1 && groupSuggest.get(0).getAsJsonObject().get("groupAddress").getAsString()
+                .equals("e2e-dc-" + tag + "@group.local"), "Goi y nhom theo dia chi, kem dia chi nhom");
+
         System.out.println("== v3: Tiep tuc phien sau khi rot mang (RESUME_SESSION)");
         String token1;
         try (Conn r1 = new Conn()) {
@@ -571,9 +596,13 @@ public class EndToEndCheck {
                     "Goi y nhom minh la thanh vien");
             JsonArray selfSug = a1.req(Command.SUGGEST_CONTACTS, obj("query", a)).getData().getAsJsonArray();
             check(selfSug.size() == 0, "Khong goi y chinh minh");
-            // C chưa từng trao đổi thư với A: gõ đúng email của C cũng không được gợi ý.
+            // Gợi ý mọi tài khoản: C chưa từng trao đổi với A vẫn được gợi ý, nhưng xếp sau người đã trao đổi.
             JsonArray strangerSug = a1.req(Command.SUGGEST_CONTACTS, obj("query", c, "includeGroups", false)).getData().getAsJsonArray();
-            check(strangerSug.size() == 0, "Khong goi y nguoi chua tung trao doi thu (chong do email)");
+            check(strangerSug.size() == 1 && strangerSug.get(0).getAsJsonObject().get("interactions").getAsInt() == 0,
+                    "Goi y ca nguoi chua tung trao doi thu (danh ba chung)");
+            JsonArray mixed = a1.req(Command.SUGGEST_CONTACTS, obj("query", "e2e-", "includeGroups", false)).getData().getAsJsonArray();
+            check(mixed.size() >= 2 && mixed.get(0).getAsJsonObject().get("interactions").getAsInt() > 0,
+                    "Nguoi da trao doi thu xep truoc nguoi chua trao doi");
 
             System.out.println("== Thu nhap");
             a1.events.clear(); a2.events.clear();

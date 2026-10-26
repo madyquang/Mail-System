@@ -145,7 +145,7 @@ không quá phổ biến, không chứa tên email. Mỗi IP đăng ký tối đ
 | `GET_THREAD` | `{threadId}` | `[MailDetail]`: mọi thư của hội thoại mà mình xem được (trừ TRASH), cũ trước mới sau; đánh dấu đã đọc từng thư |
 | `GET_MAIL_DETAIL` | `{mailId, entryId?}` | `MailDetail`; tự đánh dấu **đúng bản `entryId`** là đã đọc (trừ thư trong TRASH) |
 | `SEARCH_MAIL` | `{keyword?, fromFilter?, folderId?}`, cần ít nhất 1 điều kiện; bỏ `folderId` = mọi thư mục | `[MailSummary]` |
-| `SUGGEST_CONTACTS` | `{query, limit?: 1..10, includeGroups?: true}` | `[Contact]`: nhóm mình là thành viên (tối đa 3) rồi tới người khớp email/tên **đã từng trao đổi thư với mình** (nhiều thư xếp trước); không gồm chính mình, không gồm người chưa từng trao đổi |
+| `SUGGEST_CONTACTS` | `{query, limit?: 1..10, includeGroups?: true}` | `[Contact]`: nhóm mình là thành viên (tối đa 3) (khớp tên hoặc địa chỉ nhóm) rồi tới **mọi** người khớp email/tên, người đã trao đổi nhiều thư xếp trước; không gồm chính mình |
 | `MARK_READ` | `{entryIds: [..], read?: true}` (`read: false` = đánh dấu chưa đọc) | `{processed, requested}` |
 | `SET_STARRED` | `{entryIds: [..], starred: true\|false}` | `{processed, requested}` |
 | `DELETE_MAIL` | `{entryId}` hoặc `{entryIds: [..]}` | `{processed, requested}` (chuyển vào TRASH) |
@@ -227,9 +227,17 @@ chung giới hạn 5 tệp / 25 MiB với tệp tải lên.
 
 ### 4.4 Nhóm thư
 
+**Địa chỉ nhóm** có dạng `<ten-nhom>@group.local`, duy nhất. Tự sinh từ tên
+(bỏ dấu tiếng Việt, chữ thường, ký tự khác chữ/số thành `-`; VD "Lớp LTM 2026" →
+`lop-ltm-2026@group.local`); trùng thì Server thêm `-2`, `-3`... Người tạo tự nhập
+địa chỉ (chữ không dấu, số, `.`, `-`, tối đa 60 ký tự) thì địa chỉ trùng bị từ
+chối. Trong `to`/`cc`/`bcc` của `SEND_MAIL`, nhập địa chỉ nhóm **hoặc** tên nhóm
+đều được; chỉ thành viên gửi được, người gửi không nhận lại bản của chính mình.
+Nhóm tạo trước khi có tính năng được Server tự sinh địa chỉ lúc khởi động.
+
 | Command | Payload | `data` khi OK |
 | --- | --- | --- |
-| `CREATE_GROUP` | `{groupName}` | `{groupId}` |
+| `CREATE_GROUP` | `{groupName, address?}`: `address` là phần trước `@group.local` (có thể kèm đuôi); bỏ trống = Server sinh từ tên | `{groupId, groupAddress}` |
 | `GET_MY_GROUPS` | không có | `[MailGroupDTO]` |
 | `ADD_MEMBER` | `{groupId, email}` (chỉ chủ nhóm) | `null` |
 | `REMOVE_MEMBER` | `{groupId, email}` (chỉ chủ nhóm) | `null` |
@@ -304,9 +312,9 @@ ReadReceipt  {email, displayName, readAt}
 ScheduledMail {outboxId, to, subject, sendAt, attachmentCount}
 AccountSettings {shareReadReceipts, totpEnabled}
 Draft        {draftId, to, cc, bcc, subject, body, updatedAt}
-Contact      {kind: PERSON|GROUP, email, displayName, interactions}  hoặc  {kind: GROUP, groupName, memberCount}
+Contact      {kind: PERSON|GROUP, email, displayName, interactions}  hoặc  {kind: GROUP, groupName, groupAddress, memberCount}
 Attachment   {attachmentId, filename, mimeType, sizeBytes, dataBase64?}
-MailGroupDTO {groupId, groupName, ownerEmail, owner: bool, memberEmails: [email]}
+MailGroupDTO {groupId, groupName, groupAddress, ownerEmail, owner: bool, memberEmails: [email]}
 ```
 
 `sentAt` theo định dạng ISO-8601 không múi giờ (`2026-10-08T09:15:00`).

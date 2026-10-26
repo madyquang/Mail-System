@@ -129,6 +129,8 @@ public class MainController implements MailReader.Actions {
     @FXML
     private Button emptyTrashButton;
     @FXML
+    private HBox titleRow;
+    @FXML
     private HBox selectionBar;
     @FXML
     private Label selectionLabel;
@@ -793,7 +795,28 @@ public class MainController implements MailReader.Actions {
         Set<Integer> selected = mailList.getSelectionModel().getSelectedItems().stream()
                 .map(MailSummary::getEntryId).collect(Collectors.toSet());
         suppressSelectionEvents = true;
-        mailList.getItems().setAll(mails);
+        List<MailSummary> current = mailList.getItems();
+        if (sameRows(current, mails)) {
+            // Cùng các dòng (VD vừa đánh dấu đã đọc): chỉ thay dòng thật sự đổi, danh sách đứng yên.
+            for (int i = 0; i < mails.size(); i++) {
+                if (!rowKey(current.get(i)).equals(rowKey(mails.get(i)))) {
+                    current.set(i, mails.get(i));
+                }
+            }
+        } else {
+            // Dòng thay đổi (thư mới, xoá...): giữ thư đang ở đầu khung nhìn ở nguyên chỗ cũ.
+            Integer anchorEntry = firstVisibleEntryId();
+            mailList.getItems().setAll(mails);
+            if (anchorEntry != null) {
+                for (int i = 0; i < mails.size(); i++) {
+                    if (mails.get(i).getEntryId() == anchorEntry) {
+                        mailList.scrollTo(i);
+                        break;
+                    }
+                }
+            }
+        }
+        mailList.getSelectionModel().clearSelection();
         for (int i = 0; i < mails.size(); i++) {
             if (selected.contains(mails.get(i).getEntryId())) {
                 mailList.getSelectionModel().select(i);
@@ -814,6 +837,36 @@ public class MainController implements MailReader.Actions {
         onSelectionChanged();
         updateListCount();
         showEmptyIfNeeded(mails.isEmpty());
+    }
+
+    private static boolean sameRows(List<MailSummary> current, List<MailSummary> next) {
+        if (current.size() != next.size()) {
+            return false;
+        }
+        for (int i = 0; i < next.size(); i++) {
+            if (current.get(i).getEntryId() != next.get(i).getEntryId()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Những gì hiển thị trên một dòng: khác nhau thì mới vẽ lại dòng đó. */
+    private static String rowKey(MailSummary mail) {
+        return mail.isRead() + "|" + mail.isStarred() + "|" + mail.getThreadCount() + "|" + mail.getSubject() + "|"
+                + mail.getSnippet() + "|" + mail.getSentAt() + "|" + mail.getSenderName() + "|" + mail.isHasAttachments()
+                + "|" + mail.getFolderType();
+    }
+
+    private Integer firstVisibleEntryId() {
+        if (mailList.lookup(".virtual-flow") instanceof javafx.scene.control.skin.VirtualFlow<?> flow
+                && flow.getFirstVisibleCell() != null) {
+            int index = flow.getFirstVisibleCell().getIndex();
+            if (index > 0 && index < mailList.getItems().size()) {
+                return mailList.getItems().get(index).getEntryId();
+            }
+        }
+        return null; // đang ở đầu danh sách: cứ để thư mới hiện lên trên cùng
     }
 
     private void updateListCount() {
@@ -853,12 +906,11 @@ public class MainController implements MailReader.Actions {
         listLoading.setVisible(false);
         errorBannerLabel.setText("Không tải được dữ liệu: " + message);
         errorBanner.setVisible(true);
-        errorBanner.setManaged(true);
     }
 
+    // Dải lỗi nổi trên danh sách: chỉ ẩn/hiện, không thêm/bớt khỏi bố cục (tránh đẩy danh sách).
     private void hideError() {
         errorBanner.setVisible(false);
-        errorBanner.setManaged(false);
     }
 
     /** Cập nhật số thư chưa đọc / số thư nháp ở sidebar và tiêu đề cửa sổ. */
@@ -933,8 +985,9 @@ public class MainController implements MailReader.Actions {
         selectAllCheck.setIndeterminate(!selected.isEmpty() && selected.size() < total);
         selectAllCheck.setDisable(total == 0);
         boolean trash = view == View.TRASH;
+        // Thanh thao tác thay chỗ hàng tiêu đề (cùng chiều cao) thay vì chen thêm một hàng.
         selectionBar.setVisible(!selected.isEmpty());
-        selectionBar.setManaged(!selected.isEmpty());
+        titleRow.setVisible(selected.isEmpty());
         selectionLabel.setText("Đã chọn " + selected.size());
         setShown(bulkReadButton, !trash);
         setShown(bulkUnreadButton, !trash);

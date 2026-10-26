@@ -6,6 +6,7 @@ import java.util.List;
 public class MailGroupDTO {
     private int groupId;
     private String groupName;
+    private String groupAddress;    // <ten-nhom>@group.local
     private String ownerEmail;
     private List<String> memberEmails;
     private boolean owner;
@@ -18,6 +19,9 @@ public class MailGroupDTO {
 
     public String getGroupName() { return groupName; }
     public void setGroupName(String groupName) { this.groupName = groupName; }
+
+    public String getGroupAddress() { return groupAddress; }
+    public void setGroupAddress(String groupAddress) { this.groupAddress = groupAddress; }
 
     public String getOwnerEmail() { return ownerEmail; }
     public void setOwnerEmail(String ownerEmail) { this.ownerEmail = ownerEmail; }

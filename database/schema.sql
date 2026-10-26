@@ -100,12 +100,14 @@ CREATE TABLE attachment (
 -- ---------------------------------------------------------
 CREATE TABLE mail_group (
     group_id        INT AUTO_INCREMENT PRIMARY KEY,
-    group_name      VARCHAR(100) NOT NULL,   -- dùng làm "địa chỉ" nhận thư nên phải duy nhất
+    group_name      VARCHAR(100) NOT NULL,   -- gửi bằng tên nhóm vẫn được nên tên phải duy nhất
+    group_address   VARCHAR(150) NULL,       -- <ten-nhom>@group.local, sinh từ tên (Server tự điền nếu trống)
     owner_id        INT NOT NULL,            -- người tạo = chủ nhóm
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (owner_id) REFERENCES account(account_id) ON DELETE CASCADE,
     -- collation utf8mb4_unicode_ci không phân biệt hoa/thường: "Lop A" trùng "lop a"
-    UNIQUE KEY uq_group_name (group_name)
+    UNIQUE KEY uq_group_name (group_name),
+    UNIQUE KEY uq_group_address (group_address)
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------

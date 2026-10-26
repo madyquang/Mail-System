@@ -3,6 +3,7 @@ package com.mailsystem.server.service;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mailsystem.common.model.Account;
+import com.mailsystem.common.protocol.GroupAddresses;
 import com.mailsystem.common.protocol.ProtocolUtil;
 import com.mailsystem.common.protocol.ResponseMessage;
 import com.mailsystem.server.dao.AccountDAO;
@@ -47,7 +48,13 @@ public class GroupService {
             memberCount = action == GroupNotifier.Action.ADDED ? groupDAO.getMemberAccountIds(groupId).size() : 0;
         } catch (SQLException ignored) {
         }
-        notifier.notify(action, groupId, groupName, actorId, targetId, memberCount);
+        String groupAddress = null;
+        try {
+            groupAddress = groupDAO.findGroupAddress(groupId).orElse(null);
+        } catch (SQLException ignored) {
+            // không đọc được địa chỉ: thư thông báo nhắc tên nhóm thay cho địa chỉ
+        }
+        notifier.notify(action, groupId, groupName, groupAddress, actorId, targetId, memberCount);
     }
 
     public ResponseMessage createGroup(String requestId, Integer accountId, JsonElement payload) {
@@ -60,13 +67,33 @@ public class GroupService {
             return ResponseMessage.error(requestId,
                     "Tên nhóm phải có từ 1 đến 100 ký tự, không chứa @ hoặc dấu phẩy.");
         }
+        // Địa chỉ nhóm: người tạo tự nhập (phần trước @group.local) hoặc để trống = sinh từ tên.
+        String requestedAddress = readString(payload, "address").trim();
+        String localPart = null;
+        if (!requestedAddress.isEmpty()) {
+            localPart = GroupAddresses.normalizeLocalPart(requestedAddress);
+            if (localPart == null) {
+                return ResponseMessage.error(requestId, "Địa chỉ nhóm chỉ gồm chữ không dấu, số, dấu chấm hoặc gạch ngang "
+                        + "(tối đa " + GroupAddresses.MAX_LOCAL_PART + " ký tự), VD lop-ltm.");
+            }
+        }
         try {
             if (groupDAO.findGroupIdByName(groupName).isPresent()) {
                 return ResponseMessage.error(requestId, "Tên nhóm đã được sử dụng.");
             }
-            int groupId = groupDAO.createGroupWithOwner(groupName, accountId);
+            String address;
+            if (localPart != null) {
+                address = GroupAddresses.address(localPart);
+                if (groupDAO.findGroupIdByAddress(address).isPresent()) {
+                    return ResponseMessage.error(requestId, "Địa chỉ nhóm " + address + " đã được dùng, hãy chọn địa chỉ khác.");
+                }
+            } else {
+                address = freeAddress(GroupAddresses.slug(groupName));
+            }
+            int groupId = groupDAO.createGroupWithOwner(groupName, address, accountId);
             JsonObject data = new JsonObject();
             data.addProperty("groupId", groupId);
+            data.addProperty("groupAddress", address);
             return ResponseMessage.ok(requestId, data);
         } catch (SQLException error) {
             // Hai client tạo cùng tên gần như đồng thời: cả hai đều qua bước
@@ -77,6 +104,32 @@ public class GroupService {
             logDatabaseError("createGroup", error);
             return ResponseMessage.error(requestId, "Không thể tạo nhóm thư.");
         }
+    }
+
+    /** "lop-ltm" đã có thì thử "lop-ltm-2", "lop-ltm-3"... */
+    private String freeAddress(String baseLocalPart) throws SQLException {
+        String candidate = GroupAddresses.address(baseLocalPart);
+        for (int suffix = 2; groupDAO.findGroupIdByAddress(candidate).isPresent(); suffix++) {
+            String tail = "-" + suffix;
+            String base = baseLocalPart.length() + tail.length() > GroupAddresses.MAX_LOCAL_PART
+                    ? baseLocalPart.substring(0, GroupAddresses.MAX_LOCAL_PART - tail.length()) : baseLocalPart;
+            candidate = GroupAddresses.address(base + tail);
+        }
+        return candidate;
+    }
+
+    /** Lúc Server khởi động: nhóm tạo trước khi có địa chỉ được sinh địa chỉ từ tên. @return số nhóm đã điền */
+    public int backfillGroupAddresses() {
+        int filled = 0;
+        try {
+            for (var group : groupDAO.findGroupsWithoutAddress().entrySet()) {
+                groupDAO.updateGroupAddress(group.getKey(), freeAddress(GroupAddresses.slug(group.getValue())));
+                filled++;
+            }
+        } catch (SQLException error) {
+            logDatabaseError("backfillGroupAddresses", error);
+        }
+        return filled;
     }
 
     public ResponseMessage deleteGroup(String requestId, Integer accountId, JsonElement payload) {

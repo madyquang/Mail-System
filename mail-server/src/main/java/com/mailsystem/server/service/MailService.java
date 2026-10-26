@@ -10,6 +10,7 @@ import com.mailsystem.common.protocol.EventName;
 import com.mailsystem.common.model.MailDetail;
 import com.mailsystem.common.model.MailSummary;
 import com.mailsystem.common.protocol.ProtocolConstants;
+import com.mailsystem.common.protocol.GroupAddresses;
 import com.mailsystem.common.protocol.ProtocolUtil;
 import com.mailsystem.common.protocol.ResponseMessage;
 import com.mailsystem.server.dao.AccountDAO;
@@ -980,7 +981,14 @@ public class MailService {
             if (recipient.isBlank()) {
                 continue;
             }
-            if (recipient.contains("@")) {
+            if (GroupAddresses.isGroupAddress(recipient)) {
+                // Địa chỉ nhóm <ten>@group.local: mở rộng thành các thành viên như gửi bằng tên nhóm.
+                Optional<Integer> groupId = groupDAO.findGroupIdByAddress(recipient.trim());
+                if (groupId.isEmpty()) {
+                    throw new InvalidRecipientException("Nhóm không tồn tại: " + recipient);
+                }
+                addGroupMembers(groupId.get(), recipient, type, recipients, senderId);
+            } else if (recipient.contains("@")) {
                 String email = recipient.toLowerCase(Locale.ROOT);
                 if (!email.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) {
                     throw new InvalidRecipientException("Địa chỉ email không hợp lệ: " + recipient);
@@ -996,23 +1004,29 @@ public class MailService {
                 if (groupId.isEmpty()) {
                     throw new InvalidRecipientException("Người nhận hoặc nhóm không tồn tại: " + recipient);
                 }
-                if (!groupDAO.isMember(groupId.get(), senderId)) {
-                    throw new InvalidRecipientException("Bạn không phải thành viên của nhóm: " + recipient);
-                }
-                // Người gửi là thành viên nhóm nhưng không nhận lại bản thư của chính mình
-                // (thư đã nằm trong Đã gửi), giống cách mailing list thông thường hoạt động.
-                int otherMembers = 0;
-                for (int memberId : groupDAO.getMemberAccountIds(groupId.get())) {
-                    if (memberId == senderId) {
-                        continue;
-                    }
-                    recipients.putIfAbsent(memberId, new Recipient(memberId, type));
-                    otherMembers++;
-                }
-                if (otherMembers == 0) {
-                    throw new InvalidRecipientException("Nhóm " + recipient + " chưa có thành viên nào khác ngoài bạn.");
-                }
+                addGroupMembers(groupId.get(), recipient, type, recipients, senderId);
             }
+        }
+    }
+
+    /** Chỉ thành viên được gửi tới nhóm; người gửi không nhận lại bản thư của chính mình. */
+    private void addGroupMembers(int groupId, String recipient, String type, Map<Integer, Recipient> recipients,
+            int senderId) throws SQLException, InvalidRecipientException {
+        if (!groupDAO.isMember(groupId, senderId)) {
+            throw new InvalidRecipientException("Bạn không phải thành viên của nhóm: " + recipient);
+        }
+        // Người gửi là thành viên nhóm nhưng không nhận lại bản thư của chính mình
+        // (thư đã nằm trong Đã gửi), giống cách mailing list thông thường hoạt động.
+        int otherMembers = 0;
+        for (int memberId : groupDAO.getMemberAccountIds(groupId)) {
+            if (memberId == senderId) {
+                continue;
+            }
+            recipients.putIfAbsent(memberId, new Recipient(memberId, type));
+            otherMembers++;
+        }
+        if (otherMembers == 0) {
+            throw new InvalidRecipientException("Nhóm " + recipient + " chưa có thành viên nào khác ngoài bạn.");
         }
     }
 

@@ -9,6 +9,7 @@ import com.mailsystem.client.ui.Fx;
 import com.mailsystem.client.ui.Icons;
 import com.mailsystem.client.ui.Toast;
 import com.mailsystem.common.model.MailGroupDTO;
+import com.mailsystem.common.protocol.GroupAddresses;
 import javafx.fxml.FXML;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -30,6 +31,17 @@ public class GroupsController {
     private StackPane root;
     @FXML
     private TextField newGroupField;
+    @FXML
+    private TextField newAddressField;
+    @FXML
+    private Label addressHint;
+    @FXML
+    private Label groupAddressLabel;
+    @FXML
+    private Button copyAddressButton;
+    /** Người dùng đã tự sửa địa chỉ: thôi tự điền theo tên nhóm. */
+    private boolean addressEdited;
+    private boolean fillingAddress;
     @FXML
     private ListView<MailGroupDTO> groupList;
     @FXML
@@ -98,8 +110,9 @@ public class GroupsController {
                 }
                 Label name = new Label(group.getGroupName());
                 name.setStyle("-fx-font-weight: bold;");
-                Label meta = new Label((group.isOwner() ? "Bạn là chủ nhóm · " : "")
-                        + (group.getMemberEmails() == null ? 0 : group.getMemberEmails().size()) + " thành viên");
+                Label meta = new Label((group.getGroupAddress() == null ? "" : group.getGroupAddress() + " · ")
+                        + (group.getMemberEmails() == null ? 0 : group.getMemberEmails().size()) + " thành viên"
+                        + (group.isOwner() ? " · chủ nhóm" : ""));
                 meta.getStyleClass().add("hint");
                 HBox row = new HBox(10, Icons.of(group.isOwner() ? Icons.SHIELD : Icons.GROUPS, 20), new VBox(2, name, meta));
                 row.setAlignment(Pos.CENTER_LEFT);
@@ -114,6 +127,23 @@ public class GroupsController {
         detailEmpty.getChildren().setAll(new EmptyState().show(Icons.GROUPS, "Chọn một nhóm",
                 "Thành viên và thao tác của nhóm sẽ hiện ở đây."));
         ContactSuggestions.forSinglePerson(memberEmailField, null);
+        // Gõ tên nhóm thì địa chỉ tự điền (bỏ dấu, chữ thường, "-"), cho tới khi người dùng tự sửa địa chỉ.
+        newGroupField.textProperty().addListener((observable, old, name) -> {
+            if (!addressEdited) {
+                fillingAddress = true;
+                newAddressField.setText(name == null || name.isBlank() ? "" : GroupAddresses.slug(name));
+                fillingAddress = false;
+            }
+        });
+        newAddressField.textProperty().addListener((observable, old, value) -> {
+            if (!fillingAddress) {
+                addressEdited = !value.isBlank();
+            }
+            boolean valid = value.isBlank() || GroupAddresses.normalizeLocalPart(value) != null;
+            addressHint.setText(valid ? "Địa chỉ tự sinh từ tên nhóm, có thể sửa trước khi tạo."
+                    : "Chỉ dùng chữ không dấu, số, dấu chấm hoặc gạch ngang (VD lop-ltm).");
+            addressHint.getStyleClass().setAll("label", valid ? "hint" : "error-text");
+        });
         load(null);
     }
 
@@ -138,6 +168,9 @@ public class GroupsController {
             return;
         }
         groupNameLabel.setText(group.getGroupName());
+        boolean hasAddress = group.getGroupAddress() != null && !group.getGroupAddress().isBlank();
+        groupAddressLabel.setText(hasAddress ? group.getGroupAddress() : "(chưa có địa chỉ)");
+        copyAddressButton.setVisible(hasAddress);
         ownerLabel.setText("Chủ nhóm: " + group.getOwnerEmail());
         List<String> members = group.getMemberEmails() == null ? List.of() : group.getMemberEmails();
         memberList.getItems().setAll(members);
@@ -169,11 +202,31 @@ public class GroupsController {
             Toast.error(root, "Tên nhóm không được chứa @ hoặc dấu phẩy.");
             return;
         }
-        run(api.createGroup(name), groupId -> {
+        String address = newAddressField.getText() == null ? "" : newAddressField.getText().trim();
+        if (!address.isEmpty() && GroupAddresses.normalizeLocalPart(address) == null) {
+            Toast.error(root, "Địa chỉ nhóm chỉ dùng chữ không dấu, số, dấu chấm hoặc gạch ngang.");
+            newAddressField.requestFocus();
+            return;
+        }
+        // Người dùng không tự sửa địa chỉ: gửi rỗng để Server tự chọn địa chỉ còn trống (lop-ltm-2...).
+        run(api.createGroup(name, addressEdited ? address : ""), groupId -> {
             newGroupField.clear();
+            addressEdited = false;
+            newAddressField.clear();
             Toast.success(root, "Đã tạo nhóm \"" + name + "\".");
             load(groupId);
         });
+    }
+
+    @FXML
+    public void handleCopyAddress() {
+        MailGroupDTO group = groupList.getSelectionModel().getSelectedItem();
+        if (group != null && group.getGroupAddress() != null) {
+            javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+            content.putString(group.getGroupAddress());
+            javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
+            Toast.success(root, "Đã sao chép " + group.getGroupAddress());
+        }
     }
 
     @FXML

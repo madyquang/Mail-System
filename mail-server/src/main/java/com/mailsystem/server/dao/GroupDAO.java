@@ -13,7 +13,18 @@ public interface GroupDAO {
 
     int insertGroup(String groupName, int ownerId) throws SQLException;
 
-    int createGroupWithOwner(String groupName, int ownerId) throws SQLException;
+    /** Tao nhom kem dia chi (<ten>@group.local) va them chu nhom lam thanh vien, trong mot giao dich. */
+    int createGroupWithOwner(String groupName, String groupAddress, int ownerId) throws SQLException;
+
+    /** Nhom co dia chi nay (khong phan biet hoa thuong). */
+    Optional<Integer> findGroupIdByAddress(String groupAddress) throws SQLException;
+
+    /** Cac nhom chua co dia chi (nhom tao truoc khi co tinh nang): groupId -> ten nhom. */
+    java.util.Map<Integer, String> findGroupsWithoutAddress() throws SQLException;
+
+    void updateGroupAddress(int groupId, String groupAddress) throws SQLException;
+
+    Optional<String> findGroupAddress(int groupId) throws SQLException;
 
     void insertMember(int groupId, int accountId) throws SQLException;
 

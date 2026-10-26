@@ -42,7 +42,8 @@ final class GroupNotifier {
     }
 
     /** actorId: người thực hiện (chủ nhóm, hoặc thành viên vừa rời); targetId: người được báo. */
-    void notify(Action action, int groupId, String groupName, int actorId, int targetId, int memberCount) {
+    void notify(Action action, int groupId, String groupName, String groupAddress, int actorId, int targetId,
+            int memberCount) {
         try {
             Optional<Account> actor = accountDAO.findById(actorId);
             Optional<Account> target = accountDAO.findById(targetId);
@@ -51,7 +52,7 @@ final class GroupNotifier {
 
             if (action != Action.MEMBER_LEFT) {
                 String subject = subject(action, groupName);
-                String body = body(action, groupName, actorName, actorEmail,
+                String body = body(action, groupName, groupAddress, actorName, actorEmail,
                         target.map(GroupNotifier::name).orElse("bạn"), memberCount);
                 int mailId = deliver(actorId, targetId, subject, body);
                 JsonObject mailEvent = new JsonObject();
@@ -66,6 +67,9 @@ final class GroupNotifier {
             data.addProperty("action", action.name());
             data.addProperty("groupId", groupId);
             data.addProperty("groupName", groupName);
+            if (groupAddress != null) {
+                data.addProperty("groupAddress", groupAddress);
+            }
             data.addProperty("actorEmail", actorEmail);
             data.addProperty("actorName", actorName);
             SessionManager.getInstance().pushEvent(targetId, new EventMessage(EventName.GROUP_UPDATED, data));
@@ -101,15 +105,17 @@ final class GroupNotifier {
         };
     }
 
-    static String body(Action action, String groupName, String actorName, String actorEmail, String targetName,
-            int memberCount) {
+    static String body(Action action, String groupName, String groupAddress, String actorName, String actorEmail,
+            String targetName, int memberCount) {
+        // Gửi tới nhóm bằng địa chỉ (ưu tiên) hoặc tên nhóm.
+        String sendTo = groupAddress == null || groupAddress.isBlank() ? "\"" + groupName + "\"" : groupAddress;
         String who = actorName + (actorEmail.isBlank() || actorName.equals(actorEmail) ? "" : " (" + actorEmail + ")");
         String text = switch (action) {
             case ADDED -> who + " đã thêm bạn vào nhóm thư \"" + groupName + "\""
                     + (memberCount > 0 ? " (hiện có " + memberCount + " thành viên)" : "") + ".\n\n"
                     + "Từ bây giờ:\n"
                     + "  • Thư gửi tới nhóm \"" + groupName + "\" sẽ về Hộp thư đến của bạn.\n"
-                    + "  • Bạn có thể gửi thư cho cả nhóm bằng cách nhập \"" + groupName + "\" vào ô Tới.\n\n"
+                    + "  • Bạn có thể gửi thư cho cả nhóm bằng cách nhập " + sendTo + " vào ô Tới.\n\n"
                     + "Nếu không muốn tham gia, mở Nhóm thư (biểu tượng nhóm trên thanh trên cùng) và chọn Rời nhóm.";
             case REMOVED -> who + " đã xoá bạn khỏi nhóm thư \"" + groupName + "\".\n\n"
                     + "Bạn sẽ không còn nhận thư gửi tới nhóm này và không gửi thư cho nhóm được nữa. "

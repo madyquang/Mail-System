@@ -46,8 +46,9 @@ public final class ContactSuggestions {
 
     public static AutoComplete.Suggestion toSuggestion(Contact contact, Runnable onPick) {
         if (contact.isGroup()) {
+            String address = contact.getGroupAddress() == null ? "" : contact.getGroupAddress() + "  ·  ";
             return new AutoComplete.Suggestion("Nhóm thư", Icons.GROUPS, contact.getGroupName(),
-                    "Nhóm · " + contact.getMemberCount() + " thành viên", onPick);
+                    address + contact.getMemberCount() + " thành viên", onPick);
         }
         String name = contact.getDisplayName() == null || contact.getDisplayName().isBlank()
                 ? contact.getEmail() : contact.getDisplayName();

@@ -34,7 +34,7 @@ class ContactServiceTest {
 
         @Override
         public List<Contact> findGroups(int accountId, String contains, int limit) {
-            return List.of(Contact.group("Lop-LTM", 30));
+            return List.of(Contact.group("Lop-LTM", "lop-ltm@group.local", 30));
         }
     }
 

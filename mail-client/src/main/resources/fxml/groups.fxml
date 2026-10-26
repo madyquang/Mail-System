@@ -19,6 +19,14 @@
                     <graphic><FontIcon iconLiteral="mdi2p-plus" iconSize="16" styleClass="icon" /></graphic>
                 </Button>
             </HBox>
+            <HBox styleClass="address-field" alignment="CENTER_LEFT">
+                <TextField fx:id="newAddressField" promptText="dia-chi-nhom" HBox.hgrow="ALWAYS"
+                           onAction="#handleCreate" styleClass="address-input" />
+                <!-- "\@": trong FXML, giá trị bắt đầu bằng @ là đường dẫn tài nguyên -->
+                <Label text="\@group.local" styleClass="address-suffix" minWidth="-Infinity" />
+            </HBox>
+            <Label fx:id="addressHint" text="Địa chỉ tự sinh từ tên nhóm, có thể sửa trước khi tạo."
+                   styleClass="hint" wrapText="true" />
             <StackPane VBox.vgrow="ALWAYS">
                 <ListView fx:id="groupList" />
                 <StackPane fx:id="groupsEmpty" visible="false" />
@@ -26,10 +34,17 @@
         </VBox>
         <StackPane styleClass="panel" HBox.hgrow="ALWAYS">
             <VBox fx:id="detailBox" spacing="12" visible="false">
-                <HBox alignment="CENTER_LEFT" spacing="10">
+                <HBox alignment="TOP_LEFT" spacing="10">
                     <FontIcon iconLiteral="mdi2a-account-group-outline" iconSize="26" styleClass="icon" />
                     <VBox spacing="2" HBox.hgrow="ALWAYS">
                         <Label fx:id="groupNameLabel" styleClass="title-lg" wrapText="true" />
+                        <HBox alignment="CENTER_LEFT" spacing="4">
+                            <Label fx:id="groupAddressLabel" styleClass="group-address" />
+                            <Button fx:id="copyAddressButton" styleClass="icon-button" onAction="#handleCopyAddress">
+                                <graphic><FontIcon iconLiteral="mdi2c-content-copy" iconSize="16" styleClass="icon" /></graphic>
+                                <tooltip><Tooltip text="Sao chép địa chỉ nhóm" /></tooltip>
+                            </Button>
+                        </HBox>
                         <Label fx:id="ownerLabel" styleClass="text-muted" />
                     </VBox>
                 </HBox>

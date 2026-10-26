@@ -71,11 +71,15 @@
                 <BorderPane.margin><Insets right="16" bottom="16" /></BorderPane.margin>
                 <StackPane styleClass="content-card" minWidth="340">
                     <VBox>
-                        <VBox styleClass="list-toolbar" spacing="8">
-                            <HBox alignment="CENTER_LEFT" spacing="10">
+                        <!-- Hàng tiêu đề và thanh "Đã chọn N" CHỒNG lên nhau trong một hàng cao cố định:
+                             chọn thư chỉ đổi nội dung hàng này, danh sách bên dưới không bị đẩy. -->
+                        <VBox styleClass="list-toolbar">
+                            <HBox alignment="CENTER_LEFT" spacing="10" styleClass="list-header">
                                 <CheckBox fx:id="selectAllCheck" onAction="#handleToggleSelectAll">
                                     <tooltip><Tooltip text="Chọn tất cả (Ctrl+A)" /></tooltip>
                                 </CheckBox>
+                                <StackPane HBox.hgrow="ALWAYS" alignment="CENTER_LEFT">
+                            <HBox fx:id="titleRow" alignment="CENTER_LEFT" spacing="10">
                                 <Label fx:id="listTitle" text="Hộp thư đến" styleClass="list-title" />
                                 <Label fx:id="listCount" styleClass="text-muted" />
                                 <Region HBox.hgrow="ALWAYS" />
@@ -85,7 +89,7 @@
                                 </Button>
                             </HBox>
                             <HBox fx:id="selectionBar" styleClass="selection-bar" alignment="CENTER_LEFT" spacing="2"
-                                  visible="false" managed="false">
+                                  visible="false">
                                 <Label fx:id="selectionLabel" />
                                 <Region HBox.hgrow="ALWAYS" />
                                 <Button fx:id="bulkReadButton" styleClass="icon-button" onAction="#handleBulkRead">
@@ -113,14 +117,9 @@
                                     <tooltip><Tooltip text="Xoá vĩnh viễn (Delete)" /></tooltip>
                                 </Button>
                             </HBox>
+                                </StackPane>
+                            </HBox>
                         </VBox>
-                        <HBox fx:id="errorBanner" styleClass="banner-error" alignment="CENTER_LEFT" spacing="8"
-                              visible="false" managed="false">
-                            <VBox.margin><Insets top="8" right="10" left="10" /></VBox.margin>
-                            <FontIcon iconLiteral="mdi2a-alert-circle-outline" iconSize="18" styleClass="icon" />
-                            <Label fx:id="errorBannerLabel" wrapText="true" HBox.hgrow="ALWAYS" maxWidth="Infinity" />
-                            <Button text="Thử lại" styleClass="text-button" onAction="#handleRefresh" />
-                        </HBox>
                         <StackPane fx:id="listStack" VBox.vgrow="ALWAYS">
                             <ListView fx:id="mailList" styleClass="mail-list" />
                             <ListView fx:id="draftList" styleClass="mail-list" visible="false" />
@@ -128,6 +127,14 @@
                             <StackPane fx:id="listLoading" styleClass="loading-pane" visible="false">
                                 <ProgressIndicator maxWidth="40" maxHeight="40" />
                             </StackPane>
+                            <!-- Dải báo lỗi NỔI trên đầu danh sách (không đẩy danh sách xuống). -->
+                            <HBox fx:id="errorBanner" styleClass="banner-error, floating" alignment="CENTER_LEFT" spacing="8"
+                                  visible="false" maxHeight="-Infinity" StackPane.alignment="TOP_CENTER">
+                                <StackPane.margin><Insets top="8" right="10" left="10" /></StackPane.margin>
+                                <FontIcon iconLiteral="mdi2a-alert-circle-outline" iconSize="18" styleClass="icon" />
+                                <Label fx:id="errorBannerLabel" wrapText="true" HBox.hgrow="ALWAYS" maxWidth="Infinity" />
+                                <Button text="Thử lại" styleClass="text-button" onAction="#handleRefresh" />
+                            </HBox>
                         </StackPane>
                     </VBox>
                 </StackPane>
