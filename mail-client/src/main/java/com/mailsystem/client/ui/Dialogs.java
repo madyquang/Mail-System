@@ -40,6 +40,9 @@ public final class Dialogs {
     /**
      * Chọn thời điểm hẹn gửi: vài lựa chọn nhanh (kiểu Gmail) hoặc tự chọn ngày giờ.
      * Thời gian là giờ máy này; Server chạy cùng múi giờ trong mạng nội bộ.
+     *
+     * Chỉnh ngày / giờ / phút là tự chọn mục "Chọn ngày giờ"; giờ gõ tay được ghi nhận
+     * ngay (không cần Enter). Dòng "Thư sẽ được gửi lúc" luôn cho thấy đúng thời điểm sẽ hẹn.
      */
     public static Optional<java.time.LocalDateTime> pickSendTime(Window owner) {
         java.time.LocalDateTime now = java.time.LocalDateTime.now().withSecond(0).withNano(0);
@@ -47,10 +50,12 @@ public final class Dialogs {
         java.time.LocalDate nextMonday = now.toLocalDate().with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
         javafx.scene.control.ToggleGroup group = new javafx.scene.control.ToggleGroup();
         java.util.Map<javafx.scene.control.RadioButton, java.time.LocalDateTime> presets = new java.util.LinkedHashMap<>();
-        presets.put(new javafx.scene.control.RadioButton("Sau 1 giờ"), now.plusHours(1));
-        presets.put(new javafx.scene.control.RadioButton("Sáng mai, 08:00"), tomorrow.atTime(8, 0));
-        presets.put(new javafx.scene.control.RadioButton("Chiều mai, 13:00"), tomorrow.atTime(13, 0));
-        presets.put(new javafx.scene.control.RadioButton("Sáng thứ Hai, 08:00"), nextMonday.atTime(8, 0));
+        java.util.Map<String, java.time.LocalDateTime> choices = new java.util.LinkedHashMap<>();
+        choices.put("Sau 1 giờ", now.plusHours(1));
+        choices.put("Sáng mai", tomorrow.atTime(8, 0));
+        choices.put("Chiều mai", tomorrow.atTime(13, 0));
+        choices.put("Sáng thứ Hai", nextMonday.atTime(8, 0));
+        choices.forEach((name, time) -> presets.put(new javafx.scene.control.RadioButton(name + "  ·  " + describe(time, now)), time));
         javafx.scene.control.RadioButton custom = new javafx.scene.control.RadioButton("Chọn ngày giờ:");
         VBox options = new VBox(8);
         presets.keySet().forEach(radio -> {
@@ -61,6 +66,20 @@ public final class Dialogs {
         presets.keySet().iterator().next().setSelected(true);
 
         javafx.scene.control.DatePicker date = new javafx.scene.control.DatePicker(tomorrow);
+        // Mặc định theo máy (VD Windows tiếng Anh: 11/5/2026 = tháng/ngày) dễ đọc nhầm: dùng ngày/tháng/năm.
+        java.time.format.DateTimeFormatter dayFormat = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        date.setConverter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(java.time.LocalDate value) {
+                return value == null ? "" : dayFormat.format(value);
+            }
+
+            @Override
+            public java.time.LocalDate fromString(String text) {
+                return text == null || text.isBlank() ? null : java.time.LocalDate.parse(text.trim(), dayFormat);
+            }
+        });
+        date.setPromptText("dd/MM/yyyy");
         date.setDayCellFactory(picker -> new javafx.scene.control.DateCell() {
             @Override
             public void updateItem(java.time.LocalDate item, boolean empty) {
@@ -76,25 +95,53 @@ public final class Dialogs {
         minute.setEditable(true);
         javafx.scene.layout.HBox customRow = new javafx.scene.layout.HBox(8, custom, date, hour, new Label(":"), minute);
         customRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-        for (javafx.scene.Node node : new javafx.scene.Node[] {date, hour, minute}) {
-            node.setOnMouseClicked(event -> custom.setSelected(true));
-        }
         options.getChildren().add(customRow);
+
+        Label summary = new Label();
+        summary.getStyleClass().add("field-label");
         Label error = new Label();
         error.getStyleClass().add("error-text");
-        options.getChildren().add(error);
+        options.getChildren().addAll(new javafx.scene.control.Separator(), summary, error);
 
-        ButtonType ok = new ButtonType("Hẹn giờ gửi", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("Huỷ", ButtonBar.ButtonData.CANCEL_CLOSE);
-        Alert alert = alert(owner, Alert.AlertType.NONE, "Hẹn giờ gửi thư", null, ok, cancel);
-        alert.getDialogPane().setContent(options);
-        alert.getDialogPane().lookupButton(ok).getStyleClass().add("primary-button");
         java.util.function.Supplier<java.time.LocalDateTime> chosen = () -> {
             if (custom.isSelected()) {
                 return date.getValue() == null ? null : date.getValue().atTime(hour.getValue(), minute.getValue());
             }
             return presets.get((javafx.scene.control.RadioButton) group.getSelectedToggle());
         };
+        Runnable refresh = () -> {
+            java.time.LocalDateTime at = chosen.get();
+            summary.setText(at == null ? "Chọn ngày gửi." : "Thư sẽ được gửi lúc: " + describe(at, java.time.LocalDateTime.now()));
+            error.setText("");
+        };
+        // Đụng vào ngày / giờ / phút nghĩa là muốn tự chọn: chuyển sang "Chọn ngày giờ".
+        Runnable pickCustom = () -> {
+            custom.setSelected(true);
+            refresh.run();
+        };
+        date.valueProperty().addListener((obs, old, value) -> pickCustom.run());
+        date.getEditor().textProperty().addListener((obs, old, text) -> {
+            if (date.getEditor().isFocused()) {
+                try {
+                    java.time.LocalDate typed = date.getConverter().fromString(text);
+                    if (typed != null) {
+                        date.setValue(typed);
+                    }
+                } catch (RuntimeException ignored) {
+                    // đang gõ dở, chưa thành ngày hợp lệ
+                }
+            }
+        });
+        commitWhileTyping(hour, 0, 23, pickCustom);
+        commitWhileTyping(minute, 0, 59, pickCustom);
+        group.selectedToggleProperty().addListener((obs, old, value) -> refresh.run());
+        refresh.run();
+
+        ButtonType ok = new ButtonType("Hẹn giờ gửi", ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType("Huỷ", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert alert = alert(owner, Alert.AlertType.NONE, "Hẹn giờ gửi thư", null, ok, cancel);
+        alert.getDialogPane().setContent(options);
+        alert.getDialogPane().lookupButton(ok).getStyleClass().add("primary-button");
         alert.getDialogPane().lookupButton(ok).addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
             java.time.LocalDateTime at = chosen.get();
             if (at == null || at.isBefore(java.time.LocalDateTime.now().plusMinutes(1))) {
@@ -103,6 +150,42 @@ public final class Dialogs {
             }
         });
         return alert.showAndWait().filter(ok::equals).map(button -> chosen.get());
+    }
+
+    /** Ô số giờ / phút: số gõ tay được nhận ngay (Spinner mặc định chỉ nhận khi bấm Enter). */
+    private static void commitWhileTyping(javafx.scene.control.Spinner<Integer> spinner, int min, int max, Runnable onChange) {
+        spinner.valueProperty().addListener((obs, old, value) -> onChange.run());
+        spinner.getEditor().textProperty().addListener((obs, old, text) -> {
+            try {
+                int value = Integer.parseInt(text.trim());
+                if (value >= min && value <= max && value != spinner.getValue()) {
+                    spinner.getValueFactory().setValue(value);
+                }
+            } catch (NumberFormatException ignored) {
+                // ô đang trống / gõ dở
+            }
+        });
+        spinner.getEditor().focusedProperty().addListener((obs, was, focused) -> {
+            if (focused) {
+                onChange.run();
+            } else {
+                spinner.getEditor().setText(String.valueOf(spinner.getValue()));
+            }
+        });
+    }
+
+    /** "18:08 hôm nay", "08:00 ngày mai", "08:00, thứ Hai 09/11/2026". */
+    private static String describe(java.time.LocalDateTime time, java.time.LocalDateTime now) {
+        String clock = String.format("%02d:%02d", time.getHour(), time.getMinute());
+        if (time.toLocalDate().equals(now.toLocalDate())) {
+            return clock + " hôm nay";
+        }
+        if (time.toLocalDate().equals(now.toLocalDate().plusDays(1))) {
+            return clock + " ngày mai";
+        }
+        String[] days = {"thứ Hai", "thứ Ba", "thứ Tư", "thứ Năm", "thứ Sáu", "thứ Bảy", "Chủ nhật"};
+        return clock + ", " + days[time.getDayOfWeek().getValue() - 1] + " "
+                + time.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
     }
 
     /** Hỏi xác nhận; danger = true tô đỏ nút đồng ý (thao tác không hoàn tác). */

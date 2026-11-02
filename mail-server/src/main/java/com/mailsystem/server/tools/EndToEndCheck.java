@@ -341,6 +341,18 @@ public class EndToEndCheck {
                 "sendAt", java.time.LocalDateTime.now().plusDays(1).withNano(0).toString()));
         check(future.isOk() && data(future).get("scheduled").getAsBoolean(), "Hen gio ngay mai");
         a1.req(Command.CANCEL_SCHEDULED, obj("outboxId", data(future).get("outboxId").getAsInt()));
+        int scheduledDraft = data(a1.req(Command.SAVE_DRAFT, obj("to", b, "subject", "Nháp hẹn giờ " + tag, "body", "x")))
+                .get("draftId").getAsInt();
+        ResponseMessage fromDraft = a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Nháp hẹn giờ " + tag, "body", "x",
+                "draftId", scheduledDraft, "sendAt", java.time.LocalDateTime.now().plusDays(1).withNano(0).toString()));
+        boolean draftGone = true;
+        for (JsonElement d : a1.req(Command.GET_DRAFTS, null).getData().getAsJsonArray()) {
+            draftGone &= d.getAsJsonObject().get("draftId").getAsInt() != scheduledDraft;
+        }
+        check(fromDraft.isOk() && draftGone, "Hen gio tu ban nhap -> ban nhap roi khoi Thu nhap ngay (khong nam ca hai noi)");
+        ResponseMessage reopened = a1.req(Command.CANCEL_SCHEDULED, obj("outboxId", data(fromDraft).get("outboxId").getAsInt()));
+        check(reopened.isOk() && !data(reopened).has("draftId") && data(reopened).get("subject").getAsString().equals("Nháp hẹn giờ " + tag),
+                "Huy hen gio tra lai noi dung, khong tro toi ban nhap da xoa");
         byte[] note = "ghi chu dinh kem\n".getBytes(StandardCharsets.UTF_8);
         JsonArray noteAtt = new JsonArray();
         noteAtt.add(obj("uploadId", upload(a1, "ghi-chu.txt", note)));

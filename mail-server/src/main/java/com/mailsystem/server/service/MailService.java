@@ -326,13 +326,13 @@ public class MailService {
             if (inReplyTo != null) {
                 stored.addProperty("inReplyTo", inReplyTo);
             }
-            if (draftId != null) {
-                stored.addProperty("draftId", draftId);
-            }
             try {
                 int outboxId = outboxDAO.insert(accountId, ProtocolUtil.toJson(stored), sendAt, files);
                 SessionManager.getInstance().pushEvent(accountId,
                         new EventMessage(EventName.SCHEDULED_UPDATED, new JsonObject()));
+                // Thư hẹn giờ từ bản nháp: chuyển hẳn sang "Đã lên lịch" ngay bây giờ, không để bản
+                // nháp nằm song song tới lúc gửi. Huỷ hẹn giờ thì nội dung được trả lại để soạn tiếp.
+                deleteDraftQuietly(accountId, draftId);
                 JsonObject data = new JsonObject();
                 data.addProperty("outboxId", outboxId);
                 data.addProperty("sendAt", sendAt.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME));
@@ -365,6 +365,19 @@ public class MailService {
         JsonObject data = new JsonObject();
         data.addProperty("mailId", mailId);
         return ResponseMessage.ok(requestId, data);
+    }
+
+    private void deleteDraftQuietly(int accountId, Integer draftId) {
+        if (draftId == null || draftDAO == null) {
+            return;
+        }
+        try {
+            if (draftDAO.delete(accountId, List.of(draftId)) > 0) {
+                SessionManager.getInstance().pushEvent(accountId, new EventMessage(EventName.DRAFTS_UPDATED, new JsonObject()));
+            }
+        } catch (SQLException error) {
+            System.err.println("[MailService] Khong xoa duoc thu nhap " + draftId + ": " + error.getMessage());
+        }
     }
 
     /** null = gửi ngay; delaySeconds (1..30) = hoàn tác được; sendAt ISO = hẹn giờ. */
@@ -455,16 +468,7 @@ public class MailService {
 
     /** Sau khi commit: xoá nháp đã gửi và đẩy NEW_MAIL tới người nhận + các phiên của người gửi. */
     private void afterDelivery(int senderId, Set<Integer> recipientIds, int mailId, String subject, Integer draftId) {
-        if (draftId != null && draftDAO != null) {
-            try {
-                if (draftDAO.delete(senderId, List.of(draftId)) > 0) {
-                    SessionManager.getInstance().pushEvent(senderId,
-                            new EventMessage(EventName.DRAFTS_UPDATED, new JsonObject()));
-                }
-            } catch (SQLException error) {
-                System.err.println("[MailService] Khong xoa duoc thu nhap " + draftId + ": " + error.getMessage());
-            }
-        }
+        deleteDraftQuietly(senderId, draftId);
         // EVENT kèm người gửi + tiêu đề để Client hiện thông báo desktop mà không cần hỏi lại.
         JsonObject eventData = new JsonObject();
         eventData.addProperty("mailId", mailId);

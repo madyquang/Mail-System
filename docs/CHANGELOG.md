@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Sửa lỗi hẹn giờ gửi từ bản nháp (kể cả sau "Huỷ & sửa"): bản nháp nằm song song ở Thư nháp tới lúc gửi thật;
+  nay bản nháp được xoá ngay khi hẹn giờ, thư chỉ còn ở "Đã lên lịch".
+- Sửa lỗi thời gian hẹn không khớp: chỉnh ngày / giờ không tự chọn "Chọn ngày giờ" nên vẫn hẹn theo mặc định
+  "Sau 1 giờ", và giờ gõ tay chưa được nhận khi chưa bấm Enter. Hộp thoại hiện giờ cụ thể cho mỗi lựa chọn và
+  dòng "Thư sẽ được gửi lúc: ..."; ô ngày dùng dd/MM/yyyy.
 - Nâng yêu cầu Java lên JDK 25 LTS, cập nhật CI và đóng gói; dùng API virtual thread trực tiếp.
 - Màn hình đăng nhập: không kết nối được thì tự mở ô Máy chủ, chọn sẵn địa chỉ đang nhớ để sửa; màn đăng ký chỉ chỗ đổi máy chủ.
 - Thông báo nhóm: người được thêm vào / bị xoá khỏi nhóm, hoặc nhóm bị xoá, nhận thư thông báo trong Hộp thư đến
