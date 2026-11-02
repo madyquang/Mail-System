@@ -94,11 +94,77 @@ máy, bị `.gitignore`) > `server-defaults.properties` (mặc định, được
 | `monitor.enabled` / `monitor.port` / `monitor.token` | `MAIL_MONITOR_*` | `true` / `8090` / ngẫu nhiên | Bảng giám sát HTTP (chỉ 127.0.0.1) |
 | `upload.expiryMinutes` | `MAIL_UPLOAD_EXPIRY_MINUTES` | `30` | Giữ tệp tải lên dở để tải tiếp |
 
-## 4. Chạy qua mạng LAN
+## 4. Kết nối Client từ thiết bị khác
 
-1. Máy Server: cho phép **Inbound TCP 5000** trong Windows Defender Firewall; xem IP bằng `ipconfig` (VD `192.168.1.10`).
-2. Máy khác: `.\scripts\run-client.ps1 -Server 192.168.1.10:5000`, hoặc mở mục **Máy chủ** ở cuối màn hình đăng nhập.
-3. Đối chiếu dấu vân tay chứng chỉ với console của Server ở lần kết nối đầu.
+Server nghe trên **mọi địa chỉ mạng** của máy (không chỉ `localhost`), nên máy khác
+trong cùng mạng kết nối được, chỉ cần biết IP của máy Server và mở tường lửa.
+Máy Client **không cần** MySQL và không cần `config/server.properties`.
+
+```text
+Máy A (Server + MySQL)  192.168.1.10:5000  ◀── TLS 1.3 ──  Máy B (Client)
+                                           ◀── TLS 1.3 ──  Máy C (Client)
+```
+
+### 4.1 Trên máy Server
+
+1. **Chạy Server** như bình thường: `.\scripts\run-server.ps1`. Giữ cửa sổ này mở; dòng
+   `[TLS] Dau van tay ...` in lúc khởi động sẽ dùng ở bước 4.3.
+2. **Xem địa chỉ IP** của máy:
+   ```powershell
+   ipconfig        # tìm "IPv4 Address" của Wi-Fi / Ethernet đang dùng, VD 192.168.1.10
+   ```
+   Bỏ qua các địa chỉ của card ảo (VirtualBox, WSL, Hyper-V, VPN).
+3. **Mở cổng 5000 trên tường lửa** (PowerShell chạy bằng quyền Administrator, làm một lần):
+   ```powershell
+   New-NetFirewallRule -DisplayName "Mail System 5000" -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow -Profile Private
+   ```
+   Mạng Wi-Fi của máy phải là **Private** (Settings → Network & internet → Wi-Fi → Network
+   profile type). Nếu mạng đang là Public thì đổi sang Private, hoặc thêm `,Public` vào
+   `-Profile` (không khuyến khích ở Wi-Fi công cộng).
+
+### 4.2 Trên máy Client
+
+Cài Client theo **một** trong hai cách:
+
+| Cách | Cần gì trên máy Client | Chạy |
+| --- | --- | --- |
+| Từ mã nguồn | JDK 25+, bản sao repo này | `.\scripts\run-client.ps1 -Server 192.168.1.10:5000` |
+| Bản đóng gói | Không cần cài Java | Trên máy có JDK chạy `.\scripts\package.ps1`, chép cả thư mục `dist\MailSystem` sang máy Client, mở `MailSystem.exe` |
+
+Với bản đóng gói (hoặc nếu chạy Client không kèm `-Server`): ở màn hình đăng nhập bấm
+**Máy chủ: localhost:5000** ở cuối thẻ, nhập `192.168.1.10:5000` rồi đăng nhập. Địa chỉ được
+nhớ cho các lần sau.
+
+Kiểm tra trước nếu chưa chắc mạng thông:
+
+```powershell
+Test-NetConnection 192.168.1.10 -Port 5000    # TcpTestSucceeded : True là được
+```
+
+### 4.3 Lần kết nối đầu tiên: xác nhận chứng chỉ
+
+Client hiện hộp thoại **"Kết nối lần đầu tới 192.168.1.10:5000"** kèm dấu vân tay SHA-256.
+So với dòng `[TLS] Dau van tay` trên console của máy Server (hoặc nhờ người chạy Server
+gửi dòng đó qua tin nhắn). Khớp thì bấm **Tin và kết nối**. Client ghi nhớ và các lần sau
+không hỏi lại. Dấu vân tay được ghi theo từng địa chỉ, nên đổi từ `localhost:5000` sang
+`192.168.1.10:5000` sẽ được hỏi một lần nữa.
+
+Chưa có tài khoản thì bấm **Tạo tài khoản** ngay trên máy Client.
+
+### 4.4 Lỗi thường gặp
+
+| Client báo | Nguyên nhân thường gặp | Cách xử lý |
+| --- | --- | --- |
+| `Không kết nối được tới ... (Connection timed out)` | Sai IP, tường lửa chặn, hai máy khác mạng, Wi-Fi bật "cách ly thiết bị" (Wi-Fi khách / quán cà phê) | Kiểm tra lại IP và luật tường lửa ở 4.1; chạy `Test-NetConnection`; dùng chung một Wi-Fi nhà hoặc hotspot điện thoại |
+| `Không kết nối được tới ... (Connection refused)` | Server chưa chạy hoặc sai cổng | Chạy Server, kiểm tra cổng trong dòng `Dang lang nghe tai cong ...` |
+| Cảnh báo đỏ **chứng chỉ đã thay đổi** | Server tạo chứng chỉ mới (xoá `data/tls/`, chạy Server ở thư mục khác), hoặc có máy giả mạo | Chỉ chấp nhận khi dấu vân tay mới khớp với console của Server |
+| `Máy chủ đang quá tải, vui lòng thử lại sau.` | Đã đủ `server.maxClients` kết nối (mặc định 100) | Đợi, hoặc tăng `server.maxClients` |
+| `Thiết bị này chưa được quản trị viên phê duyệt...` | Server đặt `tls.clientAuth=need` | Trên máy Server mở bảng giám sát (dòng `[Monitor]`), phê duyệt dấu vân tay thiết bị mà Client hiện ở **Tài khoản → Kết nối** |
+
+> Bảng giám sát (cổng 8090) chỉ mở được trên chính máy Server, máy khác **không** truy cập
+> được; chỉ cổng 5000 cần mở ra mạng. Để Client kết nối qua Internet (không cùng mạng
+> LAN) thì cần mở cổng trên router (port forwarding) hoặc dùng VPN như Tailscale; khi đó
+> càng phải đối chiếu dấu vân tay cẩn thận.
 
 ## 5. Kiểm thử
 
