@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Sửa chớp tối khi hover: chuyển màu từ "transparent" (đen trong suốt) đi qua xám tối (độ sáng tụt 1,00 → 0,73 → 0,94).
+  Transition chỉ còn giữa hai màu đặc (nút chính / phụ / nguy hiểm, mục thanh bên với nền đặc, thẻ, ô nhập);
+  mục nền trong suốt (nút icon, ngôi sao, dòng gợi ý) đổi màu tức thì; bỏ transition màu icon.
 - Nâng JavaFX 21.0.2 lên 25.0.1 để dùng CSS transition: màu nền / viền / chữ của nút, mục thanh bên, ô nhập, thẻ...
   đổi dần (140 ms) thay vì nhảy. Đổi màn hình, khung đọc thư, mục thanh bên, thanh "Đã chọn N" hiện dần; popup gợi ý
   trượt nhẹ khi mở. Chỉ đổi độ mờ / dịch chuyển vẽ nên không xô bố cục (lớp `Motion`).

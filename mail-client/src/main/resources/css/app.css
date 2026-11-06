@@ -260,7 +260,7 @@
     -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.22), 8, 0.12, 0, 2);
 }
 .nav-item {
-    -fx-background-color: transparent;
+    -fx-background-color: -c-bg;   /* màu đặc của thanh bên (không dùng transparent: chuyển màu sẽ chớp tối) */
     -fx-background-radius: 0 18px 18px 0;
     -fx-border-radius: 0 18px 18px 0;
     -fx-padding: 8px 14px 8px 18px;
@@ -569,15 +569,22 @@
 .group-address { -fx-text-fill: -c-primary; -fx-font-family: "Consolas", "Cascadia Mono", monospace; -fx-font-size: 12.5px; }
 
 /* =====================================================================
-   CHUYỂN ĐỘNG MƯỢT (JavaFX 23+): màu nền / viền / chữ đổi dần thay vì nhảy.
-   Không áp cho ô danh sách thư: ô được dùng lại khi cuộn, chuyển màu sẽ nháy.
+   CHUYỂN ĐỘNG MƯỢT (JavaFX 23+): màu nền / viền đổi dần thay vì nhảy.
+
+   CHỈ chuyển giữa hai MÀU ĐẶC. "transparent" là màu ĐEN trong suốt: chuyển từ nó
+   sang xám nhạt sẽ đi qua xám tối bán trong suốt -> chớp tối khi hover (đo được độ
+   sáng tụt 1.00 -> 0.73 -> 0.94). Vì vậy các mục nền trong suốt (nút icon, ngôi sao,
+   nút chữ, dòng gợi ý) đổi màu tức thì; mục thanh bên được cho nền đặc trùng màu thanh bên.
+   Không áp cho ô danh sách thư (ô được dùng lại khi cuộn) và cho màu icon (icon tạo mới
+   sẽ chớp từ màu mặc định sang màu đúng).
    ===================================================================== */
-.button, .toggle-button, .nav-item, .icon-button, .star-button, .attachment-chip, .file-chip,
-.schedule-option, .schedule-custom, .suggest-row, .address-field, .secure-badge,
-.text-field, .password-field, .text-area, .tab-pane .tab {
-    transition: -fx-background-color 140ms ease-out, -fx-border-color 140ms ease-out, -fx-text-fill 140ms ease-out;
+.primary-button, .secondary-button, .danger-button, .compose-button, .nav-item,
+.schedule-option, .schedule-custom, .attachment-chip, .address-field {
+    transition: -fx-background-color 120ms ease-out, -fx-border-color 120ms ease-out;
 }
-.icon { transition: -fx-icon-color 140ms ease-out; }
+.text-field, .password-field, .text-area { transition: -fx-border-color 120ms ease-out; }
+/* Thẻ "Chọn ngày giờ" nằm trong khung riêng, luôn trong suốt: không cần chuyển màu. */
+.schedule-custom .schedule-option { transition: none; }
 
 /* ---- Hộp thoại hẹn giờ gửi ---- */
 .schedule-pane > .content { -fx-padding: 4px 20px 8px 20px; }
