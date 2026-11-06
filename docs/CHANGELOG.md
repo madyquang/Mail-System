@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Rà soát toàn bộ trước khi hoàn thiện (14 luồng trên giao diện thật, sáng + tối; 58 unit test; e2e). Sửa:
+  - Dải "Mất kết nối... thử kết nối lại" nổi ở giữa phía trên thay vì chèn vào bố cục (trước đây đẩy cả màn hình xuống).
+  - Popup gợi ý tính chiều cao theo nội dung thật (hết khoảng trống thừa ở "Tìm kiếm gần đây").
+  - Danh sách nhóm: chữ dài hiện "…" (kèm tooltip) thay vì bị cắt cụt ngoài khung.
+  - Xác minh 2 bước: đang quét QR thì nút thành "Huỷ thiết lập" (bấm lại không sinh khoá khác).
+  - Bỏ rule CSS `transition: none` không hợp lệ (JavaFX in cảnh báo mỗi lần mở hộp thoại hẹn giờ).
 - Sửa chớp tối khi hover: chuyển màu từ "transparent" (đen trong suốt) đi qua xám tối (độ sáng tụt 1,00 → 0,73 → 0,94).
   Transition chỉ còn giữa hai màu đặc (nút chính / phụ / nguy hiểm, mục thanh bên với nền đặc, thẻ, ô nhập);
   mục nền trong suốt (nút icon, ngôi sao, dòng gợi ý) đổi màu tức thì; bỏ transition màu icon.

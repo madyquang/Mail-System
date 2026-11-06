@@ -500,8 +500,11 @@
 /* ---- v3: kết nối lại, thư mục, hội thoại, xem trước, báo đã đọc ---- */
 .banner-reconnect {
     -fx-background-color: -c-primary-softer;
-    -fx-border-color: transparent transparent -c-primary-soft transparent;
-    -fx-padding: 8px 16px;
+    -fx-background-radius: 20px;
+    -fx-border-color: -c-primary-soft;
+    -fx-border-radius: 20px;
+    -fx-padding: 8px 18px;
+    -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.22), 14, 0.12, 0, 3);
 }
 .banner-reconnect .label { -fx-text-fill: -c-on-primary-soft; }
 .banner-reconnect .icon { -fx-icon-color: -c-primary; }
@@ -579,12 +582,13 @@
    sẽ chớp từ màu mặc định sang màu đúng).
    ===================================================================== */
 .primary-button, .secondary-button, .danger-button, .compose-button, .nav-item,
-.schedule-option, .schedule-custom, .attachment-chip, .address-field {
+.schedule-options > .schedule-option, .schedule-custom, .attachment-chip, .address-field {
     transition: -fx-background-color 120ms ease-out, -fx-border-color 120ms ease-out;
 }
 .text-field, .password-field, .text-area { transition: -fx-border-color 120ms ease-out; }
-/* Thẻ "Chọn ngày giờ" nằm trong khung riêng, luôn trong suốt: không cần chuyển màu. */
-.schedule-custom .schedule-option { transition: none; }
+/* Thẻ "Chọn ngày giờ" nằm trong khung .schedule-custom (luôn trong suốt) nên không thuộc
+   ".schedule-options > .schedule-option" ở trên: không có transition, khỏi cần "transition: none"
+   (JavaFX không nhận giá trị none và in cảnh báo). */
 
 /* ---- Hộp thoại hẹn giờ gửi ---- */
 .schedule-pane > .content { -fx-padding: 4px 20px 8px 20px; }

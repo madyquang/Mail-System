@@ -133,6 +133,8 @@ public class AccountController {
         totpButton.setOnAction(event -> {
             if (totpEnabled) {
                 disableTotp();
+            } else if (totpSetupBox.isVisible()) {
+                showTotpState(false); // đang quét QR mà đổi ý: huỷ, khoá vừa tạo chưa được bật
             } else {
                 startTotpSetup();
             }
@@ -158,6 +160,8 @@ public class AccountController {
         totpButton.setDisable(true);
         Fx.then(api.totpSetup(), setup -> {
             totpButton.setDisable(false);
+            totpButton.setText("Huỷ thiết lập");
+            totpButton.getStyleClass().setAll("button", "secondary-button");
             StackPane qr = new StackPane(new ImageView(qrImage(setup.otpauthUri(), 200)));
             qr.getStyleClass().add("qr-frame");
             qr.setMaxSize(StackPane.USE_PREF_SIZE, StackPane.USE_PREF_SIZE);

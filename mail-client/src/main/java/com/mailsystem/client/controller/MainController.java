@@ -443,24 +443,26 @@ public class MainController implements MailReader.Actions {
 
     private void buildReconnectBanner() {
         reconnectLabel.setWrapText(true);
-        reconnectLabel.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(reconnectLabel, javafx.scene.layout.Priority.ALWAYS);
+        reconnectLabel.setMaxWidth(620);
         javafx.scene.control.ProgressIndicator spin = new javafx.scene.control.ProgressIndicator();
         spin.setMaxSize(16, 16);
         reconnectBanner.getChildren().setAll(Icons.of(Icons.WIFI_OFF, 18), reconnectLabel, spin);
         reconnectBanner.setAlignment(Pos.CENTER_LEFT);
         reconnectBanner.getStyleClass().add("banner-reconnect");
         reconnectBanner.setVisible(false);
-        reconnectBanner.setManaged(false);
-        javafx.scene.layout.BorderPane layout = (javafx.scene.layout.BorderPane) root.getChildren().get(0);
-        javafx.scene.Node appBar = layout.getTop();
-        layout.setTop(new VBox(appBar, reconnectBanner));
+        // Dải NỔI ở giữa phía trên (lớp trên cùng của root): hiện / ẩn không đẩy nội dung bên dưới.
+        reconnectBanner.setMaxSize(javafx.scene.layout.Region.USE_PREF_SIZE, javafx.scene.layout.Region.USE_PREF_SIZE);
+        StackPane.setAlignment(reconnectBanner, Pos.TOP_CENTER);
+        StackPane.setMargin(reconnectBanner, new Insets(66, 16, 0, 16));
+        root.getChildren().add(reconnectBanner);
 
         Reconnector reconnector = Reconnector.get();
         javafx.beans.value.ChangeListener<String> onStatus = (obs, old, text) -> {
             boolean show = text != null;
+            if (show && !reconnectBanner.isVisible()) {
+                Motion.dropIn(reconnectBanner);
+            }
             reconnectBanner.setVisible(show);
-            reconnectBanner.setManaged(show);
             reconnectLabel.setText(text == null ? "" : text);
             connectionLabel.setText(show ? "Đang kết nối lại..." : connectionText());
         };

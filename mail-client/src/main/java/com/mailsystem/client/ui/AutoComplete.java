@@ -164,8 +164,18 @@ public final class AutoComplete {
 
     private void show(List<Suggestion> items) {
         list.getItems().setAll(items);
-        long headers = items.stream().map(Suggestion::section).distinct().filter(s -> s != null && !s.isEmpty()).count();
-        list.setPrefHeight(Math.min(items.size() * 47 + headers * 22 + 8, 380));
+        // Chiều cao theo nội dung thật: dòng chỉ có tiêu đề thấp hơn dòng có thêm mô tả
+        // (tính đều 47 px cho mọi dòng làm "Tìm kiếm gần đây" thừa một khoảng trống ở cuối).
+        double height = 8;
+        String previousSection = null;
+        for (Suggestion item : items) {
+            height += item.subtitle() == null || item.subtitle().isBlank() ? 34 : 50;
+            if (item.section() != null && !item.section().isEmpty() && !item.section().equals(previousSection)) {
+                height += 24;
+            }
+            previousSection = item.section();
+        }
+        list.setPrefHeight(Math.min(height, 380));
         double width = Math.max(field.getWidth(), 340);
         list.setPrefWidth(width);
         if (autoSelectFirst) {

@@ -114,10 +114,22 @@ public class GroupsController {
                         + (group.getMemberEmails() == null ? 0 : group.getMemberEmails().size()) + " thành viên"
                         + (group.isOwner() ? " · chủ nhóm" : ""));
                 meta.getStyleClass().add("hint");
-                HBox row = new HBox(10, Icons.of(group.isOwner() ? Icons.SHIELD : Icons.GROUPS, 20), new VBox(2, name, meta));
+                // Nhãn co theo bề rộng ô (không đẩy ô rộng ra ngoài khung): chữ dài hiện "…", di chuột xem đủ.
+                for (Label label : new Label[] {name, meta}) {
+                    label.setTextOverrun(javafx.scene.control.OverrunStyle.ELLIPSIS);
+                    label.setMinWidth(0);
+                    label.setPrefWidth(1);
+                    label.setMaxWidth(Double.MAX_VALUE);
+                }
+                VBox text = new VBox(2, name, meta);
+                text.setMinWidth(0);
+                HBox.setHgrow(text, javafx.scene.layout.Priority.ALWAYS);
+                HBox row = new HBox(10, Icons.of(group.isOwner() ? Icons.SHIELD : Icons.GROUPS, 20), text);
                 row.setAlignment(Pos.CENTER_LEFT);
                 setText(null);
                 setGraphic(row);
+                setPrefWidth(0);
+                setTooltip(new javafx.scene.control.Tooltip(group.getGroupName() + "\n" + meta.getText()));
             }
         });
         groupList.getSelectionModel().selectedItemProperty().addListener((observable, old, group) -> showGroup(group));
