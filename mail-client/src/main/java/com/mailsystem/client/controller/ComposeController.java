@@ -59,10 +59,17 @@ public class ComposeController {
 
     /**
      * Dữ liệu khởi tạo cửa sổ soạn thư. inReplyTo: mailId của thư đang trả lời
-     * (để Server nối vào cùng hội thoại); files: tệp trên máy (khi hoàn tác gửi).
+     * (để Server nối vào cùng hội thoại); files: tệp trên máy (khi hoàn tác gửi);
+     * scheduledAt: thời điểm đã hẹn trước đó (sửa thư đã lên lịch), null nếu không có.
      */
     public record Request(String title, String to, String cc, String bcc, String subject, String body,
-            Integer draftId, List<Attachment> forwardAttachments, Integer inReplyTo, List<File> files) {
+            Integer draftId, List<Attachment> forwardAttachments, Integer inReplyTo, List<File> files,
+            LocalDateTime scheduledAt) {
+
+        public Request(String title, String to, String cc, String bcc, String subject, String body,
+                Integer draftId, List<Attachment> forwardAttachments, Integer inReplyTo, List<File> files) {
+            this(title, to, cc, bcc, subject, body, draftId, forwardAttachments, inReplyTo, files, null);
+        }
 
         public static Request blank() {
             return new Request("Thư mới", "", "", "", "", "", null, List.of(), null, List.of());
@@ -75,10 +82,17 @@ public class ComposeController {
 
         /** Mở lại thư vừa huỷ gửi (hoàn tác hoặc huỷ hẹn giờ) từ nội dung Server trả lại. */
         public static Request reopened(JsonObject data, List<Attachment> forwarded, List<File> files) {
-            return new Request("Thư chưa gửi", joined(data, "to"), joined(data, "cc"), joined(data, "bcc"),
+            LocalDateTime scheduledAt = null;
+            try {
+                scheduledAt = data.has("sendAt") ? LocalDateTime.parse(data.get("sendAt").getAsString()) : null;
+            } catch (RuntimeException ignored) {
+                // Server cũ không trả sendAt hoặc sai định dạng: hộp thoại dùng mặc định
+            }
+            return new Request(scheduledAt == null ? "Thư chưa gửi" : "Sửa thư đã lên lịch",
+                    joined(data, "to"), joined(data, "cc"), joined(data, "bcc"),
                     text(data, "subject"), text(data, "body"),
                     data.has("draftId") ? data.get("draftId").getAsInt() : null, forwarded,
-                    data.has("inReplyTo") ? data.get("inReplyTo").getAsInt() : null, files);
+                    data.has("inReplyTo") ? data.get("inReplyTo").getAsInt() : null, files, scheduledAt);
         }
 
         private static String joined(JsonObject data, String field) {
@@ -200,6 +214,8 @@ public class ComposeController {
     private final List<Attachment> forwarded = new ArrayList<>();
     private Integer draftId;
     private Integer inReplyTo;
+    /** Thời điểm đã hẹn lần trước (sửa thư đã lên lịch): điền sẵn khi hẹn giờ lại. */
+    private LocalDateTime previousSchedule;
     /** Tài khoản đã mở khung soạn: thư chỉ được gửi / lưu nháp dưới đúng tài khoản này. */
     private Integer ownerAccountId;
     private boolean draftCreatedHere;
@@ -217,6 +233,11 @@ public class ComposeController {
         bodyArea.setText(request.body());
         draftId = request.draftId();
         inReplyTo = request.inReplyTo();
+        previousSchedule = request.scheduledAt();
+        if (previousSchedule != null) {
+            draftStatus.setText("Thư đã hẹn gửi lúc " + Formats.longDate(previousSchedule.toString())
+                    + " · bấm biểu tượng lịch để hẹn lại");
+        }
         forwarded.addAll(request.forwardAttachments());
         files.addAll(request.files());
         installFileDrop();
@@ -279,7 +300,7 @@ public class ComposeController {
     @FXML
     public void handleSchedule() {
         if (!sending) {
-            Dialogs.pickSendTime(window()).ifPresent(this::send);
+            Dialogs.pickSendTime(window(), previousSchedule).ifPresent(this::send);
         }
     }
 

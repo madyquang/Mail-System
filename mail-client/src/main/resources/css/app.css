@@ -486,13 +486,15 @@
     -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.24), 18, 0.12, 0, 4);
 }
 .suggest-list { -fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0; }
-.suggest-list .list-cell { -fx-background-color: transparent; -fx-padding: 6px 14px; -fx-cursor: hand; }
-.suggest-list .list-cell:hover { -fx-background-color: -c-surface-2; }
-.suggest-list .list-cell:selected { -fx-background-color: -c-primary-softer; }
-.suggest-list .list-cell:empty { -fx-background-color: transparent; }
+/* Ô gợi ý trong suốt; chỉ DÒNG gợi ý (không gồm tiêu đề nhóm phía trên) được tô khi rê chuột / chọn. */
+.suggest-list .list-cell, .suggest-list .list-cell:hover, .suggest-list .list-cell:selected,
+.suggest-list .list-cell:empty { -fx-background-color: transparent; -fx-padding: 0 6px; }
+.suggest-row { -fx-padding: 7px 8px; -fx-background-radius: 8px; -fx-cursor: hand; }
+.suggest-row:hover { -fx-background-color: -c-surface-2; }
+.suggest-list .list-cell:selected .suggest-row { -fx-background-color: -c-primary-softer; }
 .suggest-title { -fx-font-size: 13.5px; -fx-text-fill: -c-text; }
 .suggest-subtitle { -fx-font-size: 11.5px; -fx-text-fill: -c-text-3; }
-.suggest-section { -fx-font-size: 10.5px; -fx-font-weight: bold; -fx-text-fill: -c-text-3; -fx-padding: 4px 0 2px 0; }
+.suggest-section { -fx-font-size: 10.5px; -fx-font-weight: bold; -fx-text-fill: -c-text-3; -fx-padding: 8px 8px 2px 8px; }
 .suggest-row .icon { -fx-icon-color: -c-text-2; }
 
 /* ---- v3: kết nối lại, thư mục, hội thoại, xem trước, báo đã đọc ---- */
@@ -565,3 +567,57 @@
 .address-field:focus-within { -fx-border-color: -c-primary; -fx-effect: dropshadow(gaussian, -c-focus-ring, 4, 0.6, 0, 0); }
 .address-suffix { -fx-text-fill: -c-text-3; }
 .group-address { -fx-text-fill: -c-primary; -fx-font-family: "Consolas", "Cascadia Mono", monospace; -fx-font-size: 12.5px; }
+
+/* =====================================================================
+   CHUYỂN ĐỘNG MƯỢT (JavaFX 23+): màu nền / viền / chữ đổi dần thay vì nhảy.
+   Không áp cho ô danh sách thư: ô được dùng lại khi cuộn, chuyển màu sẽ nháy.
+   ===================================================================== */
+.button, .toggle-button, .nav-item, .icon-button, .star-button, .attachment-chip, .file-chip,
+.schedule-option, .schedule-custom, .suggest-row, .address-field, .secure-badge,
+.text-field, .password-field, .text-area, .tab-pane .tab {
+    transition: -fx-background-color 140ms ease-out, -fx-border-color 140ms ease-out, -fx-text-fill 140ms ease-out;
+}
+.icon { transition: -fx-icon-color 140ms ease-out; }
+
+/* ---- Hộp thoại hẹn giờ gửi ---- */
+.schedule-pane > .content { -fx-padding: 4px 20px 8px 20px; }
+.schedule-option {
+    -fx-background-color: -c-surface;
+    -fx-border-color: -c-border;
+    -fx-border-width: 1px;
+    -fx-border-radius: 10px;
+    -fx-background-radius: 10px;
+    -fx-padding: 10px 16px;
+    -fx-cursor: hand;
+}
+.schedule-option:hover { -fx-background-color: -c-surface-2; -fx-border-color: -c-border-strong; }
+.schedule-option:selected { -fx-background-color: -c-primary-softer; -fx-border-color: -c-primary; }
+.schedule-option .icon { -fx-icon-color: -c-text-3; }
+.schedule-option:selected .icon { -fx-icon-color: -c-primary; }
+.schedule-option-title { -fx-font-size: 13.5px; -fx-font-weight: 600; -fx-text-fill: -c-text; }
+.schedule-option:selected .schedule-option-title { -fx-text-fill: -c-primary; }
+.schedule-option-time { -fx-font-size: 12.5px; -fx-text-fill: -c-text-3; }
+/* Khung "Chọn ngày giờ": thẻ + ô ngày giờ nằm chung một khung, khung sáng lên khi được chọn. */
+.schedule-custom {
+    -fx-background-color: -c-surface;
+    -fx-border-color: -c-border;
+    -fx-border-width: 1px;
+    -fx-border-radius: 10px;
+    -fx-background-radius: 10px;
+}
+.schedule-custom:hover { -fx-border-color: -c-border-strong; }
+.schedule-custom:active { -fx-background-color: -c-primary-softer; -fx-border-color: -c-primary; }
+.schedule-custom .schedule-option, .schedule-custom .schedule-option:hover, .schedule-custom .schedule-option:selected {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+.schedule-fields { -fx-padding: 0 16px 14px 48px; }
+.time-spinner .text-field { -fx-alignment: center; -fx-font-size: 14px; -fx-font-weight: 600; }
+.schedule-colon { -fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: -c-text-2; }
+.schedule-summary {
+    -fx-background-color: -c-surface-2;
+    -fx-background-radius: 10px;
+    -fx-padding: 11px 14px;
+}
+.schedule-summary .icon { -fx-icon-color: -c-primary; }
+.schedule-summary-text { -fx-font-weight: 600; -fx-text-fill: -c-text; }

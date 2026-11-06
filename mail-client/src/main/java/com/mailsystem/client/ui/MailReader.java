@@ -72,7 +72,7 @@ public class MailReader extends StackPane {
 
     public void showEmpty() {
         contentChanged();
-        getChildren().setAll(new EmptyState().show(Icons.MAIL, "Chọn một thư để đọc",
+        Motion.swap(this, new EmptyState().show(Icons.MAIL, "Chọn một thư để đọc",
                 "Nội dung thư sẽ hiển thị ở đây. Mẹo: Ctrl/Shift + click để chọn nhiều thư."));
     }
 
@@ -87,7 +87,7 @@ public class MailReader extends StackPane {
             if (token == contentVersion) {
                 ProgressIndicator indicator = new ProgressIndicator();
                 indicator.setMaxSize(36, 36);
-                getChildren().setAll(indicator);
+                Motion.swap(this, indicator);
             }
         });
         delay.play();
@@ -102,12 +102,12 @@ public class MailReader extends StackPane {
 
     public void showError(String message) {
         contentChanged();
-        getChildren().setAll(new EmptyState().show(Icons.ERROR, "Không tải được thư", message));
+        Motion.swap(this, new EmptyState().show(Icons.ERROR, "Không tải được thư", message));
     }
 
     public void showSelection(int count) {
         contentChanged();
-        getChildren().setAll(new EmptyState().show(Icons.SELECT_ALL, "Đã chọn " + count + " thư",
+        Motion.swap(this, new EmptyState().show(Icons.SELECT_ALL, "Đã chọn " + count + " thư",
                 "Dùng thanh thao tác phía trên danh sách để đánh dấu, gắn sao hoặc xoá các thư đã chọn."));
     }
 
@@ -190,7 +190,7 @@ public class MailReader extends StackPane {
             ((VBox) attachmentBox).setPadding(new Insets(0, 24, 18, 24));
             layout.getChildren().add(attachmentBox);
         }
-        getChildren().setAll(layout);
+        Motion.swap(this, layout);
     }
 
     /**
@@ -224,7 +224,7 @@ public class MailReader extends StackPane {
         javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(messages);
         scroll.setFitToWidth(true);
         VBox.setVgrow(scroll, Priority.ALWAYS);
-        getChildren().setAll(new VBox(toolbar, scroll));
+        Motion.swap(this, new VBox(toolbar, scroll));
         // Cuộn tới thư mới nhất sau khi bố cục xong.
         javafx.application.Platform.runLater(() -> scroll.setVvalue(1.0));
     }
@@ -530,7 +530,7 @@ public class MailReader extends StackPane {
 
         VBox content = new VBox(14, tag, subject, to, body, buttons);
         content.setPadding(new Insets(22, 24, 20, 24));
-        getChildren().setAll(content);
+        Motion.swap(this, content);
     }
 
     private static String blankAsDash(String value) {

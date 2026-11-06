@@ -63,6 +63,7 @@ public final class Navigator {
         } else {
             primaryStage.getScene().setRoot(loaded.root());
         }
+        com.mailsystem.client.ui.Motion.fadeIn(loaded.root(), com.mailsystem.client.ui.Motion.NORMAL);
         currentScreen = fxml;
         return loaded.controller();
     }

@@ -11,6 +11,7 @@ import javafx.scene.control.TextArea;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -45,25 +46,42 @@ public final class Dialogs {
      * ngay (không cần Enter). Dòng "Thư sẽ được gửi lúc" luôn cho thấy đúng thời điểm sẽ hẹn.
      */
     public static Optional<java.time.LocalDateTime> pickSendTime(Window owner) {
+        return pickSendTime(owner, null);
+    }
+
+    /** initial: thời điểm đã hẹn trước đó (sửa thư đã lên lịch) để điền sẵn; null = mặc định "Sau 1 giờ". */
+    public static Optional<java.time.LocalDateTime> pickSendTime(Window owner, java.time.LocalDateTime initial) {
         java.time.LocalDateTime now = java.time.LocalDateTime.now().withSecond(0).withNano(0);
         java.time.LocalDate tomorrow = now.toLocalDate().plusDays(1);
         java.time.LocalDate nextMonday = now.toLocalDate().with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
+
+        // Mỗi lựa chọn là một thẻ (ToggleButton): icon + tên + giờ cụ thể căn phải.
         javafx.scene.control.ToggleGroup group = new javafx.scene.control.ToggleGroup();
-        java.util.Map<javafx.scene.control.RadioButton, java.time.LocalDateTime> presets = new java.util.LinkedHashMap<>();
-        java.util.Map<String, java.time.LocalDateTime> choices = new java.util.LinkedHashMap<>();
-        choices.put("Sau 1 giờ", now.plusHours(1));
-        choices.put("Sáng mai", tomorrow.atTime(8, 0));
-        choices.put("Chiều mai", tomorrow.atTime(13, 0));
-        choices.put("Sáng thứ Hai", nextMonday.atTime(8, 0));
-        choices.forEach((name, time) -> presets.put(new javafx.scene.control.RadioButton(name + "  ·  " + describe(time, now)), time));
-        javafx.scene.control.RadioButton custom = new javafx.scene.control.RadioButton("Chọn ngày giờ:");
-        VBox options = new VBox(8);
-        presets.keySet().forEach(radio -> {
-            radio.setToggleGroup(group);
-            options.getChildren().add(radio);
-        });
+        java.util.Map<javafx.scene.control.Toggle, java.time.LocalDateTime> presets = new java.util.LinkedHashMap<>();
+        VBox options = new VBox(6);
+        options.getStyleClass().add("schedule-options");
+        Object[][] choices = {
+            {Icons.CLOCK, "Sau 1 giờ", now.plusHours(1)},
+            {Icons.SUNRISE, "Sáng mai", tomorrow.atTime(8, 0)},
+            {Icons.SUNNY, "Chiều mai", tomorrow.atTime(13, 0)},
+            {Icons.CALENDAR_WEEK, "Sáng thứ Hai", nextMonday.atTime(8, 0)},
+        };
+        for (Object[] choice : choices) {
+            java.time.LocalDateTime time = (java.time.LocalDateTime) choice[2];
+            javafx.scene.control.ToggleButton option = scheduleOption((String) choice[0], (String) choice[1], describe(time, now));
+            option.setToggleGroup(group);
+            presets.put(option, time);
+            options.getChildren().add(option);
+        }
+        javafx.scene.control.ToggleButton custom = scheduleOption(Icons.CALENDAR_EDIT, "Chọn ngày giờ", "");
         custom.setToggleGroup(group);
-        presets.keySet().iterator().next().setSelected(true);
+        // Bấm lại thẻ đang chọn không được bỏ chọn (luôn có đúng một lựa chọn).
+        group.selectedToggleProperty().addListener((obs, old, value) -> {
+            if (value == null && old != null) {
+                old.setSelected(true);
+            }
+        });
+        group.getToggles().get(0).setSelected(true);
 
         javafx.scene.control.DatePicker date = new javafx.scene.control.DatePicker(tomorrow);
         // Mặc định theo máy (VD Windows tiếng Anh: 11/5/2026 = tháng/ngày) dễ đọc nhầm: dùng ngày/tháng/năm.
@@ -80,6 +98,7 @@ public final class Dialogs {
             }
         });
         date.setPromptText("dd/MM/yyyy");
+        date.setPrefWidth(150);
         date.setDayCellFactory(picker -> new javafx.scene.control.DateCell() {
             @Override
             public void updateItem(java.time.LocalDate item, boolean empty) {
@@ -89,37 +108,93 @@ public final class Dialogs {
         });
         javafx.scene.control.Spinner<Integer> hour = new javafx.scene.control.Spinner<>(0, 23, 8);
         javafx.scene.control.Spinner<Integer> minute = new javafx.scene.control.Spinner<>(0, 59, 0, 5);
-        hour.setPrefWidth(76);
-        minute.setPrefWidth(76);
-        hour.setEditable(true);
-        minute.setEditable(true);
-        javafx.scene.layout.HBox customRow = new javafx.scene.layout.HBox(8, custom, date, hour, new Label(":"), minute);
-        customRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-        options.getChildren().add(customRow);
+        for (javafx.scene.control.Spinner<Integer> spinner : List.of(hour, minute)) {
+            spinner.setPrefWidth(84);
+            spinner.setEditable(true);
+            spinner.getStyleClass().add("time-spinner");
+            // Luôn hiện 2 chữ số: 09:05 thay vì 9:5.
+            spinner.getValueFactory().setConverter(new javafx.util.StringConverter<>() {
+                @Override
+                public String toString(Integer value) {
+                    return value == null ? "" : String.format("%02d", value);
+                }
 
+                @Override
+                public Integer fromString(String text) {
+                    try {
+                        return Integer.valueOf(text.trim());
+                    } catch (RuntimeException error) {
+                        return spinner.getValue();
+                    }
+                }
+            });
+            spinner.getEditor().setText(String.format("%02d", spinner.getValue()));
+        }
+        Label colon = new Label(":");
+        colon.getStyleClass().add("schedule-colon");
+        Label dateLabel = new Label("Ngày");
+        dateLabel.getStyleClass().add("hint");
+        Label timeLabel = new Label("Giờ (24h)");
+        timeLabel.getStyleClass().add("hint");
+        javafx.scene.layout.HBox timeRow = new javafx.scene.layout.HBox(6, hour, colon, minute);
+        timeRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        javafx.scene.layout.GridPane fields = new javafx.scene.layout.GridPane();
+        fields.getStyleClass().add("schedule-fields");
+        fields.setHgap(12);
+        fields.setVgap(4);
+        fields.add(dateLabel, 0, 0);
+        fields.add(timeLabel, 1, 0);
+        fields.add(date, 0, 1);
+        fields.add(timeRow, 1, 1);
+        VBox customPanel = new VBox(custom, fields);
+        customPanel.getStyleClass().add("schedule-custom");
+        options.getChildren().add(customPanel);
+
+        // Dải tóm tắt: luôn cho biết chính xác thời điểm sẽ hẹn.
         Label summary = new Label();
-        summary.getStyleClass().add("field-label");
+        summary.getStyleClass().add("schedule-summary-text");
+        summary.setWrapText(true);
+        javafx.scene.layout.HBox summaryBox = new javafx.scene.layout.HBox(10, Icons.of(Icons.SENT, 18), summary);
+        summaryBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        summaryBox.getStyleClass().add("schedule-summary");
         Label error = new Label();
         error.getStyleClass().add("error-text");
-        options.getChildren().addAll(new javafx.scene.control.Separator(), summary, error);
+        error.setWrapText(true);
+        Label subtitle = new Label("Thư được giữ ở mục Đã lên lịch và tự gửi đúng giờ, kể cả khi bạn tắt ứng dụng.");
+        subtitle.getStyleClass().add("hint");
+        subtitle.setWrapText(true);
+        VBox content = new VBox(14, subtitle, options, summaryBox, error);
+        content.getStyleClass().add("schedule-dialog");
+        content.setPrefWidth(460);
 
         java.util.function.Supplier<java.time.LocalDateTime> chosen = () -> {
             if (custom.isSelected()) {
                 return date.getValue() == null ? null : date.getValue().atTime(hour.getValue(), minute.getValue());
             }
-            return presets.get((javafx.scene.control.RadioButton) group.getSelectedToggle());
+            return presets.get(group.getSelectedToggle());
         };
         Runnable refresh = () -> {
             java.time.LocalDateTime at = chosen.get();
             summary.setText(at == null ? "Chọn ngày gửi." : "Thư sẽ được gửi lúc: " + describe(at, java.time.LocalDateTime.now()));
+            customPanel.pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("active"), custom.isSelected());
             error.setText("");
         };
-        // Đụng vào ngày / giờ / phút nghĩa là muốn tự chọn: chuyển sang "Chọn ngày giờ".
+        // Đụng vào ô ngày / giờ / phút (focus, gõ, mở lịch, bấm vào khung) là chọn "Chọn ngày giờ".
         Runnable pickCustom = () -> {
             custom.setSelected(true);
             refresh.run();
         };
         date.valueProperty().addListener((obs, old, value) -> pickCustom.run());
+        date.showingProperty().addListener((obs, was, showing) -> {
+            if (showing) {
+                pickCustom.run();
+            }
+        });
+        date.getEditor().focusedProperty().addListener((obs, was, focused) -> {
+            if (focused) {
+                pickCustom.run();
+            }
+        });
         date.getEditor().textProperty().addListener((obs, old, text) -> {
             if (date.getEditor().isFocused()) {
                 try {
@@ -134,14 +209,24 @@ public final class Dialogs {
         });
         commitWhileTyping(hour, 0, 23, pickCustom);
         commitWhileTyping(minute, 0, 59, pickCustom);
+        fields.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, event -> pickCustom.run());
         group.selectedToggleProperty().addListener((obs, old, value) -> refresh.run());
+        if (initial != null) {
+            // Sửa thư đã lên lịch: điền sẵn đúng ngày giờ đã hẹn.
+            date.setValue(initial.toLocalDate());
+            hour.getValueFactory().setValue(initial.getHour());
+            minute.getValueFactory().setValue(initial.getMinute());
+            custom.setSelected(true);
+        }
         refresh.run();
 
         ButtonType ok = new ButtonType("Hẹn giờ gửi", ButtonBar.ButtonData.OK_DONE);
         ButtonType cancel = new ButtonType("Huỷ", ButtonBar.ButtonData.CANCEL_CLOSE);
         Alert alert = alert(owner, Alert.AlertType.NONE, "Hẹn giờ gửi thư", null, ok, cancel);
-        alert.getDialogPane().setContent(options);
+        alert.getDialogPane().setContent(content);
+        alert.getDialogPane().getStyleClass().add("schedule-pane");
         alert.getDialogPane().lookupButton(ok).getStyleClass().add("primary-button");
+        alert.getDialogPane().lookupButton(cancel).getStyleClass().add("secondary-button");
         alert.getDialogPane().lookupButton(ok).addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
             java.time.LocalDateTime at = chosen.get();
             if (at == null || at.isBefore(java.time.LocalDateTime.now().plusMinutes(1))) {
@@ -150,6 +235,24 @@ public final class Dialogs {
             }
         });
         return alert.showAndWait().filter(ok::equals).map(button -> chosen.get());
+    }
+
+    /** Một thẻ lựa chọn trong hộp thoại hẹn giờ: icon + tên + mô tả thời gian (căn phải). */
+    private static javafx.scene.control.ToggleButton scheduleOption(String icon, String name, String when) {
+        Label title = new Label(name);
+        title.getStyleClass().add("schedule-option-title");
+        Label time = new Label(when);
+        time.getStyleClass().add("schedule-option-time");
+        javafx.scene.layout.Region spacer = new javafx.scene.layout.Region();
+        javafx.scene.layout.HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
+        javafx.scene.layout.HBox row = new javafx.scene.layout.HBox(12, Icons.of(icon, 20), title, spacer, time);
+        row.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        javafx.scene.control.ToggleButton option = new javafx.scene.control.ToggleButton();
+        option.setGraphic(row);
+        option.getStyleClass().setAll("schedule-option");
+        option.setMaxWidth(Double.MAX_VALUE);
+        row.prefWidthProperty().bind(option.widthProperty().subtract(32));
+        return option;
     }
 
     /** Ô số giờ / phút: số gõ tay được nhận ngay (Spinner mặc định chỉ nhận khi bấm Enter). */
@@ -169,7 +272,7 @@ public final class Dialogs {
             if (focused) {
                 onChange.run();
             } else {
-                spinner.getEditor().setText(String.valueOf(spinner.getValue()));
+                spinner.getEditor().setText(spinner.getValueFactory().getConverter().toString(spinner.getValue()));
             }
         });
     }

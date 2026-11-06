@@ -525,6 +525,8 @@ public class MailService {
         SessionManager.getInstance().pushEvent(accountId, new EventMessage(EventName.SCHEDULED_UPDATED, new JsonObject()));
         JsonObject data = ProtocolUtil.fromJson(entry.get().payload(), JsonObject.class);
         data.addProperty("attachmentCount", entry.get().files().size());
+        // Thời điểm đã hẹn: Client điền sẵn khi người dùng hẹn giờ lại sau khi sửa.
+        data.addProperty("sendAt", entry.get().sendAt().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         return ResponseMessage.ok(requestId, data);
     }
 

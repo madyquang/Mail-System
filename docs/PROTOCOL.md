@@ -264,7 +264,7 @@ nháp và người gửi nhận EVENT `SCHEDULED_FAILED`.
 | Command | Payload | `data` khi OK |
 | --- | --- | --- |
 | `GET_SCHEDULED` | không có | `[ScheduledMail]`, sớm nhất trước |
-| `CANCEL_SCHEDULED` | `{outboxId}` | `{to, cc, bcc, subject, body, inReplyTo?, draftId?, attachmentCount}`: nội dung để mở lại khung soạn thư. Lỗi nếu thư đã được gửi |
+| `CANCEL_SCHEDULED` | `{outboxId}` | `{to, cc, bcc, subject, body, inReplyTo?, attachmentCount, sendAt}` (`sendAt`: thời điểm đã hẹn, để Client điền sẵn khi hẹn lại): nội dung để mở lại khung soạn thư. Lỗi nếu thư đã được gửi |
 | `UPLOAD_STATUS` | `{uploadId}` | `{uploadId, receivedBytes, complete}`: để tải lên **tiếp** sau khi rớt mạng |
 
 Phiên tải lên dở thuộc về **tài khoản** (không phải kết nối) và được giữ

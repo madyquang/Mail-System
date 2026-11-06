@@ -182,6 +182,7 @@ public final class AutoComplete {
             popup.setY(bounds.getMaxY() + 4);
         } else {
             popup.show(field, bounds.getMinX(), bounds.getMaxY() + 4);
+            Motion.dropIn(popup.getContent().get(0));
         }
     }
 
@@ -271,6 +272,10 @@ public final class AutoComplete {
             if (firstOfSection) {
                 Label header = new Label(item.section().toUpperCase());
                 header.getStyleClass().add("suggest-section");
+                header.setMaxWidth(Double.MAX_VALUE);
+                // Tiêu đề nhóm chỉ để đọc: bấm vào không chọn / dùng gợi ý nằm dưới nó.
+                header.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, javafx.event.Event::consume);
+                header.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_CLICKED, javafx.event.Event::consume);
                 setGraphic(new VBox(2, header, row));
             } else {
                 setGraphic(row);

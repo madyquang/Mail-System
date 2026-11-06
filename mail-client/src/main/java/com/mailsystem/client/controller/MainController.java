@@ -18,6 +18,7 @@ import com.mailsystem.client.ui.Fx;
 import com.mailsystem.client.ui.Icons;
 import com.mailsystem.client.ui.MailCell;
 import com.mailsystem.client.ui.MailReader;
+import com.mailsystem.client.ui.Motion;
 import com.mailsystem.client.ui.NavButton;
 import com.mailsystem.client.ui.ScheduledCell;
 import com.mailsystem.client.ui.Toast;
@@ -711,6 +712,7 @@ public class MainController implements MailReader.Actions {
         currentDetail = null;
         reader.showEmpty();
         updateWindowTitle();
+        Motion.fadeIn(listStack);
         loadList(true);
     }
 
@@ -986,8 +988,12 @@ public class MainController implements MailReader.Actions {
         selectAllCheck.setDisable(total == 0);
         boolean trash = view == View.TRASH;
         // Thanh thao tác thay chỗ hàng tiêu đề (cùng chiều cao) thay vì chen thêm một hàng.
-        selectionBar.setVisible(!selected.isEmpty());
-        titleRow.setVisible(selected.isEmpty());
+        boolean showBar = !selected.isEmpty();
+        if (showBar != selectionBar.isVisible()) {
+            Motion.fadeIn(showBar ? selectionBar : titleRow);
+        }
+        selectionBar.setVisible(showBar);
+        titleRow.setVisible(!showBar);
         selectionLabel.setText("Đã chọn " + selected.size());
         setShown(bulkReadButton, !trash);
         setShown(bulkUnreadButton, !trash);

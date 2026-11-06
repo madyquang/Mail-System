@@ -73,6 +73,10 @@ public final class Icons {
     public static final String QR = "mdi2q-qrcode";
     public static final String WIFI_OFF = "mdi2w-wifi-off";
     public static final String PREVIEW = "mdi2e-eye-outline";
+    public static final String SUNRISE = "mdi2w-weather-sunset-up";
+    public static final String SUNNY = "mdi2w-weather-sunny";
+    public static final String CALENDAR_WEEK = "mdi2c-calendar-week";
+    public static final String CALENDAR_EDIT = "mdi2c-calendar-edit";
 
     private Icons() {
     }

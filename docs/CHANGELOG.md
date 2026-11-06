@@ -2,11 +2,20 @@
 
 ## [Unreleased]
 
+- Nâng JavaFX 21.0.2 lên 25.0.1 để dùng CSS transition: màu nền / viền / chữ của nút, mục thanh bên, ô nhập, thẻ...
+  đổi dần (140 ms) thay vì nhảy. Đổi màn hình, khung đọc thư, mục thanh bên, thanh "Đã chọn N" hiện dần; popup gợi ý
+  trượt nhẹ khi mở. Chỉ đổi độ mờ / dịch chuyển vẽ nên không xô bố cục (lớp `Motion`).
+- Gợi ý "Tìm kiếm gần đây": rê chuột vào dòng đầu không còn tô cả tiêu đề nhóm; bấm vào tiêu đề nhóm không chọn nhầm.
+- Hộp thoại hẹn giờ thiết kế lại: mỗi lựa chọn là một thẻ có icon và giờ cụ thể, khung "Chọn ngày giờ" gom ô ngày và
+  ô giờ (luôn 2 chữ số), dải "Thư sẽ được gửi lúc ...". Focus vào ô ngày / giờ / phút hoặc mở lịch là tự chọn
+  "Chọn ngày giờ".
 - Sửa lỗi hẹn giờ gửi từ bản nháp (kể cả sau "Huỷ & sửa"): bản nháp nằm song song ở Thư nháp tới lúc gửi thật;
   nay bản nháp được xoá ngay khi hẹn giờ, thư chỉ còn ở "Đã lên lịch".
 - Sửa lỗi thời gian hẹn không khớp: chỉnh ngày / giờ không tự chọn "Chọn ngày giờ" nên vẫn hẹn theo mặc định
   "Sau 1 giờ", và giờ gõ tay chưa được nhận khi chưa bấm Enter. Hộp thoại hiện giờ cụ thể cho mỗi lựa chọn và
   dòng "Thư sẽ được gửi lúc: ..."; ô ngày dùng dd/MM/yyyy.
+- "Huỷ & sửa" thư đã lên lịch: khung soạn ghi "Thư đã hẹn gửi lúc ..." và hộp thoại hẹn giờ điền sẵn đúng ngày giờ
+  đã hẹn lần trước (CANCEL_SCHEDULED trả thêm `sendAt`) thay vì mặc định "Sau 1 giờ".
 - Nâng yêu cầu Java lên JDK 25 LTS, cập nhật CI và đóng gói; dùng API virtual thread trực tiếp.
 - Màn hình đăng nhập: không kết nối được thì tự mở ô Máy chủ, chọn sẵn địa chỉ đang nhớ để sửa; màn đăng ký chỉ chỗ đổi máy chủ.
 - Thông báo nhóm: người được thêm vào / bị xoá khỏi nhóm, hoặc nhóm bị xoá, nhận thư thông báo trong Hộp thư đến
