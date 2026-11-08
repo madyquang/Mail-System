@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Cửa sổ soạn thư. Các thẻ import khai báo lớp được dùng bên dưới. -->
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
+<!-- Gốc: StackPane (để đặt vùng thả tệp đè lên trên); controller là ComposeController. -->
 <StackPane fx:id="root" styleClass="compose-root" xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.mailsystem.client.controller.ComposeController">
+    <!-- Bố cục 3 vùng: trên, giữa, dưới. -->
     <BorderPane>
         <top>
+            <!-- Thanh trên: icon bút, tiêu đề cửa sổ, khoảng trống, trạng thái lưu nháp. -->
             <HBox styleClass="compose-header" alignment="CENTER_LEFT" spacing="8">
                 <FontIcon iconLiteral="mdi2p-pencil-outline" iconSize="18" styleClass="icon" />
                 <Label fx:id="titleLabel" text="Thư mới" styleClass="title-md" />
@@ -16,51 +20,64 @@
             </HBox>
         </top>
         <center>
+            <!-- Phần giữa: các ô người nhận, tiêu đề, nội dung, các thẻ tệp. -->
             <VBox spacing="0">
                 <padding><Insets top="4" right="20" bottom="8" left="20" /></padding>
+                <!-- Hàng Tới: nhãn, ô (giãn), liên kết mở Cc / Bcc. -->
                 <HBox alignment="CENTER_LEFT" spacing="6">
                     <Label text="Tới" styleClass="recipient-label" />
                     <TextField fx:id="toField" styleClass="flat-field" HBox.hgrow="ALWAYS"
                                promptText="Email hoặc tên nhóm, phân cách bằng dấu phẩy" />
                     <Hyperlink fx:id="ccToggle" text="Cc / Bcc" onAction="#handleToggleCc" />
                 </HBox>
+                <!-- Hàng Cc (ẩn mặc định). -->
                 <HBox fx:id="ccRow" alignment="CENTER_LEFT" spacing="6" visible="false" managed="false">
                     <Label text="Cc" styleClass="recipient-label" />
                     <TextField fx:id="ccField" styleClass="flat-field" HBox.hgrow="ALWAYS"
                                promptText="Người nhận bản sao (mọi người đều thấy)" />
                 </HBox>
+                <!-- Hàng Bcc (ẩn mặc định). -->
                 <HBox fx:id="bccRow" alignment="CENTER_LEFT" spacing="6" visible="false" managed="false">
                     <Label text="Bcc" styleClass="recipient-label" />
                     <TextField fx:id="bccField" styleClass="flat-field" HBox.hgrow="ALWAYS"
                                promptText="Người nhận bản sao ẩn (người khác không thấy)" />
                 </HBox>
+                <!-- Ô tiêu đề và ô nội dung (giãn theo chiều dọc, tự xuống dòng). -->
                 <TextField fx:id="subjectField" styleClass="flat-field" promptText="Tiêu đề" />
                 <TextArea fx:id="bodyArea" styleClass="flat-area" wrapText="true" VBox.vgrow="ALWAYS"
                           promptText="Soạn nội dung thư..." />
+                <!-- Các thẻ tệp đính kèm xếp tràn dòng, cách trên 6px. -->
                 <FlowPane fx:id="attachmentPane" hgap="8" vgap="8">
                     <VBox.margin><Insets top="6" /></VBox.margin>
                 </FlowPane>
             </VBox>
         </center>
         <bottom>
+            <!-- Thanh dưới: Gửi, Hẹn giờ, Đính kèm, tiến độ tải lên, lỗi, Lưu nháp, Bỏ thư. -->
             <HBox styleClass="compose-footer" alignment="CENTER_LEFT" spacing="8">
+                <!-- Nút Gửi (Ctrl+Enter). -->
                 <Button fx:id="sendButton" text="Gửi" onAction="#handleSend" styleClass="primary-button" minWidth="96">
                     <graphic><FontIcon iconLiteral="mdi2s-send-outline" iconSize="18" styleClass="icon" /></graphic>
                     <tooltip><Tooltip text="Gửi thư (Ctrl+Enter)" /></tooltip>
                 </Button>
+                <!-- Nút Hẹn giờ gửi. -->
                 <Button fx:id="scheduleButton" styleClass="icon-button" onAction="#handleSchedule">
                     <graphic><FontIcon iconLiteral="mdi2c-calendar-clock" iconSize="20" styleClass="icon" /></graphic>
                     <tooltip><Tooltip text="Hẹn giờ gửi" /></tooltip>
                 </Button>
+                <!-- Nút Đính kèm tệp. -->
                 <Button fx:id="attachButton" styleClass="icon-button" onAction="#handleAttach">
                     <graphic><FontIcon iconLiteral="mdi2p-paperclip" iconSize="20" styleClass="icon" /></graphic>
                     <tooltip><Tooltip text="Đính kèm tệp (tối đa 5 tệp, 25 MB) · hoặc kéo thả tệp vào cửa sổ" /></tooltip>
                 </Button>
+                <!-- Thanh tiến độ tải tệp lên (ẩn tới khi gửi). -->
                 <HBox fx:id="progressBox" alignment="CENTER_LEFT" spacing="8" visible="false" managed="false">
                     <ProgressBar fx:id="uploadProgress" prefWidth="160" />
                     <Label fx:id="progressLabel" styleClass="hint" />
                 </HBox>
+                <!-- Nhãn lỗi (giãn hết chỗ trống). -->
                 <Label fx:id="errorLabel" styleClass="error-text" wrapText="true" HBox.hgrow="ALWAYS" maxWidth="Infinity" />
+                <!-- Nút Lưu nháp (Ctrl+S) và nút Bỏ thư. -->
                 <Button fx:id="saveDraftButton" styleClass="icon-button" onAction="#handleSaveDraft">
                     <graphic><FontIcon iconLiteral="mdi2c-content-save-outline" iconSize="20" styleClass="icon" /></graphic>
                     <tooltip><Tooltip text="Lưu nháp (Ctrl+S)" /></tooltip>

@@ -1,7 +1,10 @@
+// Gói "network": kết nối mạng tới Server.
 package com.mailsystem.client.network;
 
+// Phiên bản TLS cho phép (dùng chung với Server).
 import com.mailsystem.common.protocol.ProtocolConstants;
 
+// Vào/ra, địa chỉ mạng, mật mã, Predicate, các lớp TLS.
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.security.GeneralSecurityException;
@@ -24,11 +27,13 @@ public class TlsConnector implements Connector {
 
     private static final int HANDSHAKE_TIMEOUT_MILLIS = 120_000; // gồm thời gian người dùng đọc hộp thoại xác nhận
 
+    // Danh sách máy chủ đã tin; cách tạo chứng chỉ thiết bị; chứng chỉ đã tạo; hàm hỏi người dùng.
     private final KnownServers knownServers;
     private final java.util.function.Supplier<DeviceIdentity> device;
     private volatile DeviceIdentity loadedDevice;
     private volatile Predicate<ServerIdentity> decider;
 
+    /** Không dùng chứng chỉ thiết bị. */
     public TlsConnector(KnownServers knownServers) {
         this(knownServers, DeviceIdentity::none);
     }
@@ -41,6 +46,7 @@ public class TlsConnector implements Connector {
 
     /** Chứng chỉ thiết bị (tải/tạo lần đầu gọi). */
     public DeviceIdentity device() {
+        // Kiểu khởi tạo trễ an toàn đa luồng (double-checked locking).
         DeviceIdentity current = loadedDevice;
         if (current == null) {
             synchronized (this) {
@@ -58,32 +64,40 @@ public class TlsConnector implements Connector {
         this.decider = decider;
     }
 
+    /** @return danh sách máy chủ đã tin */
     public KnownServers knownServers() {
         return knownServers;
     }
 
     @Override
     public Connected connect(String host, int port, int timeoutMillis) throws IOException {
+        // TrustManager kiểm tra chứng chỉ Server theo TOFU cho đúng host:port này.
         TofuTrustManager trustManager = new TofuTrustManager(host, port, knownServers, decider);
         SSLSocket socket;
         try {
+            // Cấu hình TLS 1.3.
             SSLContext context = SSLContext.getInstance("TLSv1.3");
             // KeyManager: chứng chỉ thiết bị gửi khi Server yêu cầu (mutual TLS);
             // TrustManager: kiểm tra chứng chỉ Server theo TOFU.
             context.init(device().keyManagers(), new TrustManager[] {trustManager}, new SecureRandom());
+            // Tạo socket TLS chưa kết nối.
             socket = (SSLSocket) context.getSocketFactory().createSocket();
         } catch (GeneralSecurityException error) {
             throw new IOException("Không khởi tạo được TLS: " + error.getMessage(), error);
         }
         try {
+            // Kết nối TCP có giới hạn thời gian; chỉ bật TLS 1.3.
             socket.connect(new InetSocketAddress(host, port), timeoutMillis);
             socket.setEnabledProtocols(ProtocolConstants.TLS_PROTOCOLS);
+            // Bắt tay TLS (có thể chờ người dùng xác nhận chứng chỉ).
             socket.setSoTimeout(HANDSHAKE_TIMEOUT_MILLIS);
             socket.startHandshake();
             socket.setSoTimeout(0); // sau bắt tay: chờ frame vô hạn, heartbeat lo phát hiện kết nối chết
+            // Trả socket kèm thông tin bảo mật (phiên bản, bộ mã hoá, dấu vân tay).
             return new Connected(socket, new SecurityInfo(socket.getSession().getProtocol(),
                     socket.getSession().getCipherSuite(), trustManager.acceptedFingerprint()));
         } catch (IOException error) {
+            // Lỗi: đóng socket rồi đổi lỗi thành câu dễ hiểu.
             try {
                 socket.close();
             } catch (IOException ignored) {
@@ -94,11 +108,13 @@ public class TlsConnector implements Connector {
 
     /** Đổi lỗi TLS kỹ thuật thành thông báo người dùng hiểu được. */
     private static IOException translate(IOException error) {
+        // Lỗi do người dùng từ chối chứng chỉ: dùng nguyên câu báo.
         for (Throwable cause = error; cause != null; cause = cause.getCause()) {
             if (cause instanceof TofuTrustManager.UntrustedServerException untrusted) {
                 return new ConnectionLostException(untrusted.getMessage());
             }
         }
+        // Lỗi TLS khác.
         if (error instanceof SSLHandshakeException || error instanceof SSLException) {
             return new ConnectionLostException("Bắt tay TLS thất bại (máy chủ không hỗ trợ TLS 1.3 hoặc không phải "
                     + "Mail System): " + error.getMessage());

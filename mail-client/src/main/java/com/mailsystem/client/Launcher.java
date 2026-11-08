@@ -1,3 +1,4 @@
+// Gói gốc của Client.
 package com.mailsystem.client;
 
 /**
@@ -7,9 +8,11 @@ package com.mailsystem.client;
  */
 public final class Launcher {
 
+    // Constructor private: chỉ dùng hàm main.
     private Launcher() {
     }
 
+    /** Điểm vào chương trình: chuyển tiếp sang MailClientApp.main. */
     public static void main(String[] args) {
         MailClientApp.main(args);
     }

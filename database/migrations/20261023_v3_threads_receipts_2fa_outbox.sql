@@ -3,10 +3,13 @@
 -- Chạy lại nhiều lần vẫn an toàn.
 USE mail_system;
 
+-- Thủ tục phụ: thêm cột nếu bảng chưa có cột đó (xoá bản cũ trước nếu còn).
 DROP PROCEDURE IF EXISTS add_column_if_missing;
+-- Đổi ký tự kết thúc câu lệnh thành // để thân thủ tục chứa được dấu chấm phẩy.
 DELIMITER //
 CREATE PROCEDURE add_column_if_missing(IN p_table VARCHAR(64), IN p_column VARCHAR(64), IN p_definition TEXT)
 BEGIN
+    -- Cột chưa tồn tại thì ghép câu ALTER TABLE ... ADD COLUMN rồi chạy động.
     IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = p_table AND COLUMN_NAME = p_column) THEN
         SET @ddl = CONCAT('ALTER TABLE ', p_table, ' ADD COLUMN ', p_column, ' ', p_definition);
@@ -15,6 +18,7 @@ BEGIN
         DEALLOCATE PREPARE statement;
     END IF;
 END //
+-- Trả ký tự kết thúc về dấu chấm phẩy như mặc định.
 DELIMITER ;
 
 -- 1. Hội thoại: thư trả lời trỏ về thư gốc; thread_id = mail_id của thư đầu luồng.
@@ -30,9 +34,11 @@ CALL add_column_if_missing('account', 'totp_secret', 'VARCHAR(64) NULL');
 CALL add_column_if_missing('account', 'totp_enabled', 'BOOLEAN NOT NULL DEFAULT FALSE');
 CALL add_column_if_missing('account', 'totp_last_step', 'BIGINT NULL');
 
+-- Xong việc thêm cột: xoá thủ tục phụ.
 DROP PROCEDURE add_column_if_missing;
 
 -- 4. Khoá đăng nhập lưu bền: khởi động lại Server không xoá bộ đếm.
+-- Tạo các bảng mới nếu chưa có (cùng định nghĩa với schema.sql).
 CREATE TABLE IF NOT EXISTS login_attempt (
     attempt_key     VARCHAR(200) PRIMARY KEY,     -- "email:<email>" hoặc "ip:<địa chỉ>"
     failures        INT NOT NULL DEFAULT 0,
@@ -55,7 +61,7 @@ CREATE TABLE IF NOT EXISTS trusted_device (
 CREATE TABLE IF NOT EXISTS outbox (
     outbox_id       INT AUTO_INCREMENT PRIMARY KEY,
     account_id      INT NOT NULL,
-    payload         MEDIUMTEXT NOT NULL,          -- JSON: to/cc/bcc/subject/body/forwardAttachmentIds/inReplyTo
+    payload         MEDIUMTEXT NOT NULL,          -- JSON: to/cc/bcc (mảng), subject, body, inReplyTo (nếu có)
     send_at         DATETIME NOT NULL,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (account_id) REFERENCES account(account_id) ON DELETE CASCADE,

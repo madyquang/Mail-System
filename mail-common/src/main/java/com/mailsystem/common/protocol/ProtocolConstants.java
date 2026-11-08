@@ -1,5 +1,7 @@
+// Gói "protocol": các lớp mô tả định dạng tin nhắn giữa Client và Server.
 package com.mailsystem.common.protocol;
 
+// Set: tập hợp không trùng phần tử (danh sách đuôi tệp cho phép).
 import java.util.Set;
 
 /**
@@ -24,8 +26,11 @@ public final class ProtocolConstants {
      */
     public static final int CHUNK_SIZE_BYTES = 512 * 1024;
 
+    // Tối đa 5 tệp đính kèm mỗi thư.
     public static final int MAX_ATTACHMENTS_PER_MAIL = 5;
+    // Tổng dung lượng tệp đính kèm mỗi thư tối đa 25 MB (chữ L: kiểu long để không tràn số).
     public static final long MAX_ATTACHMENT_TOTAL_BYTES = 25L * 1024 * 1024;
+    // Các đuôi tệp được phép đính kèm (Server còn kiểm tra chữ ký nội dung tệp).
     public static final Set<String> ALLOWED_ATTACHMENT_EXTENSIONS = Set.of(
             "pdf", "docx", "pptx", "txt", "jpg", "png", "zip");
 
@@ -37,10 +42,12 @@ public final class ProtocolConstants {
 
     /** SEND_MAIL {delaySeconds} tối đa (giây) và giới hạn hẹn giờ. Client chính thức gửi ngay, không trễ. */
     public static final int MAX_UNDO_SECONDS = 30;
+    // Chỉ được hẹn giờ gửi trong vòng 365 ngày tới.
     public static final int MAX_SCHEDULE_DAYS = 365;
 
     /** Số thư mục tự tạo tối đa mỗi tài khoản, độ dài tên. */
     public static final int MAX_CUSTOM_FOLDERS = 50;
+    // Tên thư mục tối đa 100 ký tự (khớp cột folder_name VARCHAR(100)).
     public static final int MAX_FOLDER_NAME_CHARS = 100;
 
     /** Số thư tối đa trong một thao tác hàng loạt ({entryIds: [...]}). */
@@ -48,13 +55,17 @@ public final class ProtocolConstants {
 
     /** Độ dài tối đa của nội dung thư (cột MEDIUMTEXT). */
     public static final int MAX_BODY_CHARS = 100_000;
+    // Tiêu đề tối đa 255 ký tự (khớp cột subject VARCHAR(255)).
     public static final int MAX_SUBJECT_CHARS = 255;
+    // Tên hiển thị tối đa 100 ký tự (khớp cột display_name VARCHAR(100)).
     public static final int MAX_DISPLAY_NAME_CHARS = 100;
 
     /** Chính sách mật khẩu: tối thiểu 8 ký tự, có chữ và số; tối đa 128 để chặn DoS băm. */
     public static final int MIN_PASSWORD_LENGTH = 8;
+    // Mật khẩu quá dài làm PBKDF2 tốn CPU, nên giới hạn 128 ký tự.
     public static final int MAX_PASSWORD_LENGTH = 128;
 
+    // Constructor private: lớp chỉ chứa hằng số.
     private ProtocolConstants() {
     }
 }

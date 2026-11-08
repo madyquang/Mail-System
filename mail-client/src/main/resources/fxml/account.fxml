@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Cửa sổ Tài khoản và bảo mật. Các thẻ import khai báo lớp được dùng bên dưới. -->
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
@@ -6,17 +7,22 @@
 <?import com.mailsystem.client.ui.PasswordField2?>
 <?import com.mailsystem.client.ui.PasswordStrength?>
 
+<!-- Gốc: nền cửa sổ phụ; controller là AccountController. -->
 <StackPane fx:id="root" styleClass="dialog-root" xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.mailsystem.client.controller.AccountController">
+    <!-- Cột dọc, lề 16px. -->
     <VBox spacing="12">
         <padding><Insets top="16" right="16" bottom="16" left="16" /></padding>
+        <!-- Thanh trên: controller chèn ảnh đại diện vào đầu; tên và email. -->
         <HBox fx:id="headerBox" styleClass="panel" alignment="CENTER_LEFT" spacing="14">
             <VBox spacing="2">
                 <Label fx:id="nameLabel" styleClass="title-lg" />
                 <Label fx:id="emailLabel" styleClass="text-muted" />
             </VBox>
         </HBox>
+        <!-- Ba tab, không cho đóng; giãn hết chiều cao còn lại. -->
         <TabPane tabClosingPolicy="UNAVAILABLE" VBox.vgrow="ALWAYS">
+            <!-- Tab Hồ sơ: sửa tên hiển thị (Enter hoặc nút Lưu). -->
             <Tab text="Hồ sơ">
                 <graphic><FontIcon iconLiteral="mdi2a-account-circle-outline" iconSize="16" styleClass="icon" /></graphic>
                 <VBox styleClass="panel" spacing="10">
@@ -26,10 +32,12 @@
                     <HBox><Button text="Lưu thay đổi" onAction="#handleSaveProfile" styleClass="primary-button" /></HBox>
                 </VBox>
             </Tab>
+            <!-- Tab Bảo mật: securityBox chứa các panel; controller chèn panel 2FA ở vị trí 1, Quyền riêng tư ở vị trí 2. -->
             <Tab text="Bảo mật">
                 <graphic><FontIcon iconLiteral="mdi2s-shield-check-outline" iconSize="16" styleClass="icon" /></graphic>
                 <ScrollPane fitToWidth="true">
                     <VBox fx:id="securityBox" spacing="14">
+                        <!-- Panel Đổi mật khẩu: mật khẩu hiện tại, mới (kèm thanh độ mạnh), nhập lại, nút. -->
                         <VBox styleClass="panel" spacing="10">
                             <Label text="Đổi mật khẩu" styleClass="title-md" />
                             <Label text="Mật khẩu hiện tại" styleClass="field-label" />
@@ -44,6 +52,7 @@
                             <HBox><Button fx:id="changePasswordButton" text="Đổi mật khẩu" onAction="#handleChangePassword"
                                           styleClass="primary-button" /></HBox>
                         </VBox>
+                        <!-- Panel Phiên đăng nhập: nút Đăng xuất khỏi mọi thiết bị. -->
                         <VBox styleClass="panel" spacing="10">
                             <Label text="Phiên đăng nhập" styleClass="title-md" />
                             <Label text="Nếu bạn đăng nhập trên máy lạ hoặc nghi bị lộ mật khẩu, hãy đăng xuất khỏi mọi thiết bị rồi đổi mật khẩu."
@@ -55,13 +64,16 @@
                     </VBox>
                 </ScrollPane>
             </Tab>
+            <!-- Tab Kết nối: thông tin kênh TLS. -->
             <Tab text="Kết nối">
                 <graphic><FontIcon iconLiteral="mdi2s-server-network" iconSize="16" styleClass="icon" /></graphic>
                 <VBox styleClass="panel" spacing="10">
+                    <!-- Huy hiệu trạng thái mã hoá. -->
                     <HBox fx:id="secureBadge" styleClass="secure-badge" alignment="CENTER_LEFT" spacing="6" maxWidth="-Infinity">
                         <FontIcon iconLiteral="mdi2l-lock-outline" iconSize="14" styleClass="icon" />
                         <Label fx:id="secureLabel" />
                     </HBox>
+                    <!-- Lưới khoá / giá trị: máy chủ, giao thức, bộ mã hoá, dấu vân tay máy chủ, dấu vân tay thiết bị. -->
                     <GridPane hgap="12" vgap="10">
                         <Label text="Máy chủ" styleClass="kv-key" GridPane.rowIndex="0" GridPane.columnIndex="0" />
                         <Label fx:id="serverValue" styleClass="kv-value" GridPane.rowIndex="0" GridPane.columnIndex="1" />
@@ -76,6 +88,7 @@
                         <TextArea fx:id="deviceValue" styleClass="fingerprint" editable="false" wrapText="true"
                                   prefRowCount="3" GridPane.rowIndex="4" GridPane.columnIndex="1" />
                     </GridPane>
+                    <!-- Giải thích về chứng chỉ thiết bị và mô hình TOFU. -->
                     <Label text="Chứng chỉ thiết bị (mutual TLS) được tạo riêng cho máy này và gửi cho máy chủ khi bắt tay TLS. Nếu quản trị viên bật chế độ chỉ cho thiết bị đã duyệt, hãy gửi dấu vân tay trên để được phê duyệt."
                            styleClass="hint" wrapText="true" />
                     <Label text="Ứng dụng ghi nhớ dấu vân tay của máy chủ (mô hình TOFU). Nếu chứng chỉ máy chủ thay đổi bất thường, bạn sẽ được cảnh báo trước khi gửi mật khẩu."

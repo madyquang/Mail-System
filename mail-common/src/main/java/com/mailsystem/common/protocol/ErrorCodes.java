@@ -1,6 +1,12 @@
+// Gói "protocol": các lớp mô tả định dạng tin nhắn giữa Client và Server.
 package com.mailsystem.common.protocol;
 
-/** Mã lỗi trong ResponseMessage.code (bên cạnh câu thông báo tiếng Việt). */
+/**
+ * Mã lỗi trong ResponseMessage.code (bên cạnh câu thông báo tiếng Việt).
+ * Câu thông báo (message) để hiện cho người dùng; mã lỗi (code) để chương trình
+ * Client nhận biết và phản ứng tự động (vd hiện ô nhập mã 2FA, quay về màn đăng nhập).
+ * Lớp chỉ chứa hằng số nên khai báo final và constructor private (không tạo đối tượng).
+ */
 public final class ErrorCodes {
 
     /** Tài khoản bật xác thực 2 lớp: gửi lại LOGIN kèm totpCode. */
@@ -12,6 +18,7 @@ public final class ErrorCodes {
     /** Gửi quá nhanh. */
     public static final String RATE_LIMITED = "RATE_LIMITED";
 
+    // Constructor private: không cho tạo đối tượng ErrorCodes (chỉ dùng các hằng số tĩnh).
     private ErrorCodes() {
     }
 }

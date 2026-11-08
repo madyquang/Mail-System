@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Màn hình chính. Các thẻ import khai báo lớp được dùng bên dưới. -->
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
@@ -6,21 +7,27 @@
 
 <!-- Bố cục 3 cột kiểu Gmail: sidebar | danh sách thư | khung đọc thư.
      StackPane gốc để Toast nổi lên trên mọi thứ. -->
+<!-- Gốc; controller là MainController. -->
 <StackPane fx:id="root" xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.mailsystem.client.controller.MainController">
+    <!-- Bố cục: thanh trên (top), thanh bên (left), nội dung (center). -->
     <BorderPane>
         <top>
+            <!-- Thanh trên cùng. -->
             <HBox styleClass="app-bar" alignment="CENTER_LEFT" spacing="8">
+                <!-- Nút menu: ẩn / hiện thanh bên. -->
                 <Button fx:id="menuButton" styleClass="icon-button" onAction="#handleToggleSidebar">
                     <graphic><FontIcon iconLiteral="mdi2m-menu" iconSize="22" styleClass="icon" /></graphic>
                     <tooltip><Tooltip text="Thu gọn / mở rộng thanh bên" /></tooltip>
                 </Button>
+                <!-- Logo nhỏ 32x32 + tên ứng dụng. -->
                 <HBox alignment="CENTER_LEFT" spacing="8" minWidth="150">
                     <StackPane styleClass="brand-logo" style="-fx-min-width: 32; -fx-min-height: 32; -fx-max-width: 32; -fx-max-height: 32; -fx-background-radius: 9;">
                         <FontIcon iconLiteral="mdi2e-email-outline" iconSize="18" styleClass="icon" />
                     </StackPane>
                     <Label text="Mail System" styleClass="title-md" />
                 </HBox>
+                <!-- Ô tìm kiếm: icon kính lúp, ô từ khoá (giãn), ô lọc người gửi, nút xoá tìm kiếm (ẩn khi không tìm). -->
                 <HBox styleClass="search-box" alignment="CENTER_LEFT" spacing="4" HBox.hgrow="ALWAYS" maxWidth="720">
                     <FontIcon iconLiteral="mdi2m-magnify" iconSize="20" styleClass="icon" />
                     <TextField fx:id="searchField" promptText="Tìm thư  (Ctrl+F)"
@@ -33,33 +40,42 @@
                         <tooltip><Tooltip text="Xoá tìm kiếm (Esc)" /></tooltip>
                     </Button>
                 </HBox>
+                <!-- Khoảng trống co giãn. -->
                 <Region HBox.hgrow="SOMETIMES" minWidth="8" />
+                <!-- Nhãn trạng thái kết nối (controller đặt chữ và chú thích). -->
                 <HBox fx:id="connectionChip" styleClass="connection-chip" alignment="CENTER_LEFT" spacing="6">
                     <FontIcon iconLiteral="mdi2l-lock-outline" iconSize="14" styleClass="icon" />
                     <Label fx:id="connectionLabel" text="Đã kết nối an toàn" />
                 </HBox>
+                <!-- Nút Làm mới (F5). -->
                 <Button styleClass="icon-button" onAction="#handleRefresh">
                     <graphic><FontIcon iconLiteral="mdi2r-refresh" iconSize="20" styleClass="icon" /></graphic>
                     <tooltip><Tooltip text="Làm mới (F5)" /></tooltip>
                 </Button>
+                <!-- Nút mở cửa sổ Nhóm thư. -->
                 <Button styleClass="icon-button" onAction="#handleOpenGroups">
                     <graphic><FontIcon iconLiteral="mdi2a-account-group-outline" iconSize="20" styleClass="icon" /></graphic>
                     <tooltip><Tooltip text="Nhóm thư" /></tooltip>
                 </Button>
+                <!-- Nút hồ sơ: controller đặt ảnh đại diện và các mục menu. -->
                 <MenuButton fx:id="profileMenu" styleClass="profile-menu">
                     <tooltip><Tooltip fx:id="profileTooltip" /></tooltip>
                 </MenuButton>
             </HBox>
         </top>
         <left>
+            <!-- Thanh bên: rộng 250px. -->
             <VBox fx:id="sidebar" styleClass="sidebar" spacing="4" prefWidth="250" minWidth="250">
+                <!-- Nút Soạn thư (Ctrl+N). -->
                 <Button fx:id="composeButton" text="Soạn thư" onAction="#handleCompose" styleClass="compose-button">
                     <graphic><FontIcon iconLiteral="mdi2p-pencil-outline" iconSize="22" styleClass="icon" /></graphic>
                     <tooltip><Tooltip text="Soạn thư mới (Ctrl+N)" /></tooltip>
                     <VBox.margin><Insets left="8" bottom="12" top="4" /></VBox.margin>
                 </Button>
+                <!-- Các mục cố định (Hộp thư đến, Có gắn sao, ...) do controller thêm vào navBox. -->
                 <VBox fx:id="navBox" spacing="1" />
                 <!-- Mục "Thư mục" (thư mục tự tạo) được thêm bằng code ngay sau navBox. -->
+                <!-- Khoảng trống đẩy dòng chân xuống đáy; dòng chân hiện email đang đăng nhập. -->
                 <Region VBox.vgrow="ALWAYS" />
                 <Label fx:id="footerLabel" styleClass="hint" wrapText="true">
                     <VBox.margin><Insets left="18" /></VBox.margin>
@@ -67,18 +83,24 @@
             </VBox>
         </left>
         <center>
+            <!-- Nội dung: hai cột chia được, vạch chia ở 44% bề ngang. -->
             <SplitPane fx:id="splitPane" dividerPositions="0.44">
                 <BorderPane.margin><Insets right="16" bottom="16" /></BorderPane.margin>
+                <!-- Cột danh sách (rộng tối thiểu 340px). -->
                 <StackPane styleClass="content-card" minWidth="340">
                     <VBox>
                         <!-- Hàng tiêu đề và thanh "Đã chọn N" CHỒNG lên nhau trong một hàng cao cố định:
                              chọn thư chỉ đổi nội dung hàng này, danh sách bên dưới không bị đẩy. -->
+                        <!-- Thanh trên danh sách. -->
                         <VBox styleClass="list-toolbar">
                             <HBox alignment="CENTER_LEFT" spacing="10" styleClass="list-header">
+                                <!-- Ô chọn tất cả. -->
                                 <CheckBox fx:id="selectAllCheck" onAction="#handleToggleSelectAll">
                                     <tooltip><Tooltip text="Chọn tất cả (Ctrl+A)" /></tooltip>
                                 </CheckBox>
+                                <!-- Ngăn chồng: hàng tiêu đề và thanh thao tác (chỉ một trong hai hiện). -->
                                 <StackPane HBox.hgrow="ALWAYS" alignment="CENTER_LEFT">
+                            <!-- Hàng tiêu đề: tên mục, số thư, khoảng trống, nút Dọn sạch (chỉ ở Thùng rác). -->
                             <HBox fx:id="titleRow" alignment="CENTER_LEFT" spacing="10">
                                 <Label fx:id="listTitle" text="Hộp thư đến" styleClass="list-title" />
                                 <Label fx:id="listCount" styleClass="text-muted" />
@@ -88,10 +110,12 @@
                                     <graphic><FontIcon iconLiteral="mdi2d-delete-forever-outline" iconSize="16" styleClass="icon" /></graphic>
                                 </Button>
                             </HBox>
+                            <!-- Thanh thao tác khi chọn thư: "Đã chọn N", các nút; controller chèn nút Chuyển tới trước nút Xoá. -->
                             <HBox fx:id="selectionBar" styleClass="selection-bar" alignment="CENTER_LEFT" spacing="2"
                                   visible="false">
                                 <Label fx:id="selectionLabel" />
                                 <Region HBox.hgrow="ALWAYS" />
+                                <!-- Đánh dấu đã đọc / chưa đọc, gắn sao, chuyển vào Thùng rác, khôi phục, xoá vĩnh viễn. -->
                                 <Button fx:id="bulkReadButton" styleClass="icon-button" onAction="#handleBulkRead">
                                     <graphic><FontIcon iconLiteral="mdi2e-email-open-outline" iconSize="18" styleClass="icon" /></graphic>
                                     <tooltip><Tooltip text="Đánh dấu đã đọc" /></tooltip>
@@ -120,9 +144,12 @@
                                 </StackPane>
                             </HBox>
                         </VBox>
+                        <!-- Ngăn chồng các danh sách; controller chèn danh sách thư hẹn giờ ở vị trí 2. -->
                         <StackPane fx:id="listStack" VBox.vgrow="ALWAYS">
+                            <!-- Danh sách thư và danh sách nháp (chỉ một cái hiện tuỳ mục). -->
                             <ListView fx:id="mailList" styleClass="mail-list" />
                             <ListView fx:id="draftList" styleClass="mail-list" visible="false" />
+                            <!-- Khung trống; lớp phủ "đang tải" có vòng xoay. -->
                             <StackPane fx:id="listEmpty" visible="false" />
                             <StackPane fx:id="listLoading" styleClass="loading-pane" visible="false">
                                 <ProgressIndicator maxWidth="40" maxHeight="40" />
@@ -138,6 +165,7 @@
                         </StackPane>
                     </VBox>
                 </StackPane>
+                <!-- Cột khung đọc (controller đặt MailReader vào), rộng tối thiểu 360px. -->
                 <StackPane fx:id="readerHost" minWidth="360" />
             </SplitPane>
         </center>

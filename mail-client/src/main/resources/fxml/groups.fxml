@@ -1,17 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Cửa sổ Nhóm thư. Các thẻ import khai báo lớp được dùng bên dưới. -->
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
+<!-- Gốc: nền cửa sổ phụ; controller là GroupsController. -->
 <StackPane fx:id="root" styleClass="dialog-root" xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.mailsystem.client.controller.GroupsController">
+    <!-- Hai cột: danh sách nhóm (trái) và chi tiết nhóm (phải). -->
     <HBox spacing="14">
         <padding><Insets top="16" right="16" bottom="16" left="16" /></padding>
+        <!-- Cột trái: tiêu đề, giải thích, ô tạo nhóm, ô địa chỉ, danh sách nhóm. -->
         <VBox styleClass="panel" spacing="12" prefWidth="320" minWidth="260">
             <Label text="Nhóm thư của bạn" styleClass="title-md" />
             <Label text="Gửi thư tới tên nhóm như một người nhận; mọi thành viên khác sẽ nhận được."
                    styleClass="hint" wrapText="true" />
+            <!-- Ô tên nhóm mới + nút Tạo (Enter cũng tạo). -->
             <HBox spacing="8" alignment="CENTER_LEFT">
                 <TextField fx:id="newGroupField" promptText="Tên nhóm mới" HBox.hgrow="ALWAYS"
                            onAction="#handleCreate" />
@@ -19,21 +24,26 @@
                     <graphic><FontIcon iconLiteral="mdi2p-plus" iconSize="16" styleClass="icon" /></graphic>
                 </Button>
             </HBox>
+            <!-- Ô địa chỉ nhóm: ô chữ liền với đuôi @group.local. -->
             <HBox styleClass="address-field" alignment="CENTER_LEFT">
                 <TextField fx:id="newAddressField" promptText="dia-chi-nhom" HBox.hgrow="ALWAYS"
                            onAction="#handleCreate" styleClass="address-input" />
                 <!-- "\@": trong FXML, giá trị bắt đầu bằng @ là đường dẫn tài nguyên -->
                 <Label text="\@group.local" styleClass="address-suffix" minWidth="-Infinity" />
             </HBox>
+            <!-- Lời nhắc dưới ô địa chỉ (đổi thành lỗi nếu địa chỉ sai). -->
             <Label fx:id="addressHint" text="Địa chỉ tự sinh từ tên nhóm, có thể sửa trước khi tạo."
                    styleClass="hint" wrapText="true" />
+            <!-- Danh sách nhóm, đè khung trống khi chưa có nhóm. -->
             <StackPane VBox.vgrow="ALWAYS">
                 <ListView fx:id="groupList" />
                 <StackPane fx:id="groupsEmpty" visible="false" />
             </StackPane>
         </VBox>
+        <!-- Cột phải: chi tiết nhóm (ẩn khi chưa chọn) hoặc khung trống. -->
         <StackPane styleClass="panel" HBox.hgrow="ALWAYS">
             <VBox fx:id="detailBox" spacing="12" visible="false">
+                <!-- Đầu: icon nhóm, tên nhóm, địa chỉ + nút sao chép, chủ nhóm. -->
                 <HBox alignment="TOP_LEFT" spacing="10">
                     <FontIcon iconLiteral="mdi2a-account-group-outline" iconSize="26" styleClass="icon" />
                     <VBox spacing="2" HBox.hgrow="ALWAYS">
@@ -48,6 +58,7 @@
                         <Label fx:id="ownerLabel" styleClass="text-muted" />
                     </VBox>
                 </HBox>
+                <!-- Hàng thêm thành viên (chỉ chủ nhóm thấy). -->
                 <HBox fx:id="addMemberRow" spacing="8" alignment="CENTER_LEFT">
                     <TextField fx:id="memberEmailField" promptText="Email thành viên mới" HBox.hgrow="ALWAYS"
                                onAction="#handleAddMember" />
@@ -55,8 +66,10 @@
                         <graphic><FontIcon iconLiteral="mdi2a-account-plus-outline" iconSize="16" styleClass="icon" /></graphic>
                     </Button>
                 </HBox>
+                <!-- Số thành viên và danh sách thành viên. -->
                 <Label fx:id="memberCountLabel" styleClass="field-label" />
                 <ListView fx:id="memberList" VBox.vgrow="ALWAYS" />
+                <!-- Các nút: Xoá thành viên (chủ nhóm), Rời nhóm (thành viên), Xoá nhóm (chủ nhóm). -->
                 <HBox spacing="8" alignment="CENTER_LEFT">
                     <Button fx:id="removeMemberButton" text="Xoá thành viên" onAction="#handleRemoveMember"
                             styleClass="secondary-button">
@@ -71,6 +84,7 @@
                     </Button>
                 </HBox>
             </VBox>
+            <!-- Khung trống "Chọn một nhóm". -->
             <StackPane fx:id="detailEmpty" />
         </StackPane>
     </HBox>

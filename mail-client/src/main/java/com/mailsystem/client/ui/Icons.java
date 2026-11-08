@@ -1,5 +1,7 @@
+// Gói "ui": các thành phần giao diện tự viết (JavaFX).
 package com.mailsystem.client.ui;
 
+// FontIcon: icon vẽ bằng font (thư viện Ikonli).
 import org.kordamp.ikonli.javafx.FontIcon;
 
 /**
@@ -8,6 +10,7 @@ import org.kordamp.ikonli.javafx.FontIcon;
  */
 public final class Icons {
 
+    // Tên các icon (mã của bộ Material Design Icons 2).
     public static final String INBOX = "mdi2i-inbox";
     public static final String STAR = "mdi2s-star";
     public static final String STAR_OUTLINE = "mdi2s-star-outline";
@@ -78,13 +81,16 @@ public final class Icons {
     public static final String CALENDAR_WEEK = "mdi2c-calendar-week";
     public static final String CALENDAR_EDIT = "mdi2c-calendar-edit";
 
+    // Constructor private: lớp chỉ có hàm tĩnh.
     private Icons() {
     }
 
+    /** Tạo icon cỡ 18px. */
     public static FontIcon of(String literal) {
         return of(literal, 18);
     }
 
+    /** Tạo icon theo tên và cỡ (px), gắn lớp CSS "icon" để đổi màu theo theme. */
     public static FontIcon of(String literal, int size) {
         FontIcon icon = new FontIcon(literal);
         icon.setIconSize(size);
@@ -94,6 +100,7 @@ public final class Icons {
 
     /** Icon theo loại tệp đính kèm. */
     public static String forFile(String filename) {
+        // Tên tệp chữ thường; chọn icon theo đuôi tệp, không khớp thì icon tệp chung.
         String name = filename == null ? "" : filename.toLowerCase();
         if (name.endsWith(".pdf")) {
             return FILE_PDF;

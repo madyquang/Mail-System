@@ -1,7 +1,10 @@
+// Gói "network": kết nối mạng tới Server.
 package com.mailsystem.client.network;
 
+// Tính dấu vân tay chứng chỉ.
 import com.mailsystem.common.security.CertificateFingerprints;
 
+// Vào/ra tệp, tên máy, mật mã, Base64, chạy tiến trình keytool, KeyManager của TLS.
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
@@ -30,8 +33,10 @@ import javax.net.ssl.KeyManagerFactory;
  */
 public final class DeviceIdentity {
 
+    // Tên khoá trong keystore.
     private static final String ALIAS = "device";
 
+    // KeyManager (null nếu không có chứng chỉ) và dấu vân tay.
     private final KeyManager[] keyManagers;
     private final String fingerprint;
 
@@ -45,6 +50,7 @@ public final class DeviceIdentity {
         return new DeviceIdentity(null, null);
     }
 
+    /** Nạp / tạo chứng chỉ ở ~/.mailsystem/device.p12; lỗi thì dùng "không có chứng chỉ". */
     public static DeviceIdentity inUserHome() {
         Path dir = Path.of(System.getProperty("user.home"), ".mailsystem");
         try {
@@ -55,9 +61,12 @@ public final class DeviceIdentity {
         }
     }
 
+    // Nạp keystore; chưa có (hoặc mất tệp mật khẩu) thì tạo mới.
     static DeviceIdentity loadOrCreate(Path keystore) throws IOException, GeneralSecurityException {
+        // Tệp mật khẩu nằm cạnh keystore: device.p12.pass.
         Path passFile = keystore.resolveSibling(keystore.getFileName() + ".pass");
         if (!Files.exists(keystore) || !Files.exists(passFile)) {
+            // Tạo mới: xoá keystore cũ, sinh mật khẩu ngẫu nhiên, gọi keytool, lưu mật khẩu.
             Files.deleteIfExists(keystore);
             byte[] random = new byte[24];
             new SecureRandom().nextBytes(random);
@@ -65,24 +74,29 @@ public final class DeviceIdentity {
             generate(keystore, password);
             Files.writeString(passFile, password, StandardCharsets.UTF_8);
         }
+        // Đọc mật khẩu và mở keystore PKCS#12.
         char[] password = Files.readString(passFile, StandardCharsets.UTF_8).trim().toCharArray();
         KeyStore store = KeyStore.getInstance("PKCS12");
         try (InputStream in = Files.newInputStream(keystore)) {
             store.load(in, password);
         }
+        // Lấy chứng chỉ, dựng KeyManager, tính dấu vân tay.
         X509Certificate certificate = (X509Certificate) store.getCertificate(ALIAS);
         KeyManagerFactory factory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
         factory.init(store, password);
         return new DeviceIdentity(factory.getKeyManagers(), CertificateFingerprints.sha256(certificate));
     }
 
+    // Gọi keytool tạo cặp khoá EC P-256 + chứng chỉ tự ký dùng cho xác thực client (EKU=clientAuth).
     private static void generate(Path keystore, String password) throws IOException {
         Files.createDirectories(keystore.getParent());
+        // Đường dẫn keytool của JDK đang chạy.
         Path keytool = Path.of(System.getProperty("java.home"), "bin",
                 System.getProperty("os.name").toLowerCase().contains("win") ? "keytool.exe" : "keytool");
         if (!Files.exists(keytool)) {
             throw new IOException("không tìm thấy keytool trong " + keytool.getParent());
         }
+        // Tên máy (chỉ giữ chữ, số, '.', '-') làm tên trong chứng chỉ.
         String host;
         try {
             host = InetAddress.getLocalHost().getHostName().replaceAll("[^A-Za-z0-9.\\-]", "");
@@ -95,12 +109,14 @@ public final class DeviceIdentity {
                 "-ext", "EKU=clientAuth",
                 "-storetype", "PKCS12", "-keystore", keystore.toString(),
                 "-storepass", password, "-keypass", password);
+        // Chạy keytool, đọc thông báo ra.
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         String output;
         try (InputStream in = process.getInputStream()) {
             output = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
         try {
+            // Quá 60 giây hoặc mã thoát khác 0 là lỗi.
             if (!process.waitFor(60, TimeUnit.SECONDS) || process.exitValue() != 0) {
                 throw new IOException("keytool lỗi: " + output.trim());
             }

@@ -1,11 +1,14 @@
+// Gói "tools": các công cụ thử nghiệm Server (không thuộc chương trình chính).
 package com.mailsystem.server.tools;
 
+// JSON, toàn bộ giao thức dùng chung (dấu * = nhập mọi lớp trong gói), kết nối CSDL để dọn dữ liệu.
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mailsystem.common.protocol.*;
 import com.mailsystem.server.db.DatabaseConnection;
 
+// Vào/ra, socket, bảng mã, chứng chỉ, tập hợp, đồng thời, TLS.
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -25,20 +28,24 @@ import javax.net.ssl.*;
  * Server, vì cuối cùng công cụ xoá các tài khoản e2e-*@test.local nó đã tạo.
  */
 public class EndToEndCheck {
+    // Số kiểm tra sai, tổng số kiểm tra.
     static int failures = 0;
     static int checks = 0;
+    // Cổng Server cần kiểm thử; cổng và mã truy cập trang giám sát (0 = bỏ qua phần giám sát).
     static int port;
     static int monitorPort;
     static String monitorToken;
     /** Dấu vân tay thiết bị tạo trong lúc kiểm thử (xoá khi dọn dẹp). */
     static String deviceFingerprint;
 
+    /** Ghi nhận một kiểm tra: in PASS / FAIL kèm mô tả. */
     static void check(boolean ok, String what) {
         checks++;
         if (!ok) failures++;
         System.out.println((ok ? "  PASS  " : "  FAIL  ") + what);
     }
 
+    /** TLS 1.3 tin mọi chứng chỉ (chỉ dùng cho kiểm thử trên máy mình). */
     static SSLContext trustAll() throws Exception {
         TrustManager tm = new X509TrustManager() {
             public void checkClientTrusted(X509Certificate[] c, String a) { }
@@ -50,24 +57,30 @@ public class EndToEndCheck {
         return ctx;
     }
 
+    /** Một kết nối thử: socket TLS, thread đọc, khớp RESPONSE theo requestId, gom EVENT vào hàng đợi. */
     static final class Conn implements AutoCloseable {
+        // Socket, luồng ghi, giấy hẹn chờ trả lời, các EVENT đã nhận, cờ "Server đã đóng kết nối".
         final SSLSocket socket;
         final Writer out;
         final Map<String, CompletableFuture<ResponseMessage>> pending = new ConcurrentHashMap<>();
         final BlockingQueue<EventMessage> events = new LinkedBlockingQueue<>();
         volatile boolean closedByServer;
 
+        // Kết nối thường (không chứng chỉ thiết bị).
         Conn() throws Exception {
             this(trustAll());
         }
 
         /** context có KeyManager = kết nối mutual TLS (trình chứng chỉ thiết bị). */
         Conn(SSLContext context) throws Exception {
+            // Kết nối và bắt tay TLS ngay.
             socket = (SSLSocket) context.getSocketFactory().createSocket("localhost", port);
             socket.startHandshake();
             out = new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8);
+            // Bộ đọc frame (nới giới hạn gấp 4 cho kiểm thử).
             FrameReader reader = new FrameReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8),
                     4 * ProtocolConstants.MAX_FRAME_CHARS);
+            // Thread đọc: EVENT vào hàng đợi, RESPONSE giao cho đúng giấy hẹn.
             Thread t = new Thread(() -> {
                 try {
                     String f;
@@ -82,24 +95,30 @@ public class EndToEndCheck {
                     }
                 } catch (IOException ignored) {
                 }
+                // Ra khỏi vòng đọc nghĩa là Server đã đóng kết nối.
                 closedByServer = true;
             });
             t.setDaemon(true);
             t.start();
         }
 
+        // Phiên bản TLS đã thoả thuận.
         String protocol() { return socket.getSession().getProtocol(); }
 
+        /** Gửi một request và chờ câu trả lời (tối đa 20 giây). */
         ResponseMessage req(Command c, JsonObject payload) throws Exception {
             String id = UUID.randomUUID().toString();
             CompletableFuture<ResponseMessage> fut = new CompletableFuture<>();
+            // Đăng ký giấy hẹn trước khi gửi.
             pending.put(id, fut);
+            // Khoá luồng ghi để các thread không ghi xen vào nhau.
             synchronized (out) {
                 ProtocolUtil.writeFrame(out, ProtocolUtil.toJson(new RequestMessage(id, c, payload)));
             }
             return fut.get(20, TimeUnit.SECONDS);
         }
 
+        /** Chờ EVENT có tên cho trước trong tối đa ms mili giây (bỏ qua các EVENT khác); hết giờ trả null. */
         EventMessage awaitEvent(String name, long ms) throws InterruptedException {
             long deadline = System.currentTimeMillis() + ms;
             while (true) {
@@ -114,6 +133,7 @@ public class EndToEndCheck {
         public void close() throws IOException { socket.close(); }
     }
 
+    /** Tạo JsonObject từ các cặp khoá, giá trị (giá trị có thể là JSON, số, boolean hoặc chuỗi). */
     static JsonObject obj(Object... kv) {
         JsonObject o = new JsonObject();
         for (int i = 0; i < kv.length; i += 2) {
@@ -126,6 +146,7 @@ public class EndToEndCheck {
         return o;
     }
 
+    /** Tạo JsonArray từ các giá trị (số giữ kiểu số, còn lại thành chuỗi). */
     static JsonArray arr(Object... values) {
         JsonArray a = new JsonArray();
         for (Object v : values) {
@@ -134,6 +155,7 @@ public class EndToEndCheck {
         return a;
     }
 
+    /** Mã thư mục theo loại (INBOX / SENT / TRASH). */
     static int folderId(Conn c, String type) throws Exception {
         for (JsonElement f : c.req(Command.GET_FOLDERS, null).getData().getAsJsonArray())
             if (f.getAsJsonObject().get("folderType").getAsString().equals(type))
@@ -141,6 +163,7 @@ public class EndToEndCheck {
         throw new IllegalStateException(type);
     }
 
+    /** Số thư chưa đọc của thư mục theo loại. */
     static int unread(Conn c, String type) throws Exception {
         for (JsonElement f : c.req(Command.GET_FOLDERS, null).getData().getAsJsonArray())
             if (f.getAsJsonObject().get("folderType").getAsString().equals(type))
@@ -148,26 +171,32 @@ public class EndToEndCheck {
         return -1;
     }
 
+    /** Danh sách thư của thư mục theo loại. */
     static JsonArray list(Conn c, String type) throws Exception {
         return c.req(Command.GET_MAIL_LIST, obj("folderId", folderId(c, type))).getData().getAsJsonArray();
     }
 
+    /** Tải tệp lên theo khối 512 KB như Client thật; trả uploadId. */
     static String upload(Conn c, String filename, byte[] file) throws Exception {
         String uploadId = null;
         long offset = 0;
         while (offset < file.length) {
+            // Độ dài khối này (khối cuối có thể ngắn hơn).
             int len = (int) Math.min(ProtocolConstants.CHUNK_SIZE_BYTES, file.length - offset);
             JsonObject p = obj("filename", filename, "sizeBytes", file.length, "offset", offset,
                     "dataBase64", Base64.getEncoder().encodeToString(Arrays.copyOfRange(file, (int) offset, (int) offset + len)));
+            // Từ khối thứ hai trở đi gửi kèm uploadId.
             if (uploadId != null) p.addProperty("uploadId", uploadId);
             ResponseMessage r = c.req(Command.UPLOAD_ATTACHMENT_CHUNK, p);
             if (!r.isOk()) throw new IllegalStateException(r.getMessage());
+            // Lấy uploadId và vị trí tiếp theo từ câu trả lời.
             uploadId = r.getData().getAsJsonObject().get("uploadId").getAsString();
             offset = r.getData().getAsJsonObject().get("receivedBytes").getAsLong();
         }
         return uploadId;
     }
 
+    /** Tải tệp về theo từng khối tới khi đủ size byte. */
     static byte[] download(Conn c, int attachmentId, long size) throws Exception {
         ByteArrayOutputStream got = new ByteArrayOutputStream();
         while (got.size() < size) {
@@ -178,16 +207,20 @@ public class EndToEndCheck {
         return got.toByteArray();
     }
 
+    /** Tham số: [cổng] [cổng giám sát] [mã truy cập giám sát]. */
     public static void main(String[] args) throws Exception {
         port = args.length > 0 ? Integer.parseInt(args[0]) : 5098;
         monitorPort = args.length > 1 ? Integer.parseInt(args[1]) : 0;
         monitorToken = args.length > 2 ? args[2] : "";
+        // Nhãn riêng của lần chạy để email / tên nhóm không trùng lần trước.
         String tag = Long.toString(System.currentTimeMillis() % 100_000_000L);
+        // Luôn dọn dữ liệu kiểm thử, kể cả khi có lỗi.
         try {
             run(tag);
         } finally {
             cleanup(tag);
         }
+        // In tổng kết; mã thoát 0 khi mọi kiểm tra đạt.
         System.out.println();
         System.out.println("KET QUA: " + (checks - failures) + "/" + checks + " dat");
         System.exit(failures == 0 ? 0 : 1);
@@ -200,6 +233,7 @@ public class EndToEndCheck {
              java.sql.PreparedStatement accounts = connection.prepareStatement("DELETE FROM account WHERE email LIKE ?");
              java.sql.PreparedStatement attempts = connection.prepareStatement("DELETE FROM login_attempt WHERE attempt_key LIKE ?");
              java.sql.PreparedStatement devices = connection.prepareStatement("DELETE FROM trusted_device WHERE fingerprint = ?")) {
+            // Xoá theo thứ tự: nhóm, bộ đếm đăng nhập sai, thiết bị, rồi tài khoản.
             groups.setString(1, "e2e-nhom-" + tag);
             groups.executeUpdate();
             attempts.setString(1, "email:e2e-%-" + tag + "@test.local");
@@ -213,10 +247,12 @@ public class EndToEndCheck {
         }
     }
 
+    /** Dữ liệu của câu trả lời dạng object (rỗng nếu không có). */
     static JsonObject data(ResponseMessage r) {
         return r.getData() != null && r.getData().isJsonObject() ? r.getData().getAsJsonObject() : new JsonObject();
     }
 
+    /** Tìm thư theo tiêu đề trong danh sách; không có trả null. */
     static JsonObject findBySubject(JsonArray mails, String subject) {
         for (JsonElement e : mails) {
             if (e.getAsJsonObject().get("subject").getAsString().equals(subject)) return e.getAsJsonObject();
@@ -226,38 +262,49 @@ public class EndToEndCheck {
 
     /** Các tính năng v3: tiếp tục phiên, thư mục, hội thoại, báo đã đọc, hoàn tác/hẹn giờ, tải tiếp, 2FA, mTLS, giám sát. */
     static void runV3(String tag, String pw, String a, String b, Conn a1, Conn b1, int fileEntry) throws Exception {
+        // --- Địa chỉ nhóm @group.local ---
         System.out.println("== Dia chi nhom @group.local");
         String groupAddress = "e2e-nhom-" + tag + "@group.local";
+        // Nhóm tạo ở run() phải có địa chỉ tự sinh từ tên.
         boolean listed = false;
         for (JsonElement g : a1.req(Command.GET_MY_GROUPS, null).getData().getAsJsonArray()) {
             JsonObject group = g.getAsJsonObject();
             listed |= group.has("groupAddress") && group.get("groupAddress").getAsString().equals(groupAddress);
         }
         check(listed, "Nhom co dia chi tu sinh tu ten: " + groupAddress);
+        // Gửi tới địa chỉ nhóm thì thành viên nhận được.
         check(a1.req(Command.SEND_MAIL, obj("to", arr(groupAddress), "subject", "Qua địa chỉ nhóm " + tag, "body", "x")).isOk(),
                 "Gui thu toi nhom bang dia chi @group.local");
         check(findBySubject(list(b1, "INBOX"), "Qua địa chỉ nhóm " + tag) != null, "Thanh vien nhan thu gui bang dia chi nhom");
+        // Tự chọn địa chỉ (chữ hoa được chuẩn hoá thành chữ thường).
         ResponseMessage custom = a1.req(Command.CREATE_GROUP, obj("groupName", "e2e-nhom-tu-chon-" + tag, "address", "E2E-DC-" + tag));
         check(custom.isOk() && data(custom).get("groupAddress").getAsString().equals("e2e-dc-" + tag + "@group.local"),
                 "Tao nhom voi dia chi tu chon (chuan hoa chu thuong)");
+        // Địa chỉ trùng bị từ chối.
         ResponseMessage duplicate = a1.req(Command.CREATE_GROUP, obj("groupName", "e2e-nhom-trung-" + tag, "address", "e2e-dc-" + tag));
         check(!duplicate.isOk() && duplicate.getMessage().contains("đã được dùng"), "Dia chi nhom trung bi tu choi");
+        // Tên khác nhưng địa chỉ tự sinh trùng: tự thêm hậu tố -2.
         ResponseMessage collide = a1.req(Command.CREATE_GROUP, obj("groupName", "E2E nhóm " + tag));
         check(collide.isOk() && data(collide).get("groupAddress").getAsString().equals("e2e-nhom-" + tag + "-2@group.local"),
                 "Ten khac nhung trung dia chi tu sinh -> tu them -2 (bo dau tieng Viet)");
+        // Địa chỉ có dấu / khoảng trắng bị từ chối.
         check(!a1.req(Command.CREATE_GROUP, obj("groupName", "e2e-nhom-sai-" + tag, "address", "có dấu")).isOk(),
                 "Dia chi nhom co dau / khoang trang bi tu choi");
+        // Gợi ý tìm được nhóm theo địa chỉ.
         JsonArray groupSuggest = a1.req(Command.SUGGEST_CONTACTS, obj("query", "e2e-dc-" + tag)).getData().getAsJsonArray();
         check(groupSuggest.size() >= 1 && groupSuggest.get(0).getAsJsonObject().get("groupAddress").getAsString()
                 .equals("e2e-dc-" + tag + "@group.local"), "Goi y nhom theo dia chi, kem dia chi nhom");
 
+        // --- Tiếp tục phiên sau khi rớt mạng ---
         System.out.println("== v3: Tiep tuc phien sau khi rot mang (RESUME_SESSION)");
         String token1;
+        // Đăng nhập lấy token rồi đóng socket đột ngột.
         try (Conn r1 = new Conn()) {
             ResponseMessage login = r1.req(Command.LOGIN, obj("email", b, "password", pw));
             token1 = data(login).has("resumeToken") ? data(login).get("resumeToken").getAsString() : null;
             check(token1 != null && token1.length() >= 40, "LOGIN tra resumeToken");
         } // đóng socket đột ngột = mô phỏng rớt mạng
+        // Kết nối mới dùng token để vào lại; dùng lại token cũ lần nữa phải bị từ chối.
         try (Conn r2 = new Conn(); Conn r3 = new Conn()) {
             ResponseMessage resumed = r2.req(Command.RESUME_SESSION, obj("resumeToken", token1));
             check(resumed.isOk() && data(resumed).get("email").getAsString().equals(b), "RESUME_SESSION dang nhap lai khong can mat khau");
@@ -267,34 +314,43 @@ public class EndToEndCheck {
             check(!replay.isOk() && ErrorCodes.RESUME_REJECTED.equals(replay.getCode()), "Dung lai token cu bi tu choi (mot lan)");
         }
 
+        // --- Thư mục tự tạo và chuyển thư ---
         System.out.println("== v3: Thu muc tu tao + chuyen thu");
+        // Tạo thư mục; trùng tên bị từ chối.
         ResponseMessage created = b1.req(Command.CREATE_FOLDER, obj("name", "Dự án " + tag));
         check(created.isOk(), "CREATE_FOLDER");
         int folder = data(created).get("folderId").getAsInt();
         check(!b1.req(Command.CREATE_FOLDER, obj("name", "Dự án " + tag)).isOk(), "Trung ten thu muc bi tu choi");
+        // Chuyển thư vào thư mục và kiểm tra; người khác không chuyển được thư của B.
         check(b1.req(Command.MOVE_MAIL, obj("entryIds", arr(fileEntry), "folderId", folder)).isOk(), "MOVE_MAIL vao thu muc");
         JsonArray inFolder = b1.req(Command.GET_MAIL_LIST, obj("folderId", folder)).getData().getAsJsonArray();
         check(inFolder.size() == 1 && inFolder.get(0).getAsJsonObject().get("entryId").getAsInt() == fileEntry, "Thu nam trong thu muc moi");
         check(!a1.req(Command.MOVE_MAIL, obj("entryIds", arr(fileEntry), "folderId", folder)).isOk(), "Khong chuyen duoc thu cua nguoi khac");
+        // Đổi tên được thư mục tự tạo, không đổi được thư mục hệ thống.
         check(b1.req(Command.RENAME_FOLDER, obj("folderId", folder, "name", "Dự án (đổi) " + tag)).isOk(), "RENAME_FOLDER");
         check(!b1.req(Command.RENAME_FOLDER, obj("folderId", folderId(b1, "INBOX"), "name", "x")).isOk(), "Khong doi ten thu muc he thong");
+        // Xoá thư mục: thư bên trong vào Thùng rác; khôi phục lại.
         ResponseMessage deleted = b1.req(Command.DELETE_FOLDER, obj("folderId", folder));
         check(deleted.isOk() && data(deleted).get("movedToTrash").getAsInt() == 1, "DELETE_FOLDER chuyen thu vao Thung rac");
         check(b1.req(Command.RESTORE_TRASH_MAIL, obj("entryIds", arr(fileEntry))).isOk(), "Khoi phuc thu tu Thung rac");
 
+        // --- Báo đã đọc ---
         System.out.println("== v3: Bao da doc");
         a1.events.clear();
+        // A gửi thư, B mở thư, A phải nhận EVENT READ_RECEIPT.
         check(a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Đọc chưa " + tag, "body", "?")).isOk(), "A gui thu cho B");
         JsonObject toRead = findBySubject(list(b1, "INBOX"), "Đọc chưa " + tag);
         b1.req(Command.GET_MAIL_DETAIL, obj("mailId", toRead.get("mailId").getAsInt(), "entryId", toRead.get("entryId").getAsInt()));
         EventMessage receipt = a1.awaitEvent("READ_RECEIPT", 3000);
         check(receipt != null && receipt.getData().getAsJsonObject().get("readerEmail").getAsString().equals(b),
                 "A nhan EVENT READ_RECEIPT khi B mo thu");
+        // Bản đã gửi của A có danh sách người đã đọc.
         JsonObject sentCopy = findBySubject(list(a1, "SENT"), "Đọc chưa " + tag);
         JsonObject sentDetail = data(a1.req(Command.GET_MAIL_DETAIL, obj("mailId", sentCopy.get("mailId").getAsInt(),
                 "entryId", sentCopy.get("entryId").getAsInt())));
         check(sentDetail.has("readReceipts") && sentDetail.getAsJsonArray("readReceipts").size() == 1,
                 "Ban da gui cua A co danh sach nguoi da doc");
+        // B tắt chia sẻ: lần sau A không được báo.
         check(b1.req(Command.UPDATE_SETTINGS, obj("shareReadReceipts", false)).isOk(), "B tat gui xac nhan da doc");
         check(!data(b1.req(Command.GET_SETTINGS, null)).get("shareReadReceipts").getAsBoolean(), "GET_SETTINGS phan anh thay doi");
         a1.events.clear();
@@ -302,9 +358,12 @@ public class EndToEndCheck {
         JsonObject privateMail = findBySubject(list(b1, "INBOX"), "Riêng tư " + tag);
         b1.req(Command.GET_MAIL_DETAIL, obj("mailId", privateMail.get("mailId").getAsInt(), "entryId", privateMail.get("entryId").getAsInt()));
         check(a1.awaitEvent("READ_RECEIPT", 1500) == null, "Tat xac nhan -> nguoi gui khong duoc bao");
+        // Bật lại cho các phần sau.
         b1.req(Command.UPDATE_SETTINGS, obj("shareReadReceipts", true));
 
+        // --- Hội thoại ---
         System.out.println("== v3: Hoi thoai (thread)");
+        // A gửi, B trả lời (inReplyTo), A trả lời tiếp: cả ba thư cùng một hội thoại.
         a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Họp nhóm " + tag, "body", "Thứ 2 nhé?"));
         JsonObject first = findBySubject(list(b1, "INBOX"), "Họp nhóm " + tag);
         int rootMail = first.get("mailId").getAsInt();
@@ -314,33 +373,41 @@ public class EndToEndCheck {
         check(reply != null && reply.get("threadId").getAsInt() == rootMail, "Thu tra loi cung threadId voi thu goc");
         a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Re: Họp nhóm " + tag, "body", "Chốt 9h",
                 "inReplyTo", reply.get("mailId").getAsInt()));
+        // Danh sách gộp theo hội thoại: một dòng đại diện cho 2 thư trong Hộp thư đến của B.
         JsonArray threaded = b1.req(Command.GET_MAIL_LIST, obj("folderId", folderId(b1, "INBOX"), "threaded", true)).getData().getAsJsonArray();
         JsonObject head = null;
         for (JsonElement e : threaded) if (e.getAsJsonObject().get("threadId").getAsInt() == rootMail) head = e.getAsJsonObject();
         check(head != null && head.get("threadCount").getAsInt() == 2 && head.getAsJsonArray("threadEntryIds").size() == 2,
                 "Danh sach gop hoi thoai: 1 dong, 2 thu trong Hop thu den");
+        // GET_THREAD trả cả 3 thư (kể cả thư B đã gửi), cũ trước mới sau.
         JsonArray thread = b1.req(Command.GET_THREAD, obj("threadId", rootMail)).getData().getAsJsonArray();
         check(thread.size() == 3 && thread.get(0).getAsJsonObject().get("mailId").getAsInt() == rootMail,
                 "GET_THREAD tra 3 thu (ca thu da gui), cu truoc moi sau");
+        // Hội thoại không có quyền xem thì báo lỗi.
         check(!a1.req(Command.GET_THREAD, obj("threadId", fileEntry + 999_999)).isOk(), "Hoi thoai khong co quyen xem -> loi");
 
+        // --- Hoàn tác / hẹn giờ ---
         System.out.println("== v3: Hoan tac gui / hen gio");
+        // Gửi với delaySeconds: thư vào hàng chờ.
         ResponseMessage queued = a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Hoàn tác " + tag, "body", "x", "delaySeconds", 30));
         check(queued.isOk() && data(queued).has("outboxId"), "Gui co delaySeconds -> vao hop cho gui");
         int outboxId = data(queued).get("outboxId").getAsInt();
         JsonArray pending = a1.req(Command.GET_SCHEDULED, null).getData().getAsJsonArray();
         check(pending.size() == 1 && pending.get(0).getAsJsonObject().get("subject").getAsString().equals("Hoàn tác " + tag), "GET_SCHEDULED");
+        // Người khác không huỷ được; chủ thư huỷ được và nhận lại nội dung; huỷ lần hai báo lỗi.
         check(!b1.req(Command.CANCEL_SCHEDULED, obj("outboxId", outboxId)).isOk(), "Nguoi khac khong huy duoc thu cho");
         ResponseMessage undone = a1.req(Command.CANCEL_SCHEDULED, obj("outboxId", outboxId));
         check(undone.isOk() && data(undone).get("subject").getAsString().equals("Hoàn tác " + tag), "CANCEL_SCHEDULED tra lai noi dung");
         check(!a1.req(Command.CANCEL_SCHEDULED, obj("outboxId", outboxId)).isOk(), "Huy lan 2 bao loi (da huy)");
         check(findBySubject(list(b1, "INBOX"), "Hoàn tác " + tag) == null, "Thu da hoan tac khong toi nguoi nhan");
+        // Hẹn giờ ở quá khứ bị từ chối; hẹn ngày mai thì được (rồi huỷ).
         check(!a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "x", "body", "x", "sendAt", "2020-01-01T08:00:00")).isOk(),
                 "Hen gio o qua khu bi tu choi");
         ResponseMessage future = a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Hẹn " + tag, "body", "x",
                 "sendAt", java.time.LocalDateTime.now().plusDays(1).withNano(0).toString()));
         check(future.isOk() && data(future).get("scheduled").getAsBoolean(), "Hen gio ngay mai");
         a1.req(Command.CANCEL_SCHEDULED, obj("outboxId", data(future).get("outboxId").getAsInt()));
+        // Hẹn giờ từ một bản nháp: bản nháp phải biến mất khỏi mục Nháp ngay.
         int scheduledDraft = data(a1.req(Command.SAVE_DRAFT, obj("to", b, "subject", "Nháp hẹn giờ " + tag, "body", "x")))
                 .get("draftId").getAsInt();
         String scheduledFor = java.time.LocalDateTime.now().plusDays(1).withHour(9).withMinute(45).withSecond(0).withNano(0)
@@ -352,11 +419,13 @@ public class EndToEndCheck {
             draftGone &= d.getAsJsonObject().get("draftId").getAsInt() != scheduledDraft;
         }
         check(fromDraft.isOk() && draftGone, "Hen gio tu ban nhap -> ban nhap roi khoi Thu nhap ngay (khong nam ca hai noi)");
+        // Huỷ hẹn giờ: trả nội dung và đúng giờ đã hẹn, không trả draftId đã xoá.
         ResponseMessage reopened = a1.req(Command.CANCEL_SCHEDULED, obj("outboxId", data(fromDraft).get("outboxId").getAsInt()));
         check(reopened.isOk() && !data(reopened).has("draftId") && data(reopened).get("subject").getAsString().equals("Nháp hẹn giờ " + tag),
                 "Huy hen gio tra lai noi dung, khong tro toi ban nhap da xoa");
         check(reopened.isOk() && data(reopened).get("sendAt").getAsString().equals(scheduledFor),
                 "Huy hen gio tra lai dung thoi diem da hen (de dien san khi hen lai): " + scheduledFor);
+        // Gửi trễ 2 giây kèm tệp: bộ gửi tự động phải gửi và giữ tệp.
         byte[] note = "ghi chu dinh kem\n".getBytes(StandardCharsets.UTF_8);
         JsonArray noteAtt = new JsonArray();
         noteAtt.add(obj("uploadId", upload(a1, "ghi-chu.txt", note)));
@@ -369,17 +438,21 @@ public class EndToEndCheck {
         JsonObject delayedMail = findBySubject(list(b1, "INBOX"), "Trễ 2 giây " + tag);
         check(delayedMail != null && delayedMail.get("hasAttachments").getAsBoolean(), "Thu gui tre giu nguyen tep dinh kem");
 
+        // --- Tải tiếp sau khi rớt mạng ---
         System.out.println("== v3: Tai len tiep sau khi rot mang (UPLOAD_STATUS)");
+        // Tệp hơi lớn hơn một khối, 4 byte đầu là chữ ký ZIP.
         byte[] big = new byte[ProtocolConstants.CHUNK_SIZE_BYTES + 1000];
         new Random(3).nextBytes(big);
         System.arraycopy(new byte[] {'P', 'K', 3, 4}, 0, big, 0, 4);
         String partial;
+        // Kết nối 1 chỉ gửi khối đầu rồi đóng.
         try (Conn u1 = new Conn()) {
             u1.req(Command.LOGIN, obj("email", b, "password", pw));
             ResponseMessage chunk = u1.req(Command.UPLOAD_ATTACHMENT_CHUNK, obj("filename", "du-lieu.zip", "sizeBytes", big.length,
                     "offset", 0, "dataBase64", Base64.getEncoder().encodeToString(Arrays.copyOf(big, ProtocolConstants.CHUNK_SIZE_BYTES))));
             partial = data(chunk).get("uploadId").getAsString();
         }
+        // Kết nối 2 hỏi tiến độ, gửi phần còn lại, rồi gửi thư kèm tệp.
         try (Conn u2 = new Conn()) {
             u2.req(Command.LOGIN, obj("email", b, "password", pw));
             ResponseMessage status = u2.req(Command.UPLOAD_STATUS, obj("uploadId", partial));
@@ -394,23 +467,28 @@ public class EndToEndCheck {
             check(u2.req(Command.SEND_MAIL, obj("to", arr(a), "subject", "Tải tiếp " + tag, "body", "x", "attachments", resumedAtt)).isOk(),
                     "Gui thu voi tep tai len qua 2 ket noi");
         }
+        // Tài khoản khác không xem được tiến độ tải của B.
         try (Conn other = new Conn()) {
             other.req(Command.LOGIN, obj("email", a, "password", pw));
             check(!other.req(Command.UPLOAD_STATUS, obj("uploadId", partial)).isOk(), "Tai khoan khac khong xem duoc tien do tai len");
         }
 
+        // --- Xác minh 2 bước (TOTP) ---
         System.out.println("== v3: Xac minh 2 buoc (TOTP)");
         String e = "e2e-e-" + tag + "@test.local";
+        // Tạo tài khoản E, bật 2FA (mã sai không bật được).
         try (Conn e1 = new Conn()) {
             e1.req(Command.REGISTER, obj("email", e, "password", pw, "displayName", "E"));
             e1.req(Command.LOGIN, obj("email", e, "password", pw));
             ResponseMessage setup = e1.req(Command.TOTP_SETUP, null);
             String secret = data(setup).get("secret").getAsString();
             check(setup.isOk() && data(setup).get("otpauthUri").getAsString().startsWith("otpauth://totp/"), "TOTP_SETUP tra khoa + otpauth URI");
+            // Bước thời gian hiện tại (tính mã trong kiểm thử bằng chính lớp Totp của Server).
             long step = System.currentTimeMillis() / 1000 / com.mailsystem.server.security.Totp.STEP_SECONDS;
             check(!e1.req(Command.TOTP_ENABLE, obj("code", "000000".equals(com.mailsystem.server.security.Totp.code(secret, step))
                     ? "111111" : "000000")).isOk(), "Ma sai khong bat duoc 2FA");
             check(e1.req(Command.TOTP_ENABLE, obj("code", com.mailsystem.server.security.Totp.code(secret, step))).isOk(), "TOTP_ENABLE");
+            // Đăng nhập thiếu mã -> TOTP_REQUIRED; có mã đúng -> vào được; dùng lại mã -> bị từ chối.
             try (Conn e2 = new Conn(); Conn e3 = new Conn()) {
                 ResponseMessage noCode = e2.req(Command.LOGIN, obj("email", e, "password", pw));
                 check(!noCode.isOk() && ErrorCodes.TOTP_REQUIRED.equals(noCode.getCode()), "Thieu ma -> TOTP_REQUIRED");
@@ -420,7 +498,9 @@ public class EndToEndCheck {
             }
         }
 
+        // --- Chứng chỉ thiết bị (mTLS) và trang giám sát ---
         System.out.println("== v3: Chung chi thiet bi (mutual TLS) + bang giam sat");
+        // Tạo chứng chỉ thiết bị tạm bằng keytool.
         java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("e2e-device");
         java.nio.file.Path p12 = dir.resolve("device.p12");
         String keytool = java.nio.file.Path.of(System.getProperty("java.home"), "bin", "keytool").toString();
@@ -429,12 +509,14 @@ public class EndToEndCheck {
                 "-keystore", p12.toString(), "-storepass", "e2e-pass", "-keypass", "e2e-pass").redirectErrorStream(true).start();
         gen.getInputStream().readAllBytes();
         gen.waitFor(60, TimeUnit.SECONDS);
+        // Nạp chứng chỉ và tính dấu vân tay (để dọn dẹp sau).
         java.security.KeyStore store = java.security.KeyStore.getInstance("PKCS12");
         try (InputStream in = java.nio.file.Files.newInputStream(p12)) {
             store.load(in, "e2e-pass".toCharArray());
         }
         deviceFingerprint = com.mailsystem.common.security.CertificateFingerprints.sha256(
                 (X509Certificate) store.getCertificate("device"));
+        // TLS có KeyManager: trình chứng chỉ thiết bị khi bắt tay.
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
         kmf.init(store, "e2e-pass".toCharArray());
         SSLContext mutual = SSLContext.getInstance("TLSv1.3");
@@ -443,10 +525,12 @@ public class EndToEndCheck {
             public void checkServerTrusted(X509Certificate[] c, String x) { }
             public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
         }}, null);
+        // Kết nối có chứng chỉ vẫn đăng nhập được (chế độ want).
         try (Conn m1 = new Conn(mutual)) {
             check(m1.req(Command.LOGIN, obj("email", b, "password", pw)).isOk(), "Ket noi co chung chi thiet bi dang nhap duoc");
             check(m1.socket.getSession().getLocalCertificates() != null, "Client da trinh chung chi trong bat tay TLS");
         }
+        // CSDL phải ghi nhận thiết bị mới (chưa duyệt) và tài khoản đã dùng nó.
         boolean recorded;
         try (java.sql.Connection db = DatabaseConnection.getConnection();
              java.sql.PreparedStatement q = db.prepareStatement("SELECT approved, last_account_id FROM trusted_device WHERE fingerprint = ?")) {
@@ -457,18 +541,22 @@ public class EndToEndCheck {
         }
         check(recorded, "Server ghi nhan thiet bi moi (chua duyet) + tai khoan dung no");
 
+        // Trang giám sát (chỉ khi được truyền cổng).
         if (monitorPort > 0) {
             java.net.http.HttpClient http = java.net.http.HttpClient.newHttpClient();
             java.net.URI stats = java.net.URI.create("http://127.0.0.1:" + monitorPort + "/api/stats");
+            // Không có mã truy cập -> 401.
             java.net.http.HttpResponse<String> noToken = http.send(java.net.http.HttpRequest.newBuilder(stats).build(),
                     java.net.http.HttpResponse.BodyHandlers.ofString());
             check(noToken.statusCode() == 401, "Bang giam sat: thieu ma truy cap -> 401");
+            // Có mã: thấy danh sách kết nối và số request.
             java.net.http.HttpResponse<String> withToken = http.send(java.net.http.HttpRequest.newBuilder(stats)
                     .header("X-Admin-Token", monitorToken).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
             JsonObject snapshot = ProtocolUtil.fromJson(withToken.body(), JsonObject.class);
             check(withToken.statusCode() == 200 && snapshot.getAsJsonArray("connections").size() >= 2,
                     "Bang giam sat liet ke cac ket noi dang mo");
             check(snapshot.getAsJsonObject("metrics").get("requests").getAsLong() > 50, "Bang giam sat dem request");
+            // Duyệt thiết bị qua API.
             java.net.http.HttpResponse<String> approve = http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(
                     "http://127.0.0.1:" + monitorPort + "/api/devices/approve?fp=" + java.net.URLEncoder.encode(deviceFingerprint,
                             StandardCharsets.UTF_8))).header("X-Admin-Token", monitorToken)
@@ -478,13 +566,17 @@ public class EndToEndCheck {
     }
 
     static void run(String tag) throws Exception {
+        // Mật khẩu chung; email ba tài khoản A, B, C; tên nhóm.
         String pw = "Matkhau-2026";
         String a = "e2e-a-" + tag + "@test.local", b = "e2e-b-" + tag + "@test.local", c = "e2e-c-" + tag + "@test.local";
         String group = "e2e-nhom-" + tag;
 
+        // Bốn kết nối: A (2 phiên), B, C.
         try (Conn a1 = new Conn(); Conn a2 = new Conn(); Conn b1 = new Conn(); Conn c1 = new Conn()) {
+            // --- TLS ---
             System.out.println("== TLS");
             check("TLSv1.3".equals(a1.protocol()), "Ket noi dung TLS 1.3 (" + a1.socket.getSession().getCipherSuite() + ")");
+            // Gửi JSON thô không qua TLS: Server phải từ chối (đóng, hoặc trả bản tin cảnh báo TLS 0x15).
             try (Socket plain = new Socket("localhost", port)) {
                 plain.setSoTimeout(5000);
                 plain.getOutputStream().write("{\"type\":\"REQUEST\",\"requestId\":\"x\",\"command\":\"PING\"}\n".getBytes());
@@ -492,7 +584,9 @@ public class EndToEndCheck {
                 check(first == -1 || first == 0x15, "Client TCP thuong (khong TLS) bi tu choi");
             }
 
+            // --- Đăng ký / đăng nhập ---
             System.out.println("== Dang ky (chinh sach mat khau) / dang nhap");
+            // Mật khẩu yếu bị từ chối; đăng ký A, B, C; A đăng nhập 2 phiên, B một phiên.
             ResponseMessage weak = a1.req(Command.REGISTER, obj("email", a, "password", "123456", "displayName", "A"));
             check(!weak.isOk() && weak.getMessage().contains("8 ký tự"), "Mat khau yeu bi tu choi: " + weak.getMessage());
             check(a1.req(Command.REGISTER, obj("email", a, "password", pw, "displayName", "Nguyễn Văn A")).isOk(), "REGISTER A");
@@ -502,14 +596,18 @@ public class EndToEndCheck {
             check(a2.req(Command.LOGIN, obj("email", a, "password", pw)).isOk(), "LOGIN A (phien 2)");
             check(b1.req(Command.LOGIN, obj("email", b, "password", pw)).isOk(), "LOGIN B");
 
+            // --- Chống dò mật khẩu ---
             System.out.println("== Chong do mat khau");
             ResponseMessage last = null;
+            // Sai 5 lần thì bị khoá; đang khoá thì mật khẩu đúng cũng bị chặn.
             for (int i = 0; i < 5; i++) last = c1.req(Command.LOGIN, obj("email", c, "password", "sai-" + i));
             check(last != null && last.getMessage().contains("quá nhiều lần"), "Sai 5 lan -> tam khoa: " + last.getMessage());
             ResponseMessage blocked = c1.req(Command.LOGIN, obj("email", c, "password", pw));
             check(!blocked.isOk() && blocked.getMessage().contains("quá nhiều lần"), "Dang bi khoa thi mat khau dung cung bi chan");
 
+            // --- Nhóm, tải tệp, gửi thư ---
             System.out.println("== Nhom + upload + gui");
+            // A tạo nhóm, thêm B: B nhận GROUP_UPDATED và thư thông báo; thư thông báo không nằm ở Đã gửi của A.
             int groupId = a1.req(Command.CREATE_GROUP, obj("groupName", group)).getData().getAsJsonObject().get("groupId").getAsInt();
             b1.events.clear();
             check(a1.req(Command.ADD_MEMBER, obj("groupId", groupId, "email", b)).isOk(), "ADD_MEMBER B");
@@ -522,11 +620,13 @@ public class EndToEndCheck {
                     "B co thu thong bao trong Hop thu den (gui danh nghia chu nhom)");
             check(findBySubject(list(a1, "SENT"), "Bạn đã được thêm vào nhóm \"" + group + "\"") == null,
                     "Thu thong bao khong lam day muc Da gui cua chu nhom");
+            // Tạo một PDF giả 900 KB (5 byte đầu "%PDF-" để qua kiểm tra chữ ký) và tải lên.
             byte[] pdf = new byte[900_000];
             new Random(7).nextBytes(pdf);
             System.arraycopy("%PDF-1.7\n".getBytes(StandardCharsets.US_ASCII), 0, pdf, 0, 9);
             String uploadId = upload(a1, "báo cáo.pdf", pdf);
             b1.events.clear();
+            // Gửi thư không tệp tới nhóm, rồi thư kèm PDF cho B; B nhận NEW_MAIL có tên người gửi.
             ResponseMessage sent = a1.req(Command.SEND_MAIL, obj("to", arr(group), "subject", "Báo cáo tuần 🙂",
                     "body", "Dòng 1\nDòng 2", "attachments", arr(), "forwardAttachmentIds", arr()));
             check(sent.isOk(), "Gui thu khong tep toi nhom");
@@ -538,6 +638,7 @@ public class EndToEndCheck {
             check(ev != null && ev.getData().getAsJsonObject().get("senderName").getAsString().equals("Nguyễn Văn A"),
                     "EVENT NEW_MAIL mang ten nguoi gui (cho thong bao desktop)");
 
+            // Tệp .exe (bắt đầu bằng "MZ") đổi tên .pdf phải bị chặn.
             byte[] exe = new byte[2048];
             exe[0] = 'M'; exe[1] = 'Z';
             String fakeId = upload(a1, "hoa-don.pdf", exe);
@@ -546,6 +647,7 @@ public class EndToEndCheck {
             ResponseMessage fakeSend = a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "x", "body", "x", "attachments", fake));
             check(!fakeSend.isOk() && fakeSend.getMessage().contains("không đúng định dạng"), "Tep .exe doi ten .pdf bi chan: " + fakeSend.getMessage());
 
+            // Nội dung 60.000 ký tự gửi được; quá 100.000 ký tự bị chặn.
             StringBuilder longBody = new StringBuilder();
             while (longBody.length() < 60_000) longBody.append("Nội dung tiếng Việt rất dài. ");
             check(a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Thư dài", "body", longBody.toString())).isOk(),
@@ -553,7 +655,9 @@ public class EndToEndCheck {
             check(!a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "x", "body", "a".repeat(100_001))).isOk(),
                     "Noi dung > 100 000 ky tu bi tu choi");
 
+            // --- Gắn sao / chưa đọc / tải tệp ---
             System.out.println("== Gan sao / chua doc / tim kiem");
+            // Hộp thư đến của B có 4 thư; tìm thư kèm tệp để dùng tiếp.
             JsonArray bInbox = list(b1, "INBOX");
             check(bInbox.size() == 4, "B co 4 thu trong INBOX (3 thu + 1 thu thong bao vao nhom)");
             int fileEntry = -1, fileMail = -1;
@@ -566,18 +670,22 @@ public class EndToEndCheck {
                             "MailSummary co hasAttachments + snippet");
                 }
             }
+            // Gắn sao rồi xem mục Có gắn sao; mở chi tiết.
             check(b1.req(Command.SET_STARRED, obj("entryIds", arr(fileEntry), "starred", true)).isOk(), "Gan sao");
             JsonArray starred = b1.req(Command.GET_MAIL_LIST, obj("view", "STARRED")).getData().getAsJsonArray();
             check(starred.size() == 1 && starred.get(0).getAsJsonObject().get("folderType").getAsString().equals("INBOX"),
                     "View STARRED tra dung 1 thu kem folderType");
             JsonObject detail = b1.req(Command.GET_MAIL_DETAIL, obj("mailId", fileMail, "entryId", fileEntry)).getData().getAsJsonObject();
             check(detail.get("starred").getAsBoolean() && detail.get("entryId").getAsInt() == fileEntry, "MailDetail co starred + entryId");
+            // Đánh dấu chưa đọc: số chưa đọc tăng 1.
             int unreadAfterOpen = unread(b1, "INBOX");
             check(b1.req(Command.MARK_READ, obj("entryIds", arr(fileEntry), "read", false)).isOk(), "Danh dau CHUA doc");
             check(unread(b1, "INBOX") == unreadAfterOpen + 1, "unreadCount tang lai 1");
+            // Tải PDF về, phải trùng từng byte.
             int attachmentId = detail.getAsJsonArray("attachments").get(0).getAsJsonObject().get("attachmentId").getAsInt();
             check(Arrays.equals(download(b1, attachmentId, pdf.length), pdf), "Tai PDF ve trung khop tung byte");
 
+            // --- Chuyển tiếp kèm tệp ---
             System.out.println("== Chuyen tiep kem tep");
             check(c1.req(Command.PING, null).isOk(), "(C van ket noi duoc du dang bi khoa dang nhap)");
             // Mở khoá C: đăng ký tài khoản D thay thế để nhận thư chuyển tiếp.
@@ -585,6 +693,7 @@ public class EndToEndCheck {
             try (Conn d1 = new Conn()) {
                 check(d1.req(Command.REGISTER, obj("email", d, "password", pw, "displayName", "Phạm D")).isOk(), "REGISTER D");
                 check(d1.req(Command.LOGIN, obj("email", d, "password", pw)).isOk(), "LOGIN D");
+                // B chuyển tiếp thư kèm tệp cho D; D tải được bản sao riêng; D không chuyển tiếp được tệp mình không có quyền xem.
                 ResponseMessage fw = b1.req(Command.SEND_MAIL, obj("to", arr(d), "subject", "Fwd: Kèm tệp", "body", "chuyển tiếp",
                         "forwardAttachmentIds", arr(attachmentId)));
                 check(fw.isOk(), "B chuyen tiep thu kem tep goc cho D");
@@ -598,7 +707,9 @@ public class EndToEndCheck {
                 check(!steal.isOk(), "Khong chuyen tiep duoc tep cua thu minh khong co quyen xem");
             }
 
+            // --- Gợi ý người nhận ---
             System.out.println("== Goi y nguoi nhan (autocomplete)");
+            // Theo email, theo tên có dấu, theo nhóm; không gợi ý chính mình; người đã trao đổi xếp trước.
             JsonArray sug = a1.req(Command.SUGGEST_CONTACTS, obj("query", "e2e-b-" + tag.substring(0, 3))).getData().getAsJsonArray();
             boolean foundB = false;
             for (JsonElement e : sug) foundB |= b.equals(e.getAsJsonObject().has("email") ? e.getAsJsonObject().get("email").getAsString() : "");
@@ -620,8 +731,10 @@ public class EndToEndCheck {
             check(mixed.size() >= 2 && mixed.get(0).getAsJsonObject().get("interactions").getAsInt() > 0,
                     "Nguoi da trao doi thu xep truoc nguoi chua trao doi");
 
+            // --- Thư nháp ---
             System.out.println("== Thu nhap");
             a1.events.clear(); a2.events.clear();
+            // Lưu nháp: phiên 2 nhận DRAFTS_UPDATED; sửa nháp; người khác không xoá được; gửi từ nháp thì nháp bị xoá.
             ResponseMessage saved = a1.req(Command.SAVE_DRAFT, obj("to", b, "cc", "", "bcc", "", "subject", "Nháp 1", "body", "đang viết"));
             check(saved.isOk(), "SAVE_DRAFT moi");
             int draftId = saved.getData().getAsJsonObject().get("draftId").getAsInt();
@@ -633,23 +746,29 @@ public class EndToEndCheck {
             check(a1.req(Command.SEND_MAIL, obj("to", arr(b), "subject", "Nháp 1 (sửa)", "body", "xong", "draftId", draftId)).isOk(), "Gui tu nhap");
             check(a1.req(Command.GET_DRAFTS, null).getData().getAsJsonArray().size() == 0, "Gui xong thi nhap bi xoa");
 
+            // Các kịch bản v3.
             runV3(tag, pw, a, b, a1, b1, fileEntry);
 
+            // --- Hồ sơ / đổi mật khẩu / thu hồi phiên ---
             System.out.println("== Ho so / doi mat khau / thu hoi phien");
+            // Đổi tên: phiên 2 nhận PROFILE_UPDATED.
             a2.events.clear();
             check(a1.req(Command.UPDATE_PROFILE, obj("displayName", "Nguyễn Văn A (mới)")).isOk(), "UPDATE_PROFILE");
             EventMessage prof = a2.awaitEvent("PROFILE_UPDATED", 3000);
             check(prof != null && prof.getData().getAsJsonObject().get("displayName").getAsString().equals("Nguyễn Văn A (mới)"),
                     "Phien 2 nhan PROFILE_UPDATED");
+            // Đổi mật khẩu sai mật khẩu cũ bị chặn; đúng thì thu hồi phiên 2.
             ResponseMessage wrongCurrent = a1.req(Command.CHANGE_PASSWORD, obj("currentPassword", "sai", "newPassword", "MatKhauMoi-2027"));
             check(!wrongCurrent.isOk() && wrongCurrent.getMessage().contains("hiện tại không đúng"), "Doi mat khau sai mat khau cu bi chan");
             ResponseMessage changed = a1.req(Command.CHANGE_PASSWORD, obj("currentPassword", pw, "newPassword", "MatKhauMoi-2027"));
             check(changed.isOk() && changed.getData().getAsJsonObject().get("revokedSessions").getAsInt() == 1, "Doi mat khau -> thu hoi 1 phien khac");
             EventMessage revoked = a2.awaitEvent("SESSION_REVOKED", 3000);
             check(revoked != null, "Phien 2 nhan SESSION_REVOKED");
+            // Chờ Server đóng kết nối phiên 2.
             Thread.sleep(500);
             check(a2.closedByServer, "Server dong ket noi cua phien bi thu hoi");
             check(a1.req(Command.GET_FOLDERS, null).isOk(), "Phien doi mat khau van dung tiep");
+            // Mật khẩu cũ hết hiệu lực, mật khẩu mới dùng được; LOGOUT_ALL đá mọi phiên.
             try (Conn a3 = new Conn()) {
                 check(!a3.req(Command.LOGIN, obj("email", a, "password", pw)).isOk(), "Mat khau cu khong dang nhap duoc");
                 check(a3.req(Command.LOGIN, obj("email", a, "password", "MatKhauMoi-2027")).isOk(), "Mat khau moi dang nhap duoc");

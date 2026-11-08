@@ -1,3 +1,4 @@
+// Gói "network": kết nối mạng tới Server.
 package com.mailsystem.client.network;
 
 /**
@@ -8,6 +9,7 @@ package com.mailsystem.client.network;
  */
 public record ServerIdentity(String host, int port, String subject, String fingerprint, String previousFingerprint) {
 
+    /** @return true nếu chứng chỉ đã thay đổi so với lần trước (có thể bị giả mạo) */
     public boolean changed() {
         return previousFingerprint != null;
     }

@@ -1,5 +1,7 @@
+// Gói "ui": các thành phần giao diện tự viết (JavaFX).
 package com.mailsystem.client.ui;
 
+// Các lớp JavaFX: hiệu ứng, căn lề, nút, nhãn, hàng / cột, thời lượng.
 import javafx.animation.FadeTransition;
 import javafx.animation.PauseTransition;
 import javafx.animation.SequentialTransition;
@@ -17,74 +19,94 @@ import javafx.util.Duration;
  */
 public final class Toast {
 
+    // Ba loại thông báo.
     public enum Kind { SUCCESS, ERROR, INFO }
 
+    // id của cột chứa các toast trong cửa sổ.
     private static final String HOST_ID = "toast-host";
 
+    // Constructor private: lớp chỉ có hàm tĩnh.
     private Toast() {
     }
 
+    /** Thông báo thành công (xanh). */
     public static void success(StackPane root, String message) {
         show(root, message, Kind.SUCCESS);
     }
 
+    /** Thông báo lỗi (đỏ, hiện lâu hơn). */
     public static void error(StackPane root, String message) {
         show(root, message, Kind.ERROR);
     }
 
+    /** Thông báo thông tin. */
     public static void info(StackPane root, String message) {
         show(root, message, Kind.INFO);
     }
 
+    /** Hiện một toast trong cửa sổ có gốc là root. */
     public static void show(StackPane root, String message, Kind kind) {
+        // Không có chỗ hiện hoặc không có nội dung: bỏ qua.
         if (root == null || message == null || message.isBlank()) {
             return;
         }
+        // Cột chứa toast (tạo nếu chưa có).
         VBox host = host(root);
+        // Icon theo loại.
         String icon = switch (kind) {
             case SUCCESS -> Icons.SUCCESS;
             case ERROR -> Icons.ERROR;
             case INFO -> Icons.INFO;
         };
+        // Nhãn chữ xuống dòng được.
         Label text = new Label(message);
         text.setWrapText(true);
         text.getStyleClass().add("toast-text");
+        // Toast: icon + chữ, kiểu CSS theo loại, rộng tối đa 460px, bắt đầu trong suốt.
         HBox toast = new HBox(10, Icons.of(icon, 18), text);
         toast.setAlignment(Pos.CENTER_LEFT);
         toast.getStyleClass().addAll("toast", "toast-" + kind.name().toLowerCase());
         toast.setMaxWidth(460);
         toast.setOpacity(0);
+        // Thêm vào cột; quá 3 toast thì bỏ cái cũ nhất.
         host.getChildren().add(toast);
         if (host.getChildren().size() > 3) {
             host.getChildren().remove(0);
         }
 
+        // Hiệu ứng: hiện dần 160ms, giữ 3,5 giây (lỗi 6 giây), mờ dần 260ms.
         FadeTransition in = new FadeTransition(Duration.millis(160), toast);
         in.setToValue(1);
         PauseTransition stay = new PauseTransition(Duration.seconds(kind == Kind.ERROR ? 6 : 3.5));
         FadeTransition out = new FadeTransition(Duration.millis(260), toast);
         out.setToValue(0);
         SequentialTransition sequence = new SequentialTransition(in, stay, out);
+        // Xong hiệu ứng thì gỡ toast; bấm vào toast thì gỡ ngay.
         sequence.setOnFinished(event -> host.getChildren().remove(toast));
         toast.setOnMouseClicked(event -> host.getChildren().remove(toast));
         sequence.play();
     }
 
+    // Tìm cột chứa toast trong root, chưa có thì tạo.
     private static VBox host(StackPane root) {
+        // Đã có: đưa lên trên cùng rồi dùng lại.
         for (Node child : root.getChildren()) {
             if (HOST_ID.equals(child.getId()) && child instanceof VBox box) {
                 box.toFront();
                 return box;
             }
         }
+        // Tạo cột mới: các toast cách 8px, xếp từ dưới lên, nằm giữa cạnh dưới.
         VBox host = new VBox(8);
         host.setId(HOST_ID);
         host.setAlignment(Pos.BOTTOM_CENTER);
+        // Vùng trống của cột không chặn chuột (vẫn bấm được giao diện bên dưới).
         host.setPickOnBounds(false);
         host.setMouseTransparent(false);
         host.getStyleClass().add("toast-host");
         StackPane.setAlignment(host, Pos.BOTTOM_CENTER);
         host.setMaxSize(StackPane.USE_PREF_SIZE, StackPane.USE_PREF_SIZE);
+        // Thêm cột vào root.
         root.getChildren().add(host);
         return host;
     }

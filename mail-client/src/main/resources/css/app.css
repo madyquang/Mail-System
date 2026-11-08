@@ -7,49 +7,63 @@
    bóng (-fx-effect không tính vào kích thước bố cục). Không bao giờ đổi
    -fx-border-width, -fx-padding hay cỡ chữ theo trạng thái: mọi thứ cạnh đó sẽ bị xô.
    ===================================================================== */
+/* Khối token: áp cho gốc mỗi cảnh (.root) và cho popup gợi ý (popup có cây giao diện riêng, không kế thừa .root). */
 .root, .suggest-popup {
+    /* Màu nền: nền cửa sổ, bề mặt thẻ, hai mức bề mặt đậm dần (hover, ô tìm kiếm). */
     -c-bg: #f6f8fc;
     -c-surface: #ffffff;
     -c-surface-2: #f1f4f9;
     -c-surface-3: #e9eef6;
+    /* Màu viền: nhạt và đậm. */
     -c-border: #e1e5ea;
     -c-border-strong: #c7cdd4;
+    /* Màu chữ: chính, phụ, mờ. */
     -c-text: #1f1f1f;
     -c-text-2: #444746;
     -c-text-3: #747775;
+    /* Màu chủ đạo (xanh) và các biến thể: khi hover, nền nhạt, nền rất nhạt. */
     -c-primary: #0b57d0;
     -c-primary-hover: #0842a0;
     -c-primary-soft: #d3e3fd;
     -c-primary-softer: #e8f0fe;
+    /* Màu trạng thái: lỗi, thành công, cảnh báo (kèm nền nhạt), màu ngôi sao. */
     -c-danger: #b3261e;
     -c-danger-soft: #fce8e6;
     -c-success: #146c2e;
     -c-success-soft: #e6f4ea;
     -c-warning: #8a5300;
     -c-star: #f4b400;
+    /* Nền dòng được chọn; chữ trên nền xanh nhạt; vòng sáng focus; lớp phủ mờ; thanh cuộn. */
     -c-selected: #c2dbff;
     -c-on-primary-soft: #001d35;
     -c-focus-ring: rgba(11, 87, 208, 0.35);
     -c-scrim: rgba(255, 255, 255, 0.7);
     -c-thumb: #c4c7c5;
     -c-thumb-hover: #a8aaa9;
+    /* Nền gradient của màn đăng nhập / đăng ký. */
     -c-auth-bg: linear-gradient(to bottom right, #e8f0fe 0%, #f6f8fc 55%, #fef7e0 100%);
 
+    /* Phông chữ và cỡ chữ mặc định của toàn ứng dụng. */
     -fx-font-family: "Segoe UI", "Roboto", "Helvetica Neue", sans-serif;
     -fx-font-size: 13px;
+    /* Nền và màu chữ mặc định. */
     -fx-background-color: -c-bg;
     -fx-text-fill: -c-text;
+    /* Màu focus / màu nhấn của control mặc định (Modena); tắt quầng focus mờ của Modena. */
     -fx-focus-color: -c-primary;
     -fx-faint-focus-color: transparent;
     -fx-accent: -c-primary;
 }
 
+/* Icon (Ikonli) mặc định dùng màu chữ phụ. */
 .icon { -fx-icon-color: -c-text-2; }
 
 /* ------------------------------------------------------------- chữ */
+/* Cỡ tiêu đề lớn / vừa / nhỏ (in đậm). */
 .title-xl { -fx-font-size: 26px; -fx-font-weight: bold; -fx-text-fill: -c-text; }
 .title-lg { -fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: -c-text; }
 .title-md { -fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: -c-text; }
+/* Chữ mờ, chữ phụ, nhãn ô nhập, chữ gợi ý nhỏ, chữ lỗi, chữ thành công. */
 .text-muted { -fx-text-fill: -c-text-3; }
 .text-secondary { -fx-text-fill: -c-text-2; }
 .field-label { -fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: -c-text-2; }
@@ -58,6 +72,7 @@
 .success-text { -fx-text-fill: -c-success; }
 
 /* ------------------------------------------------------------- ô nhập */
+/* Ô chữ, ô mật khẩu, ô nhiều dòng: nền trắng, viền 1px bo 8px, lề trong, màu chữ gợi ý và màu bôi đen. */
 .text-field, .password-field, .text-area {
     -fx-background-color: -c-surface;
     -fx-border-color: -c-border-strong;
@@ -69,17 +84,22 @@
     -fx-highlight-fill: -c-primary-soft;
     -fx-highlight-text-fill: -c-text;
 }
+/* Ô nhiều dòng: lề ngoài nhỏ, phần nội dung bên trong có nền và lề riêng. */
 .text-area { -fx-padding: 4px; }
 .text-area .content { -fx-background-color: -c-surface; -fx-background-radius: 8px; -fx-padding: 6px 8px; }
+/* Rê chuột: viền đậm hơn. */
 .text-field:hover, .password-field:hover, .text-area:hover { -fx-border-color: -c-text-3; }
+/* Đang focus: viền xanh + vòng sáng (vẽ bằng bóng nên không đổi kích thước). */
 .text-field:focused, .password-field:focused, .text-area:focused {
     -fx-border-color: -c-primary;
     -fx-effect: dropshadow(gaussian, -c-focus-ring, 4, 0.6, 0, 0);
 }
+/* Bị khoá: mờ đi; ô sai: viền đỏ. */
 .text-field:disabled, .password-field:disabled { -fx-opacity: 0.6; }
 .field-invalid, .field-invalid:focused { -fx-border-color: -c-danger; }
 
 /* ô nhập phẳng (soạn thư): chỉ gạch dưới */
+/* Ô phẳng: nền trong suốt, chỉ có gạch dưới 1px, không bo góc. */
 .flat-field, .flat-field:focused, .flat-field:hover {
     -fx-background-color: transparent;
     -fx-border-color: transparent transparent -c-border transparent;
@@ -88,19 +108,23 @@
     -fx-background-radius: 0;
     -fx-padding: 9px 2px;
 }
+/* Ô phẳng đang focus: gạch dưới màu xanh. */
 .flat-field:focused { -fx-border-color: transparent transparent -c-primary transparent; }
 /* Ô phẳng / ô nằm trong khung riêng: không vẽ vòng sáng focus của ô nhập thường. */
 .flat-field:focused, .flat-area:focused, .search-box .text-field:focused, .search-filter:focused,
 .reader-body:focused, .fingerprint:focused, .totp-field.flat-field:focused { -fx-effect: null; }
+/* Ô nhiều dòng phẳng (nội dung thư): không nền, không viền, không lề. */
 .flat-area, .flat-area:focused, .flat-area:hover {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
     -fx-padding: 0;
 }
+/* Phần nội dung và khung cuộn bên trong ô phẳng / khung đọc: trong suốt. */
 .flat-area .content { -fx-background-color: transparent; -fx-padding: 8px 2px; }
 .flat-area .scroll-pane, .reader-body .scroll-pane { -fx-background-color: transparent; }
 
 /* ------------------------------------------------------------- nút */
+/* Nút chung: viền trong suốt 1px (để nút có viền không to hơn), bo tròn 20px, con trỏ bàn tay, chữ đậm vừa. */
 .button {
     -fx-border-color: transparent;
     -fx-border-width: 1px;
@@ -110,6 +134,7 @@
     -fx-cursor: hand;
     -fx-font-weight: 600;
 }
+/* Nút chính: nền xanh, chữ và icon trắng; hover / nhấn thì đậm hơn. */
 .primary-button {
     -fx-background-color: -c-primary;
     -fx-text-fill: white;
@@ -117,6 +142,7 @@
 .primary-button .icon { -fx-icon-color: white; }
 .primary-button:hover { -fx-background-color: -c-primary-hover; }
 .primary-button:pressed { -fx-background-color: derive(-c-primary-hover, -12%); }
+/* Nút phụ: nền trắng, viền xám, chữ và icon xanh; hover nền xanh rất nhạt. */
 .secondary-button {
     -fx-background-color: -c-surface;
     -fx-border-color: -c-border-strong;
@@ -124,6 +150,7 @@
 }
 .secondary-button .icon { -fx-icon-color: -c-primary; }
 .secondary-button:hover { -fx-background-color: -c-primary-softer; }
+/* Nút trong suốt: chữ xám; hover / nhấn có nền xám nhạt. */
 .ghost-button {
     -fx-background-color: transparent;
     -fx-text-fill: -c-text-2;
@@ -131,18 +158,21 @@
 }
 .ghost-button:hover { -fx-background-color: -c-surface-3; }
 .ghost-button:pressed { -fx-background-color: -c-border; }
+/* Nút nguy hiểm: nền đỏ, chữ và icon trắng; hover đậm hơn. */
 .danger-button {
     -fx-background-color: -c-danger;
     -fx-text-fill: white;
 }
 .danger-button:hover { -fx-background-color: derive(-c-danger, -15%); }
 .danger-button .icon { -fx-icon-color: white; }
+/* Nút dạng chữ: trong suốt, chữ xanh; hover nền xanh rất nhạt. */
 .text-button {
     -fx-background-color: transparent;
     -fx-text-fill: -c-primary;
     -fx-padding: 4px 8px;
 }
 .text-button:hover { -fx-background-color: -c-primary-softer; }
+/* Nút bị khoá: mờ. */
 .button:disabled { -fx-opacity: 0.45; }
 /* Vòng focus chỉ hiện khi dùng bàn phím (Tab), vẽ bằng bóng nên không xô bố cục. */
 .button:focus-visible, .toggle-button:focus-visible, .check-box:focus-visible .box {
@@ -150,6 +180,7 @@
 }
 
 /* nút chỉ có icon, tròn */
+/* Nút icon tròn: trong suốt, tối thiểu 36x36; hover / nhấn có nền; khoá thì mờ. */
 .icon-button {
     -fx-background-color: transparent;
     -fx-background-radius: 50%;
@@ -162,23 +193,28 @@
 .icon-button:pressed { -fx-background-color: -c-border; }
 .icon-button:disabled { -fx-opacity: 0.35; }
 
+/* Liên kết: chữ xanh (kể cả đã bấm), không viền. */
 .hyperlink { -fx-text-fill: -c-primary; -fx-border-color: transparent; -fx-padding: 0 2px; }
 .hyperlink:visited { -fx-text-fill: -c-primary; }
 
+/* Ô đánh dấu: hộp bo 3px viền xám; khi chọn / chọn một phần thì nền xanh và dấu trắng. */
 .check-box .box { -fx-background-radius: 3px; -fx-border-radius: 3px; -fx-border-color: -c-text-3; -fx-background-color: transparent; }
 .check-box:selected .box, .check-box:indeterminate .box { -fx-background-color: -c-primary; -fx-border-color: -c-primary; }
 .check-box:selected .mark, .check-box:indeterminate .mark { -fx-background-color: white; }
 
 /* ------------------------------------------------------------- màn hình đăng nhập */
+/* Nền màn đăng nhập / đăng ký. */
 .auth-screen {
     -fx-background-color: -c-auth-bg;
 }
+/* Thẻ giữa màn đăng nhập: nền trắng, bo 20px, bóng mờ, lề trong. */
 .auth-card {
     -fx-background-color: -c-surface;
     -fx-background-radius: 20px;
     -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.12), 28, 0.12, 0, 8);
     -fx-padding: 40px 44px 30px 44px;
 }
+/* Logo: ô vuông xanh 52x52 bo 14px, icon trắng; tên ứng dụng chữ xanh đậm. */
 .brand-logo {
     -fx-background-color: -c-primary;
     -fx-background-radius: 14px;
@@ -186,6 +222,7 @@
 }
 .brand-logo .icon { -fx-icon-color: white; }
 .brand-name { -fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: -c-primary; }
+/* Huy hiệu "kết nối an toàn": nền xanh lá nhạt, chữ và icon xanh lá. */
 .secure-badge {
     -fx-background-color: -c-success-soft;
     -fx-background-radius: 14px;
@@ -193,18 +230,21 @@
 }
 .secure-badge .label { -fx-text-fill: -c-success; -fx-font-size: 11.5px; -fx-font-weight: 600; }
 .secure-badge .icon { -fx-icon-color: -c-success; }
+/* Khung báo lỗi trong form: nền đỏ nhạt, chữ đỏ. */
 .form-error {
     -fx-background-color: -c-danger-soft;
     -fx-background-radius: 8px;
     -fx-padding: 9px 12px;
     -fx-text-fill: -c-danger;
 }
+/* Khung thông tin trong form: nền xanh nhạt, chữ xanh đậm. */
 .form-info {
     -fx-background-color: -c-primary-softer;
     -fx-background-radius: 8px;
     -fx-padding: 9px 12px;
     -fx-text-fill: -c-primary-hover;
 }
+/* Thanh độ mạnh mật khẩu: nền, phần tô; màu theo mức 0 (đỏ) .. 3 (xanh lá). */
 .strength-bar { -fx-background-color: -c-surface-3; -fx-background-radius: 3px; -fx-pref-height: 6px; }
 .strength-fill { -fx-background-radius: 3px; -fx-pref-height: 6px; }
 .strength-0 { -fx-background-color: -c-danger; }
@@ -213,10 +253,12 @@
 .strength-3 { -fx-background-color: -c-success; }
 
 /* ------------------------------------------------------------- khung ứng dụng */
+/* Thanh trên cùng của màn hình chính. */
 .app-bar {
     -fx-background-color: -c-bg;
     -fx-padding: 8px 16px 8px 8px;
 }
+/* Ô tìm kiếm bo tròn; khi có focus bên trong thì nền trắng và có bóng. */
 .search-box {
     -fx-background-color: -c-surface-3;
     -fx-background-radius: 24px;
@@ -226,15 +268,18 @@
     -fx-background-color: -c-surface;
     -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.18), 6, 0.1, 0, 1);
 }
+/* Ô chữ bên trong ô tìm kiếm: không nền, không viền. */
 .search-box .text-field, .search-box .text-field:focused, .search-box .text-field:hover {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
     -fx-padding: 10px 6px;
 }
+/* Ô lọc người gửi: chỉ có vạch ngăn bên trái. */
 .search-filter, .search-filter:focused, .search-filter:hover {
     -fx-border-color: transparent transparent transparent -c-border-strong;
     -fx-border-width: 0 0 0 1px;
 }
+/* Nhãn trạng thái kết nối (TLS) ở góc: nền xanh lá nhạt, chữ và icon xanh lá. */
 .connection-chip {
     -fx-background-color: -c-success-soft;
     -fx-background-radius: 14px;
@@ -244,7 +289,9 @@
 .connection-chip .icon { -fx-icon-color: -c-success; }
 
 /* ------------------------------------------------------------- sidebar */
+/* Thanh bên. */
 .sidebar { -fx-background-color: -c-bg; -fx-padding: 4px 12px 12px 8px; }
+/* Nút Soạn thư: nền xanh nhạt bo 16px, chữ lớn, bóng nhẹ; hover đậm hơn, bóng rõ hơn. */
 .compose-button {
     -fx-background-color: -c-primary-soft;
     -fx-background-radius: 16px;
@@ -259,6 +306,7 @@
     -fx-background-color: derive(-c-primary-soft, -6%);
     -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.22), 8, 0.12, 0, 2);
 }
+/* Mục thanh bên: bo bên phải, chữ xám, căn trái, con trỏ bàn tay. */
 .nav-item {
     -fx-background-color: -c-bg;   /* màu đặc của thanh bên (không dùng transparent: chuyển màu sẽ chớp tối) */
     -fx-background-radius: 0 18px 18px 0;
@@ -270,36 +318,49 @@
     -fx-alignment: center-left;
     -fx-cursor: hand;
 }
+/* Mục: hover nền xám; được chọn nền xanh nhạt, chữ đậm; không vẽ viền focus. */
 .nav-item:hover { -fx-background-color: -c-surface-3; }
 .nav-item:selected { -fx-background-color: -c-primary-soft; -fx-text-fill: -c-on-primary-soft; -fx-font-weight: bold; }
 .nav-item:selected .icon { -fx-icon-color: -c-on-primary-soft; }
 .nav-item:focused { -fx-border-color: transparent; }
+/* Nhãn tên trong mục đã chọn: không in đậm (chỉ đổi màu, tránh xô chữ). */
 .nav-item:selected .label { -fx-font-weight: normal; }
+/* Số đếm bên phải mục. */
 .nav-badge { -fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: -c-text-2; }
 .nav-item:selected .nav-badge { -fx-text-fill: -c-on-primary-soft; }
+/* Tiêu đề nhóm "Thư mục" trên thanh bên. */
 .sidebar-section { -fx-font-size: 11.5px; -fx-font-weight: bold; -fx-text-fill: -c-text-3; -fx-padding: 14px 0 4px 18px; }
 
 /* ------------------------------------------------------------- bảng nội dung */
+/* Thẻ nội dung chính (danh sách + khung đọc): nền trắng bo 16px. */
 .content-card {
     -fx-background-color: -c-surface;
     -fx-background-radius: 16px;
 }
+/* Khung chia cột: trong suốt; thanh chia cùng màu nền. */
 .split-pane { -fx-background-color: transparent; -fx-padding: 0; }
 .split-pane > .split-pane-divider { -fx-background-color: -c-bg; -fx-padding: 0 4px; }
+/* Thanh trên danh sách: có gạch dưới. */
 .list-toolbar { -fx-padding: 10px 14px 8px 14px; -fx-border-color: transparent transparent -c-border transparent; }
+/* Tiêu đề danh sách. */
 .list-title { -fx-font-size: 16px; -fx-font-weight: bold; }
+/* Thanh thao tác khi chọn thư: nền xanh rất nhạt bo 10px. */
 .selection-bar {
     -fx-background-color: -c-primary-softer;
     -fx-background-radius: 10px;
     -fx-padding: 0 6px 0 12px;
 }
+/* Hàng tiêu đề / thanh thao tác: cao cố định 40px (đổi qua lại không xô danh sách). */
 .list-header { -fx-min-height: 40px; -fx-pref-height: 40px; -fx-max-height: 40px; }
 /* Dải báo lỗi nổi trên danh sách thay vì đẩy danh sách xuống. */
 .banner-error.floating { -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.18), 10, 0.1, 0, 2); }
+/* Chữ trên thanh thao tác. */
 .selection-bar .label { -fx-text-fill: -c-primary-hover; -fx-font-weight: 600; }
 
 /* danh sách thư */
+/* Danh sách thư: nền trong suốt, không lề. */
 .mail-list { -fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0; }
+/* Mỗi dòng thư: nền trắng, lề trong, gạch dưới 1px, con trỏ bàn tay. */
 .mail-list .list-cell {
     -fx-background-color: -c-surface;
     -fx-padding: 10px 14px 10px 12px;
@@ -307,18 +368,26 @@
     -fx-border-width: 0 0 1px 0;
     -fx-cursor: hand;
 }
+/* Dòng trống (cuối danh sách): trong suốt, không gạch, con trỏ thường. */
 .mail-list .list-cell:empty { -fx-background-color: transparent; -fx-border-color: transparent; -fx-cursor: default; }
+/* Hover: nền xám nhạt; dòng chưa đọc: nền trắng; được chọn: nền xanh. */
 .mail-list .list-cell:hover { -fx-background-color: -c-surface-2; }
 .mail-list .list-cell.unread { -fx-background-color: -c-surface; }
 .mail-list .list-cell:selected, .mail-list .list-cell.unread:selected { -fx-background-color: -c-selected; }
+/* Dòng có focus: bỏ viền focus của Modena. */
 .mail-list .list-cell:focused { -fx-background-insets: 0; }
+/* Chữ người gửi, tiêu đề, đoạn trích, ngày. */
 .cell-sender { -fx-font-size: 13.5px; -fx-text-fill: -c-text-2; }
 .cell-subject { -fx-text-fill: -c-text-2; }
 .cell-snippet { -fx-text-fill: -c-text-3; }
 .cell-date { -fx-font-size: 12px; -fx-text-fill: -c-text-3; }
+/* Thư chưa đọc: người gửi, tiêu đề, ngày in đậm màu chữ chính. */
 .unread .cell-sender, .unread .cell-subject, .unread .cell-date { -fx-font-weight: bold; -fx-text-fill: -c-text; }
+/* Chấm xanh 8x8 báo chưa đọc. */
 .unread-dot { -fx-background-color: -c-primary; -fx-background-radius: 4px; -fx-min-width: 8px; -fx-min-height: 8px; -fx-max-width: 8px; -fx-max-height: 8px; }
+/* Nhãn "Nháp" màu đỏ. */
 .draft-tag { -fx-text-fill: -c-danger; -fx-font-weight: bold; }
+/* Nhãn tên thư mục nhỏ (hiện ở Có gắn sao / kết quả tìm kiếm). */
 .folder-tag {
     -fx-background-color: -c-surface-3;
     -fx-background-radius: 4px;
@@ -326,24 +395,32 @@
     -fx-font-size: 11px;
     -fx-text-fill: -c-text-2;
 }
+/* Nút ngôi sao tròn trên dòng thư; hover có nền. */
 .star-button { -fx-background-color: transparent; -fx-padding: 4px; -fx-cursor: hand; -fx-background-radius: 50%; }
 .star-button:hover { -fx-background-color: -c-surface-3; }
+/* Icon ngôi sao: xám; khi có sao thì vàng. */
 .star-button .icon { -fx-icon-color: -c-text-3; }
 .star-button.starred .icon { -fx-icon-color: -c-star; }
 
 /* ------------------------------------------------------------- khung đọc thư */
+/* Khung đọc: nền trắng bo 16px. */
 .reader { -fx-background-color: -c-surface; -fx-background-radius: 16px; }
+/* Thanh công cụ khung đọc: có gạch dưới. */
 .reader-toolbar { -fx-padding: 8px 12px; -fx-border-color: transparent transparent -c-border transparent; }
+/* Tiêu đề thư lớn; tên người gửi đậm; dòng phụ (email, người nhận, ngày) nhỏ và mờ. */
 .reader-subject { -fx-font-size: 21px; -fx-font-weight: normal; -fx-text-fill: -c-text; }
 .reader-sender { -fx-font-size: 14px; -fx-font-weight: bold; }
 .reader-meta { -fx-font-size: 12.5px; -fx-text-fill: -c-text-3; }
+/* Nội dung thư (ô chỉ đọc): không nền, không viền, chữ 14px. */
 .reader-body, .reader-body:focused, .reader-body:hover {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
     -fx-font-size: 14px;
     -fx-padding: 0;
 }
+/* Phần nội dung bên trong: trong suốt. */
 .reader-body .content { -fx-background-color: transparent; -fx-padding: 0; }
+/* Thẻ tệp đính kèm: viền xám bo 10px, con trỏ bàn tay; hover nền xám, viền đậm. */
 .attachment-chip {
     -fx-background-color: -c-surface;
     -fx-border-color: -c-border-strong;
@@ -353,20 +430,25 @@
     -fx-cursor: hand;
 }
 .attachment-chip:hover { -fx-background-color: -c-surface-2; -fx-border-color: -c-text-3; }
+/* Tên tệp đậm vừa; thanh tiến độ cao 4px; icon tệp màu xanh. */
 .attachment-name { -fx-font-weight: 600; }
 .attachment-chip .progress-bar { -fx-pref-height: 4px; }
 .attachment-chip .icon { -fx-icon-color: -c-primary; }
 
 /* ------------------------------------------------------------- trạng thái rỗng / đang tải */
+/* Khung trống: lề 40px; ô icon tròn nền xám; tiêu đề và mô tả. */
 .empty-state { -fx-padding: 40px; }
 .empty-icon { -fx-background-color: -c-surface-2; -fx-background-radius: 50%; -fx-padding: 22px; }
 .empty-icon .icon { -fx-icon-color: -c-text-3; }
 .empty-title { -fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: -c-text-2; }
 .empty-subtitle { -fx-text-fill: -c-text-3; }
+/* Lớp phủ "đang tải" mờ trên danh sách. */
 .loading-pane { -fx-background-color: -c-scrim; -fx-background-radius: 16px; }
+/* Vòng xoay và thanh tiến độ màu xanh, rãnh xám. */
 .progress-indicator { -fx-progress-color: -c-primary; }
 .progress-bar .bar { -fx-background-color: -c-primary; -fx-background-radius: 3px; -fx-background-insets: 0; }
 .progress-bar .track { -fx-background-color: -c-surface-3; -fx-background-radius: 3px; }
+/* Dải báo lỗi: nền đỏ nhạt bo 10px, chữ và icon đỏ. */
 .banner-error {
     -fx-background-color: -c-danger-soft;
     -fx-padding: 10px 14px;
@@ -376,7 +458,9 @@
 .banner-error .icon { -fx-icon-color: -c-danger; }
 
 /* ------------------------------------------------------------- toast */
+/* Cột chứa toast: cách đáy 26px. */
 .toast-host { -fx-padding: 0 0 26px 0; }
+/* Toast: nền xám đen bo 10px, bóng, con trỏ bàn tay (bấm để đóng). */
 .toast {
     -fx-background-color: #313033;
     -fx-background-radius: 10px;
@@ -384,34 +468,43 @@
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.28), 14, 0.15, 0, 4);
     -fx-cursor: hand;
 }
+/* Chữ toast trắng; icon theo loại: xanh lá / đỏ nhạt / xanh dương. */
 .toast-text { -fx-text-fill: #f2f2f2; -fx-font-size: 13px; }
 .toast-success .icon { -fx-icon-color: #6dd58c; }
 .toast-error .icon { -fx-icon-color: #ffb4ab; }
 .toast-info .icon { -fx-icon-color: #a8c7fa; }
 
 /* ------------------------------------------------------------- avatar */
+/* Ảnh đại diện: nền xanh mặc định (Avatar đặt lại màu theo người), chữ trắng đậm. */
 .avatar { -fx-background-color: -c-primary; }
 .avatar-text { -fx-text-fill: white; -fx-font-weight: bold; }
+/* Nút hồ sơ: trong suốt; ẩn mũi tên của MenuButton. */
 .profile-menu { -fx-background-color: transparent; -fx-padding: 2px; -fx-cursor: hand; }
 .profile-menu > .arrow-button { -fx-padding: 0; }
 .profile-menu > .arrow-button > .arrow { -fx-padding: 0; -fx-shape: none; }
+/* Menu chuột phải / menu thả: nền trắng bo 12px, bóng. */
 .context-menu {
     -fx-background-color: -c-surface;
     -fx-background-radius: 12px;
     -fx-padding: 6px 0;
     -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.24), 16, 0.12, 0, 4);
 }
+/* Mục menu: lề; khi focus nền xám; icon xám. */
 .menu-item { -fx-padding: 9px 18px; }
 .menu-item:focused { -fx-background-color: -c-surface-3; }
 .menu-item:focused .label { -fx-text-fill: -c-text; }
 .menu-item .icon { -fx-icon-color: -c-text-2; }
+/* Phần đầu menu hồ sơ (ảnh, tên, email). */
 .menu-header { -fx-padding: 10px 18px 8px 18px; }
 
 /* ------------------------------------------------------------- soạn thư */
+/* Cửa sổ soạn thư: nền trắng; thanh trên nền xám nhạt; thanh dưới có gạch trên. */
 .compose-root { -fx-background-color: -c-surface; }
 .compose-header { -fx-background-color: -c-surface-2; -fx-padding: 10px 12px 10px 18px; }
 .compose-footer { -fx-padding: 10px 16px; -fx-border-color: -c-border transparent transparent transparent; }
+/* Nhãn "Tới", "Cc", "Bcc": mờ, rộng tối thiểu 44px. */
 .recipient-label { -fx-text-fill: -c-text-3; -fx-min-width: 44px; }
+/* Thẻ tệp trong khung soạn: nền xám bo 16px, chữ 12px. */
 .file-chip {
     -fx-background-color: -c-surface-2;
     -fx-background-radius: 16px;
@@ -420,16 +513,21 @@
 .file-chip .label { -fx-font-size: 12px; }
 
 /* ------------------------------------------------------------- cửa sổ phụ */
+/* Nền cửa sổ phụ (Nhóm thư, Tài khoản). */
 .dialog-root { -fx-background-color: -c-bg; }
+/* Khung panel trắng bo 14px, lề 20px. */
 .panel {
     -fx-background-color: -c-surface;
     -fx-background-radius: 14px;
     -fx-padding: 20px;
 }
+/* ListView chung: trong suốt. */
 .list-view { -fx-background-color: transparent; -fx-background-insets: 0; }
+/* Dòng danh sách trong panel: bo 8px; hover nền xám; được chọn nền xanh nhạt. */
 .panel .list-view .list-cell { -fx-background-color: transparent; -fx-padding: 9px 10px; -fx-background-radius: 8px; }
 .panel .list-view .list-cell:hover { -fx-background-color: -c-surface-2; }
 .panel .list-view .list-cell:selected { -fx-background-color: -c-primary-soft; -fx-text-fill: -c-on-primary-soft; }
+/* TabPane: nền thanh tab trong suốt; tab có gạch dưới 3px trong suốt. */
 .tab-pane .tab-header-area .tab-header-background { -fx-background-color: transparent; }
 .tab-pane .tab {
     -fx-background-color: transparent;
@@ -437,34 +535,42 @@
     -fx-border-color: transparent;
     -fx-border-width: 0 0 3px 0;
 }
+/* Chữ tab đậm vừa; tab đang chọn: gạch dưới xanh, chữ xanh; không có màu focus. */
 .tab-pane .tab .tab-label { -fx-font-weight: 600; }
 .tab-pane .tab:selected { -fx-border-color: transparent transparent -c-primary transparent; }
 .tab-pane .tab:selected .tab-label { -fx-text-fill: -c-primary; }
 .tab-pane .tab:focused { -fx-focus-color: transparent; }
+/* Bảng khoá / giá trị (thông tin kết nối): khoá mờ rộng 150px, giá trị phông đơn cách. */
 .kv-key { -fx-text-fill: -c-text-3; -fx-min-width: 150px; }
 .kv-value { -fx-font-family: "Consolas", "Courier New", monospace; -fx-font-size: 12px; }
 
 /* ------------------------------------------------------------- hộp thoại */
+/* Hộp thoại của ứng dụng: nền trắng; dòng tiêu đề đậm 16px; nội dung chữ phụ; lề vùng nút. */
 .app-dialog { -fx-background-color: -c-surface; -fx-padding: 6px; }
 .app-dialog .header-panel { -fx-background-color: -c-surface; -fx-padding: 18px 18px 6px 18px; }
 .app-dialog .header-panel .label { -fx-font-size: 16px; -fx-font-weight: bold; }
 .app-dialog .content.label { -fx-padding: 6px 18px 14px 18px; -fx-text-fill: -c-text-2; }
 .app-dialog > .button-bar > .container { -fx-padding: 8px 14px 14px 14px; }
+/* Ô dấu vân tay: phông đơn cách 12px. */
 .fingerprint, .fingerprint:focused {
     -fx-font-family: "Consolas", "Courier New", monospace;
     -fx-font-size: 12px;
 }
 
 /* ------------------------------------------------------------- thanh cuộn mảnh */
+/* Thanh cuộn mảnh: nền trong suốt, con chạy xám bo 6px (hover đậm hơn), ẩn hai nút mũi tên. */
 .scroll-bar:vertical, .scroll-bar:horizontal { -fx-background-color: transparent; -fx-padding: 2px; }
 .scroll-bar .thumb { -fx-background-color: -c-thumb; -fx-background-radius: 6px; }
 .scroll-bar .thumb:hover { -fx-background-color: -c-thumb-hover; }
 .scroll-bar .increment-button, .scroll-bar .decrement-button { -fx-padding: 0; -fx-pref-height: 0; -fx-pref-width: 0; }
 .scroll-bar .increment-arrow, .scroll-bar .decrement-arrow { -fx-shape: none; -fx-padding: 0; }
+/* ScrollPane và vùng nhìn: trong suốt, không lề. */
 .scroll-pane { -fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0; }
 .scroll-pane > .viewport { -fx-background-color: transparent; }
+/* Chú thích (tooltip): nền xám đen, chữ trắng 12px. */
 .tooltip { -fx-background-color: #3c4043; -fx-text-fill: white; -fx-font-size: 12px; -fx-background-radius: 6px; -fx-padding: 6px 9px; }
 
+/* Nút ngôi sao trong khung đọc khi thư có sao: icon vàng. */
 .icon-button.starred .icon { -fx-icon-color: -c-star; }
 
 
@@ -476,28 +582,34 @@
 .tab-pane:focused > .tab-header-area > .headers-region > .tab:selected .focus-indicator {
     -fx-border-color: transparent;
 }
+/* Chữ tab chưa chọn: màu chữ phụ. */
 .tab-pane .tab .tab-label { -fx-text-fill: -c-text-2; }
 
 /* ---- Gợi ý khi gõ (autocomplete) ---- */
+/* Popup gợi ý: nền trắng bo 12px, bóng. */
 .suggest-popup {
     -fx-background-color: -c-surface;
     -fx-background-radius: 12px;
     -fx-padding: 6px 0;
     -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.24), 18, 0.12, 0, 4);
 }
+/* Danh sách trong popup: trong suốt. */
 .suggest-list { -fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0; }
 /* Ô gợi ý trong suốt; chỉ DÒNG gợi ý (không gồm tiêu đề nhóm phía trên) được tô khi rê chuột / chọn. */
 .suggest-list .list-cell, .suggest-list .list-cell:hover, .suggest-list .list-cell:selected,
 .suggest-list .list-cell:empty { -fx-background-color: transparent; -fx-padding: 0 6px; }
+/* Một dòng gợi ý: bo 8px, con trỏ bàn tay; hover nền xám; dòng đang chọn nền xanh nhạt. */
 .suggest-row { -fx-padding: 7px 8px; -fx-background-radius: 8px; -fx-cursor: hand; }
 .suggest-row:hover { -fx-background-color: -c-surface-2; }
 .suggest-list .list-cell:selected .suggest-row { -fx-background-color: -c-primary-softer; }
+/* Tiêu đề, mô tả, tiêu đề nhóm (chữ nhỏ in đậm), icon của dòng gợi ý. */
 .suggest-title { -fx-font-size: 13.5px; -fx-text-fill: -c-text; }
 .suggest-subtitle { -fx-font-size: 11.5px; -fx-text-fill: -c-text-3; }
 .suggest-section { -fx-font-size: 10.5px; -fx-font-weight: bold; -fx-text-fill: -c-text-3; -fx-padding: 8px 8px 2px 8px; }
 .suggest-row .icon { -fx-icon-color: -c-text-2; }
 
 /* ---- v3: kết nối lại, thư mục, hội thoại, xem trước, báo đã đọc ---- */
+/* Dải "đang kết nối lại" nổi: nền xanh nhạt bo tròn, viền, bóng; chữ và icon xanh. */
 .banner-reconnect {
     -fx-background-color: -c-primary-softer;
     -fx-background-radius: 20px;
@@ -508,9 +620,12 @@
 }
 .banner-reconnect .label { -fx-text-fill: -c-on-primary-soft; }
 .banner-reconnect .icon { -fx-icon-color: -c-primary; }
+/* Hàng tiêu đề "Thư mục" + nút + trên thanh bên. */
 .sidebar-section-row { -fx-padding: 14px 4px 4px 18px; }
 .sidebar-section-row .sidebar-section { -fx-padding: 0; }
+/* Mục thanh bên đang được kéo thư qua: nền xanh nhạt, vạch xanh bên trái. */
 .nav-item.drop-target { -fx-background-color: -c-primary-soft; -fx-border-color: -c-primary; -fx-border-width: 0 0 0 3px; }
+/* Nhãn số thư trong hội thoại. */
 .thread-badge {
     -fx-background-color: -c-surface-3;
     -fx-background-radius: 8px;
@@ -518,6 +633,7 @@
     -fx-font-size: 11px;
     -fx-text-fill: -c-text-2;
 }
+/* Thẻ một thư trong hội thoại: viền bo 12px; thẻ thu gọn có con trỏ bàn tay và hover nền xám. */
 .thread-message {
     -fx-background-color: -c-surface;
     -fx-border-color: -c-border;
@@ -527,7 +643,9 @@
 }
 .thread-message.collapsed { -fx-cursor: hand; }
 .thread-message.collapsed:hover { -fx-background-color: -c-surface-2; }
+/* Nội dung thư trong thẻ hội thoại. */
 .message-body { -fx-text-fill: -c-text; -fx-font-size: 13.5px; -fx-line-spacing: 2px; }
+/* Khung báo đã đọc: nền xanh lá nhạt, chữ và icon xanh lá. */
 .receipt-box {
     -fx-background-color: -c-success-soft;
     -fx-background-radius: 10px;
@@ -535,9 +653,11 @@
 }
 .receipt-box .label { -fx-text-fill: -c-success; -fx-font-size: 12px; }
 .receipt-box .icon { -fx-icon-color: -c-success; }
+/* Cửa sổ xem trước tệp: thanh trên, vùng nội dung, bóng quanh mỗi trang PDF. */
 .preview-header { -fx-background-color: -c-surface; -fx-border-color: transparent transparent -c-border transparent; }
 .preview-body { -fx-background-color: -c-bg; }
 .preview-page { -fx-effect: dropshadow(gaussian, rgba(32, 33, 36, 0.25), 10, 0.15, 0, 2); }
+/* Vùng thả tệp trong khung soạn: viền nét đứt xanh, nền xanh nhạt, chữ và icon xanh. */
 .drop-zone {
     -fx-border-color: -c-primary;
     -fx-border-style: segments(6, 4);
@@ -548,12 +668,15 @@
 }
 .drop-zone .label { -fx-text-fill: -c-primary; -fx-font-size: 15px; -fx-font-weight: bold; }
 .drop-zone .icon { -fx-icon-color: -c-primary; }
+/* Nhãn "hẹn giờ" trên dòng thư đã lên lịch: chữ cam đậm. */
 .schedule-tag { -fx-text-fill: -c-warning; -fx-font-weight: bold; -fx-font-size: 12px; }
+/* Ô mã 2 bước: chữ to phông đơn cách; khung trắng quanh mã QR; chữ đơn cách cho khoá bí mật. */
 .totp-field { -fx-font-size: 18px; -fx-font-family: "Consolas", monospace; }
 .qr-frame { -fx-background-color: white; -fx-background-radius: 12px; -fx-padding: 10px; }
 .mono { -fx-font-family: "Consolas", "Cascadia Mono", monospace; -fx-font-size: 12px; }
 
 /* ---- Địa chỉ nhóm: ô nhập liền với đuôi @group.local ---- */
+/* Khung ô địa chỉ nhóm: trông như một ô nhập, bên trong có ô chữ + đuôi "@group.local". */
 .address-field {
     -fx-background-color: -c-surface;
     -fx-border-color: -c-border-strong;
@@ -562,12 +685,15 @@
     -fx-background-radius: 8px;
     -fx-padding: 0 12px 0 0;
 }
+/* Ô chữ bên trong: không nền, không viền, không vòng sáng (khung ngoài vẽ thay). */
 .address-field .address-input, .address-field .address-input:focused, .address-field .address-input:hover {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
     -fx-effect: null;
 }
+/* Khi ô bên trong có focus: viền khung ngoài xanh + vòng sáng. */
 .address-field:focus-within { -fx-border-color: -c-primary; -fx-effect: dropshadow(gaussian, -c-focus-ring, 4, 0.6, 0, 0); }
+/* Đuôi "@group.local" mờ; địa chỉ nhóm hiển thị màu xanh phông đơn cách. */
 .address-suffix { -fx-text-fill: -c-text-3; }
 .group-address { -fx-text-fill: -c-primary; -fx-font-family: "Consolas", "Cascadia Mono", monospace; -fx-font-size: 12.5px; }
 
@@ -581,17 +707,21 @@
    Không áp cho ô danh sách thư (ô được dùng lại khi cuộn) và cho màu icon (icon tạo mới
    sẽ chớp từ màu mặc định sang màu đúng).
    ===================================================================== */
+/* Đổi màu nền / viền dần trong 120ms cho các thành phần có nền đặc. */
 .primary-button, .secondary-button, .danger-button, .compose-button, .nav-item,
 .schedule-options > .schedule-option, .schedule-custom, .attachment-chip, .address-field {
     transition: -fx-background-color 120ms ease-out, -fx-border-color 120ms ease-out;
 }
+/* Ô nhập: chỉ đổi màu viền dần. */
 .text-field, .password-field, .text-area { transition: -fx-border-color 120ms ease-out; }
 /* Thẻ "Chọn ngày giờ" nằm trong khung .schedule-custom (luôn trong suốt) nên không thuộc
    ".schedule-options > .schedule-option" ở trên: không có transition, khỏi cần "transition: none"
    (JavaFX không nhận giá trị none và in cảnh báo). */
 
 /* ---- Hộp thoại hẹn giờ gửi ---- */
+/* Lề nội dung hộp thoại hẹn giờ. */
 .schedule-pane > .content { -fx-padding: 4px 20px 8px 20px; }
+/* Thẻ lựa chọn giờ: viền bo 10px, con trỏ bàn tay. */
 .schedule-option {
     -fx-background-color: -c-surface;
     -fx-border-color: -c-border;
@@ -601,14 +731,18 @@
     -fx-padding: 10px 16px;
     -fx-cursor: hand;
 }
+/* Hover: nền xám, viền đậm; được chọn: nền xanh nhạt, viền xanh. */
 .schedule-option:hover { -fx-background-color: -c-surface-2; -fx-border-color: -c-border-strong; }
 .schedule-option:selected { -fx-background-color: -c-primary-softer; -fx-border-color: -c-primary; }
+/* Icon thẻ: xám, được chọn thì xanh. */
 .schedule-option .icon { -fx-icon-color: -c-text-3; }
 .schedule-option:selected .icon { -fx-icon-color: -c-primary; }
+/* Tên lựa chọn (được chọn thì xanh) và giờ cụ thể (mờ). */
 .schedule-option-title { -fx-font-size: 13.5px; -fx-font-weight: 600; -fx-text-fill: -c-text; }
 .schedule-option:selected .schedule-option-title { -fx-text-fill: -c-primary; }
 .schedule-option-time { -fx-font-size: 12.5px; -fx-text-fill: -c-text-3; }
 /* Khung "Chọn ngày giờ": thẻ + ô ngày giờ nằm chung một khung, khung sáng lên khi được chọn. */
+/* Khung tự chọn: viền bo 10px. */
 .schedule-custom {
     -fx-background-color: -c-surface;
     -fx-border-color: -c-border;
@@ -616,15 +750,20 @@
     -fx-border-radius: 10px;
     -fx-background-radius: 10px;
 }
+/* Hover viền đậm; :active (do code bật khi chọn tự chọn) nền xanh nhạt, viền xanh. */
 .schedule-custom:hover { -fx-border-color: -c-border-strong; }
 .schedule-custom:active { -fx-background-color: -c-primary-softer; -fx-border-color: -c-primary; }
+/* Thẻ "Chọn ngày giờ" bên trong khung: không nền, không viền (khung ngoài đã vẽ). */
 .schedule-custom .schedule-option, .schedule-custom .schedule-option:hover, .schedule-custom .schedule-option:selected {
     -fx-background-color: transparent;
     -fx-border-color: transparent;
 }
+/* Lưới ngày / giờ: thụt lề trái 48px cho thẳng với chữ của thẻ. */
 .schedule-fields { -fx-padding: 0 16px 14px 48px; }
+/* Ô giờ / phút: chữ căn giữa 14px đậm vừa; dấu ":" giữa hai ô. */
 .time-spinner .text-field { -fx-alignment: center; -fx-font-size: 14px; -fx-font-weight: 600; }
 .schedule-colon { -fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: -c-text-2; }
+/* Dải tóm tắt "Thư sẽ được gửi lúc...": nền xám bo 10px, icon xanh, chữ đậm vừa. */
 .schedule-summary {
     -fx-background-color: -c-surface-2;
     -fx-background-radius: 10px;

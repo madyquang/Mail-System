@@ -1,6 +1,11 @@
+// Gói "protocol": các lớp mô tả định dạng tin nhắn giữa Client và Server.
 package com.mailsystem.common.protocol;
 
-/** Danh sách sự kiện Server chủ động đẩy về Client (real-time sync). */
+/**
+ * Danh sách sự kiện Server chủ động đẩy về Client (real-time sync).
+ * Tên sự kiện nằm ở trường "eventName" của EventMessage; phần trong {} ở mỗi dòng
+ * là các trường có trong "data" của sự kiện đó.
+ */
 public enum EventName {
     NEW_MAIL,           // {mailId, senderEmail, senderName, subject}: có thư mới
     MAIL_READ_UPDATED,  // {entryIds, read}: trạng thái đọc thay đổi
